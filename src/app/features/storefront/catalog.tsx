@@ -986,6 +986,17 @@ export function ProductPage() {
   const product = products.find((p) => p.id === productId) ?? products[0];
   const [photo, setPhoto] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [reviewFilter, setReviewFilter] = useState("All");
+  const [reviews, setReviews] = useState<
+    {
+      id: string;
+      rating: number;
+      title: string;
+      body: string;
+      created_at: string;
+      profiles: { full_name: string | null } | null;
+    }[]
+  >([]);
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
   const dimensionItems = product.dimensions
@@ -998,6 +1009,27 @@ export function ProductPage() {
       : null;
   const atStockLimit = stockLimit !== null && quantity >= stockLimit;
   const outOfStock = stockLimit === 0;
+  useEffect(() => {
+    let active = true;
+    void supabase
+      .from("reviews")
+      .select(
+        "id,rating,title,body,created_at,profiles!reviews_user_id_fkey(full_name)",
+      )
+      .eq("product_id", product.id)
+      .eq("approved", true)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (active) setReviews((data ?? []) as typeof reviews);
+      });
+    return () => {
+      active = false;
+    };
+  }, [product.id]);
+  const visibleReviews =
+    reviewFilter === "All"
+      ? reviews
+      : reviews.filter((review) => review.rating === Number(reviewFilter));
   return (
     <Layout>
       <main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-10 lg:py-10">
@@ -1142,6 +1174,88 @@ export function ProductPage() {
             </div>
           </section>
         </div>
+        <section className="mt-16 border-t border-border pt-10">
+          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-[10px] font-bold tracking-[.17em] text-muted-foreground">
+                CUSTOMER REVIEWS
+              </p>
+              <h2 className="mt-3 font-serif text-4xl">
+                Loved in real homes.
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {product.rating} average from {product.reviews} verified reviews
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {["All", "5", "4", "3", "2", "1"].map((filter) => (
+                <button
+                  onClick={() => setReviewFilter(filter)}
+                  key={filter}
+                  className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                    reviewFilter === filter
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-card hover:bg-secondary"
+                  }`}
+                >
+                  {filter === "All"
+                    ? "All reviews"
+                    : `${filter} star${filter === "1" ? "" : "s"}`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-7 grid gap-3 lg:grid-cols-2">
+            {visibleReviews.map((review) => (
+              <article
+                key={review.id}
+                className="rounded-2xl border border-border bg-card p-5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {review.profiles?.full_name || "CozyCraft customer"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Verified customer ·{" "}
+                      {new Date(review.created_at).toLocaleDateString("en-PH", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <span className="flex gap-0.5 text-[#9d7b5b]">
+                    {Array.from({ length: 5 }, (_, index) => (
+                      <Star
+                        key={index}
+                        size={13}
+                        fill={
+                          index < review.rating ? "currentColor" : "none"
+                        }
+                      />
+                    ))}
+                  </span>
+                </div>
+                {review.title && (
+                  <h3 className="mt-4 text-sm font-semibold">
+                    {review.title}
+                  </h3>
+                )}
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {review.body}
+                </p>
+              </article>
+            ))}
+          </div>
+          {!visibleReviews.length && (
+            <p className="mt-8 rounded-2xl bg-secondary p-6 text-center text-sm text-muted-foreground">
+              {reviews.length
+                ? "No reviews match this star rating yet."
+                : "No approved customer reviews yet. Be the first to share your experience."}
+            </p>
+          )}
+        </section>
       </main>
     </Layout>
   );

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -121,6 +122,20 @@ function App() {
   const [supportTickets, setSupportTickets] = useState<DbSupportTicket[]>([]);
   const [adminRole, setAdminRole] = useState<AdminRole>("Staff");
   const [shopPrompt, setShopPrompt] = useState(false);
+  const [fly, setFly] = useState<FlyState | null>(null);
+  const lastPointer = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const rememberPointer = (event: PointerEvent) => {
+      lastPointer.current = { x: event.clientX, y: event.clientY };
+    };
+    window.addEventListener("pointerdown", rememberPointer, true);
+    return () => window.removeEventListener("pointerdown", rememberPointer, true);
+  }, []);
+
+  const triggerFly = (kind: FlyState["kind"]) => {
+    setFly({ kind, ...lastPointer.current, id: Date.now() });
+  };
 
   const mapProduct = useCallback((row: DbProduct): Product => ({
     id: row.id,
@@ -440,15 +455,20 @@ function App() {
       setShopPrompt(true);
       return;
     }
+    const stockLimit = stockLimitFor(id);
+    const current = cart.find((item) => item.id === id)?.quantity ?? 0;
+    if (stockLimit === 0 || (stockLimit !== null && current >= stockLimit)) {
+      return;
+    }
+    triggerFly("cart");
     setCart((items) => {
-      const stockLimit = stockLimitFor(id);
-      if (stockLimit === 0) return items;
-      const current = items.find((item) => item.id === id)?.quantity ?? 0;
-      const requested = current + Math.max(1, Math.floor(amount));
+      const currentQuantity =
+        items.find((item) => item.id === id)?.quantity ?? 0;
+      const requested = currentQuantity + Math.max(1, Math.floor(amount));
       const quantity =
         stockLimit === null ? requested : Math.min(requested, stockLimit);
-      if (quantity === current) return items;
-      const next = current
+      if (quantity === currentQuantity) return items;
+      const next = currentQuantity
         ? items.map((item) =>
             item.id === id ? { ...item, quantity } : item,
           )
@@ -485,6 +505,7 @@ function App() {
     }
     setSaved((items) => {
     const exists = items.includes(id);
+    if (!exists) triggerFly("wishlist");
     void (exists ? supabase.from("wishlist_items").delete().eq("user_id", userId).eq("product_id", id) : supabase.from("wishlist_items").insert({ user_id:userId, product_id:id }));
     return exists ? items.filter((x) => x !== id) : [...items, id];
     });
@@ -494,7 +515,11 @@ function App() {
     await supabase.auth.signOut({ scope: "local" });
   };
 
-  const placeOrder = async (addressId: string, paymentMethod: string) => {
+  const placeOrder = async (
+    addressId: string,
+    paymentMethod: string,
+    productIds?: string[],
+  ) => {
     if (paymentMethod !== "cod") {
       return {
         id: null,
@@ -502,7 +527,14 @@ function App() {
         error: "Cash on delivery is the only payment method available for this demo.",
       };
     }
-    const { data, error } = await supabase.rpc("place_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:cart.map((item) => ({ product_id:item.id, quantity:item.quantity })) });
+    const selectedIds = productIds?.length ? new Set(productIds) : null;
+    const orderCart = selectedIds
+      ? cart.filter((item) => selectedIds.has(item.id))
+      : cart;
+    const remainingCart = selectedIds
+      ? cart.filter((item) => !selectedIds.has(item.id))
+      : [];
+    const { data, error } = await supabase.rpc("place_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })) });
     if (error) return { id:null, orderNumber:null, error:error.message };
     const orderId = data as string;
     const { data: createdOrder } = await supabase
@@ -510,7 +542,17 @@ function App() {
       .select("order_number")
       .eq("id", orderId)
       .single();
-    setCart([]); await Promise.all([refreshOrders(), refreshProducts()]);
+    if (userId && remainingCart.length) {
+      await supabase.from("cart_items").upsert(
+        remainingCart.map((item) => ({
+          user_id: userId,
+          product_id: item.id,
+          quantity: item.quantity,
+        })),
+      );
+    }
+    setCart(remainingCart);
+    await Promise.all([refreshOrders(), refreshProducts()]);
     return {
       id: orderId,
       orderNumber: createdOrder?.order_number ?? null,
@@ -788,8 +830,66 @@ function App() {
         {shopPrompt && (
           <ShopSignInPrompt close={() => setShopPrompt(false)} />
         )}
+        {fly && <FlyToNav fly={fly} done={() => setFly(null)} />}
       </AdminSessionContext.Provider>
     </StoreContext.Provider>
+  );
+}
+
+type FlyState = {
+  kind: "cart" | "wishlist";
+  x: number;
+  y: number;
+  id: number;
+};
+
+function FlyToNav({ fly, done }: { fly: FlyState; done: () => void }) {
+  const [travel, setTravel] = useState(false);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setTravel(false);
+    const target = document.getElementById(
+      fly.kind === "cart" ? "cart-nav-target" : "wishlist-nav-target",
+    );
+    const origin = {
+      x: fly.x || window.innerWidth / 2,
+      y: fly.y || window.innerHeight / 2,
+    };
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      setOffset({
+        x: rect.left + rect.width / 2 - origin.x,
+        y: rect.top + rect.height / 2 - origin.y,
+      });
+    }
+    const frame = window.requestAnimationFrame(() => setTravel(true));
+    const timer = window.setTimeout(done, 720);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [done, fly]);
+
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none fixed z-[120] grid h-10 w-10 place-items-center rounded-full bg-foreground text-background shadow-xl transition-[transform,opacity] duration-700 ease-in-out"
+      style={{
+        left: fly.x - 20,
+        top: fly.y - 20,
+        transform: travel
+          ? `translate(${offset.x}px,${offset.y}px) scale(.35)`
+          : "translate(0,0) scale(1)",
+        opacity: travel ? 0.35 : 1,
+      }}
+    >
+      {fly.kind === "cart" ? (
+        <ShoppingBag size={18} />
+      ) : (
+        <Heart size={18} fill="currentColor" />
+      )}
+    </span>
   );
 }
 

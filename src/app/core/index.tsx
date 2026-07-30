@@ -330,6 +330,7 @@ export type Store = {
   placeOrder: (
     addressId: string,
     paymentMethod: string,
+    productIds?: string[],
   ) => Promise<{
     id: string | null;
     orderNumber: string | null;
@@ -500,6 +501,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
               <Search size={18} />
             </button>
             <Link
+              id="wishlist-nav-target"
               to="/wishlist"
               className={`relative grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >
@@ -513,6 +515,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
               )}
             </Link>
             <Link
+              id="cart-nav-target"
               to="/cart"
               className={`relative grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >

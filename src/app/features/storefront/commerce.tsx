@@ -113,20 +113,64 @@ import { AddressManager } from "./profile";
 
 export function Cart() {
   const { cart, remove, qty, products } = useStore();
+  const [selected, setSelected] = useState<string[]>(() =>
+    cart.map((line) => line.id),
+  );
   const lines = cart.flatMap((line) => {
     const item = products.find((product) => product.id === line.id);
     return item ? [{ item, quantity: line.quantity }] : [];
   });
-  const total = lines.reduce((n, x) => n + x.item.price * x.quantity, 0);
+  useEffect(() => {
+    setSelected((current) => {
+      const available = new Set(lines.map((line) => line.item.id));
+      const retained = current.filter((id) => available.has(id));
+      const additions = lines
+        .map((line) => line.item.id)
+        .filter((id) => !current.includes(id));
+      return [...retained, ...additions];
+    });
+  }, [cart.length]);
+  const selectedLines = lines.filter((line) =>
+    selected.includes(line.item.id),
+  );
+  const total = selectedLines.reduce(
+    (n, x) => n + x.item.price * x.quantity,
+    0,
+  );
+  const allSelected =
+    lines.length > 0 && selectedLines.length === lines.length;
+  const toggleSelected = (id: string) =>
+    setSelected((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
   return (
     <Layout>
-      <main className="mx-auto max-w-[1120px] px-5 py-10 lg:py-16">
-        <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
-          YOUR BAG
-        </p>
-        <h1 className="mt-3 font-[Playfair_Display] text-5xl tracking-[-.035em]">
-          A few good things.
-        </h1>
+      <main className="mx-auto max-w-[1160px] px-5 py-10 lg:py-16">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
+              YOUR BAG
+            </p>
+            <h1 className="mt-3 font-serif text-5xl">A few good things.</h1>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Choose the pieces you would like to bring home today.
+            </p>
+          </div>
+          {lines.length > 0 && (
+            <button
+              onClick={() =>
+                setSelected(
+                  allSelected ? [] : lines.map((line) => line.item.id),
+                )
+              }
+              className="rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold"
+            >
+              {allSelected ? "Clear selection" : "Select all"}
+            </button>
+          )}
+        </div>
         {!lines.length ? (
           <Empty
             title="Your bag is waiting."
@@ -135,9 +179,19 @@ export function Cart() {
             to="/home#shop"
           />
         ) : (
-          <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_330px]">
-            <div className="divide-y divide-border border-y border-border">
+          <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_350px]">
+            <section className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <p className="text-sm font-semibold">
+                  {selectedLines.length} of {lines.length} pieces selected
+                </p>
+                <span className="text-xs text-muted-foreground">
+                  Selection updates your total
+                </span>
+              </div>
+              <div className="divide-y divide-border">
               {lines.map(({ item, quantity }) => {
+                const isSelected = selected.includes(item.id);
                 const stockLimit =
                   typeof item.stockQuantity === "number"
                     ? Math.max(0, item.stockQuantity)
@@ -145,11 +199,27 @@ export function Cart() {
                 const atStockLimit =
                   stockLimit !== null && quantity >= stockLimit;
                 return (
-                <div className="flex gap-4 py-4" key={item.id}>
+                <article
+                  className={`flex gap-4 p-4 transition sm:p-5 ${
+                    isSelected ? "bg-[#fcfbf8]" : "bg-card opacity-65"
+                  }`}
+                  key={item.id}
+                >
+                  <button
+                    onClick={() => toggleSelected(item.id)}
+                    aria-label={`${isSelected ? "Remove" : "Add"} ${item.name} from checkout`}
+                    className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition ${
+                      isSelected
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border bg-card"
+                    }`}
+                  >
+                    {isSelected && <Check size={12} />}
+                  </button>
                   <ImageWithFallback
                     src={item.images[0]}
                     alt={item.name}
-                    className="h-28 w-24 object-cover"
+                    className="h-28 w-24 rounded-2xl object-cover"
                   />
                   <div className="flex flex-1 flex-col">
                     <div className="flex justify-between gap-2">
@@ -162,7 +232,7 @@ export function Cart() {
                       <p className="text-sm">{money(item.price * quantity)}</p>
                     </div>
                     <div className="mt-auto flex items-center justify-between">
-                      <div className="flex h-8 items-center border border-border">
+                      <div className="flex h-9 items-center rounded-xl border border-border bg-card">
                         <button
                           onClick={() => qty(item.id, quantity - 1)}
                           className="grid h-full w-8 place-items-center"
@@ -186,7 +256,12 @@ export function Cart() {
                         </button>
                       </div>
                       <button
-                        onClick={() => remove(item.id)}
+                        onClick={() => {
+                          remove(item.id);
+                          setSelected((current) =>
+                            current.filter((id) => id !== item.id),
+                          );
+                        }}
                         className="flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-4"
                       >
                         <Trash2 size={13} />
@@ -207,20 +282,31 @@ export function Cart() {
                           : `${stockLimit} available`}
                     </p>
                   </div>
-                </div>
+                </article>
                 );
               })}
-            </div>
-            <aside className="h-fit bg-secondary p-6">
-              <h2 className="font-semibold">Order summary</h2>
+              </div>
+            </section>
+            <aside className="h-fit overflow-hidden rounded-3xl border border-border bg-card shadow-sm lg:sticky lg:top-24">
+              <div className="bg-[#292622] p-6 text-[#f5f1e9]">
+                <p className="text-[10px] font-bold tracking-[.16em] text-white/60">
+                  ORDER SUMMARY
+                </p>
+                <h2 className="mt-2 font-serif text-3xl">Selected pieces.</h2>
+              </div>
+              <div className="p-6">
+              <p className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Selected items</span>
+                <span>{selectedLines.length}</span>
+              </p>
               <div className="mt-5 space-y-3 border-y border-border py-4 text-sm">
                 <p className="flex justify-between">
                   <span>Subtotal</span>
                   <span>{money(total)}</span>
                 </p>
                 <p className="flex justify-between">
-                  <span>Delivery</span>
-                  <span>Calculated at checkout</span>
+                  <span className="text-muted-foreground">White-glove delivery</span>
+                  <span>Free</span>
                 </p>
               </div>
               <p className="mt-5 flex justify-between font-semibold">
@@ -228,14 +314,26 @@ export function Cart() {
                 <span>{money(total)}</span>
               </p>
               <Link
-                to="/checkout"
-                className="mt-6 flex h-12 w-full items-center justify-center bg-foreground text-sm font-semibold text-background"
+                to={
+                  selectedLines.length
+                    ? `/checkout?items=${selected.join(",")}`
+                    : "/cart"
+                }
+                className={`mt-6 flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold ${
+                  selectedLines.length
+                    ? "bg-foreground text-background"
+                    : "pointer-events-none bg-secondary text-muted-foreground"
+                }`}
               >
-                Proceed to checkout
+                {selectedLines.length
+                  ? "Proceed to checkout"
+                  : "Select a piece to continue"}
               </Link>
-              <p className="mt-3 text-center text-[10px] text-muted-foreground">
-                Secure checkout · Delivery scheduling available
+              <p className="mt-4 flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
+                <ShieldCheck size={14} className="shrink-0" />
+                Only selected pieces will move to secure checkout.
               </p>
+              </div>
             </aside>
           </div>
         )}
@@ -394,7 +492,8 @@ export function CustomerOrders() {
 }
 
 export function Checkout() {
-  const { cart, clearCart, user, addresses, products, placeOrder } = useStore();
+  const { cart, user, addresses, products, placeOrder } = useStore();
+  const location = useLocation();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
   const [notice, setNotice] = useState("");
@@ -404,7 +503,14 @@ export function Checkout() {
     orderNumber: string;
     total: number;
   } | null>(null);
-  const lines = cart.flatMap((line) => {
+  const requestedIds = new URLSearchParams(location.search)
+    .get("items")
+    ?.split(",")
+    .filter(Boolean);
+  const checkoutCart = requestedIds?.length
+    ? cart.filter((line) => requestedIds.includes(line.id))
+    : cart;
+  const lines = checkoutCart.flatMap((line) => {
     const item = products.find((product) => product.id === line.id);
     return item ? [{ item, quantity: line.quantity }] : [];
   });
@@ -745,7 +851,11 @@ export function Checkout() {
                     return;
                   }
                   setPlacing(true);
-                  const result = await placeOrder(chosen.id, payment);
+                  const result = await placeOrder(
+                    chosen.id,
+                    payment,
+                    requestedIds,
+                  );
                   setPlacing(false);
                   if (result.error) {
                     setNotice(result.error);
@@ -760,7 +870,6 @@ export function Checkout() {
                         .toUpperCase(),
                     total,
                   });
-                  clearCart();
                 }}
                 className="mt-6 h-12 w-full rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-60"
               >
