@@ -194,6 +194,10 @@ function App() {
       supabase.from("wishlist_items").select("product_id"),
       supabase.from("addresses").select("*").order("is_primary", { ascending: false }),
     ]);
+    const {
+      data: { session: activeSession },
+    } = await supabase.auth.getSession();
+    if (activeSession?.user.id !== id) return;
     const profile = profileResult.data;
     setUserId(id);
     setUserEmail(email);

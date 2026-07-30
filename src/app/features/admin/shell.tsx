@@ -77,6 +77,7 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import { signInForPortal } from "@/lib/auth";
 
 import {
   Product,
@@ -110,19 +111,35 @@ import {
 
 export function AdminLogin() {
   const nav = useNavigate();
-  const { role, authReady } = useStore();
+  const { role, authReady, user, signOut } = useStore();
   const [loading, setLoading] = useState(false);
   const [show, setShow] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  useEffect(() => { if (authReady && isStaffRole(role)) nav("/admin"); }, [authReady, role, nav]);
+  useEffect(() => {
+    if (!authReady || !user || !role) return;
+    if (isStaffRole(role)) {
+      nav("/admin", { replace: true });
+      return;
+    }
+    void signOut().then(() => {
+      setError("Customer accounts cannot use the administrator sign-in.");
+    });
+  }, [authReady, nav, role, signOut, user]);
   const submit = async (e: FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    if (authError || !data.user) { setError(authError?.message ?? "Unable to sign in."); setLoading(false); return; }
-    const { data: profile, error: profileError } = await supabase.from("profiles").select("role").eq("id", data.user.id).single();
-    if (profileError || !isStaffRole(profile?.role as DbRole)) { await supabase.auth.signOut(); setError("This account is not approved for administrator access."); setLoading(false); return; }
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    const result = await signInForPortal(email, password, "admin");
+    setLoading(false);
+    if (!result.ok) {
+      setError(
+        result.error ??
+          "Administrator sign in failed. Check your credentials and try again.",
+      );
+      return;
+    }
     nav("/admin");
   };
   return <main className="h-dvh overflow-hidden bg-[#e9e5de] p-3 sm:p-5"><div className="mx-auto grid h-full max-w-[1500px] overflow-hidden rounded-[2rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.14)] lg:grid-cols-[1.1fr_.9fr]">

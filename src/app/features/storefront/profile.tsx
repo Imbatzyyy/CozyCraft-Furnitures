@@ -302,6 +302,8 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
 export function Profile() {
   const {
     user,
+    role,
+    authReady,
     userEmail,
     profilePhone,
     profileUsername,
@@ -383,7 +385,20 @@ export function Profile() {
       window.clearInterval(timer);
     };
   }, [pendingEmail, verifyPendingEmail]);
+  useEffect(() => {
+    if (!authReady || !user || !role || role === "customer") return;
+    void signOut().then(() => {
+      nav("/login?reason=customer-only", { replace: true });
+    });
+  }, [authReady, nav, role, signOut, user]);
   if (!user) return <Account mode="login" />;
+  if (role && role !== "customer") {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#e9e5de] text-sm text-muted-foreground">
+        Checking customer access…
+      </main>
+    );
+  }
   const tabs = [
     "Profile",
     "Orders",

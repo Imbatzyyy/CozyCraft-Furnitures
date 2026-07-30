@@ -77,6 +77,7 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import { signInForPortal } from "@/lib/auth";
 
 import {
   Product,
@@ -109,8 +110,9 @@ import {
 
 
 export function Account({ mode }: { mode: "login" | "signup" }) {
-  const { authReady, user } = useStore();
+  const { authReady, user, role, signOut } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const [view, setView] = useState<
     "auth" | "forgot" | "sent" | "verify"
   >("auth");
@@ -124,7 +126,21 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   const [error, setError] = useState("");
   const [verificationNotice, setVerificationNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  useEffect(() => { if (authReady && user) nav("/profile"); }, [authReady, user, nav]);
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("reason") === "customer-only") {
+      setError("This sign-in page accepts customer accounts only.");
+    }
+  }, [location.search]);
+  useEffect(() => {
+    if (!authReady || !user || !role) return;
+    if (role === "customer") {
+      nav("/profile", { replace: true });
+      return;
+    }
+    void signOut().then(() => {
+      setError("This sign-in page accepts customer accounts only.");
+    });
+  }, [authReady, nav, role, signOut, user]);
   const score = [
     password.length >= 8,
     password.length >= 12,
@@ -146,11 +162,32 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
     if (mode === "signup" && password !== confirm) { setError("Passwords do not match. Please try again."); return; }
     if (mode === "signup" && score < 2) { setError("Choose a stronger password before creating your account."); return; }
     setSubmitting(true);
-    const result = mode === "signup"
-      ? await supabase.auth.signUp({ email, password, options: { data: { full_name: (first + " " + last).trim() }, emailRedirectTo: window.location.origin + "/profile" } })
-      : await supabase.auth.signInWithPassword({ email, password });
+    if (mode === "login") {
+      const result = await signInForPortal(email, password, "customer");
+      setSubmitting(false);
+      if (!result.ok) {
+        setError(
+          result.error ??
+            "Sign in failed. Please check your credentials and try again.",
+        );
+        return;
+      }
+      nav("/profile");
+      return;
+    }
+    const result = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: { full_name: (first + " " + last).trim() },
+        emailRedirectTo: window.location.origin + "/profile",
+      },
+    });
     setSubmitting(false);
-    if (result.error) { setError(result.error.message); return; }
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
     if (mode === "signup" && !result.data.session) {
       setView("verify");
       return;
