@@ -501,13 +501,82 @@ function App() {
     return urls;
   };
   const uploadAvatar = async (file: File) => {
-    if (!userId) return null;
-    const path = userId + "/" + Date.now() + "-" + safeFileName(file.name);
-    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert:true });
-    if (error) return null;
-    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    await supabase.from("profiles").update({ avatar_url:data.publicUrl }).eq("id", userId);
-    setAvatar(data.publicUrl); return data.publicUrl;
+    if (!userId) {
+      return { url: null, error: "Please sign in before uploading a photo." };
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return { url: null, error: "Choose an image smaller than 5 MB." };
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      return {
+        url: null,
+        error: "Choose a JPEG, PNG, or WebP image.",
+      };
+    }
+
+    const path =
+      userId +
+      "/avatar-" +
+      Date.now() +
+      "-" +
+      crypto.randomUUID() +
+      "-" +
+      safeFileName(file.name);
+    const { data: uploaded, error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(path, file, {
+        cacheControl: "3600",
+        contentType: file.type,
+        upsert: false,
+      });
+    if (uploadError) {
+      return {
+        url: null,
+        error: `Photo upload failed: ${uploadError.message}`,
+      };
+    }
+
+    const { data: publicFile } = supabase.storage
+      .from("avatars")
+      .getPublicUrl(uploaded.path);
+    const { data: savedProfile, error: profileError } = await supabase
+      .from("profiles")
+      .update({ avatar_url: publicFile.publicUrl })
+      .eq("id", userId)
+      .select("avatar_url")
+      .single();
+    if (profileError || savedProfile?.avatar_url !== publicFile.publicUrl) {
+      await supabase.storage.from("avatars").remove([uploaded.path]);
+      return {
+        url: null,
+        error: `The photo uploaded, but the profile could not be updated: ${
+          profileError?.message ?? "database verification failed"
+        }`,
+      };
+    }
+
+    const publicPathMarker = "/storage/v1/object/public/avatars/";
+    const oldPathStart = avatar?.indexOf(publicPathMarker) ?? -1;
+    if (avatar && oldPathStart >= 0) {
+      const oldPath = decodeURIComponent(
+        avatar
+          .slice(oldPathStart + publicPathMarker.length)
+          .split("?")[0],
+      );
+      if (oldPath.startsWith(userId + "/") && oldPath !== uploaded.path) {
+        void supabase.storage.from("avatars").remove([oldPath]);
+      }
+    }
+
+    setAvatar(publicFile.publicUrl);
+    setCustomerProfiles((profiles) =>
+      profiles.map((profile) =>
+        profile.id === userId
+          ? { ...profile, avatar_url: publicFile.publicUrl }
+          : profile,
+      ),
+    );
+    return { url: publicFile.publicUrl, error: null };
   };
   const submitTicket = async (message: string) => {
     if (!userId) return "Please sign in first.";

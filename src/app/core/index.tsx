@@ -342,7 +342,10 @@ export type Store = {
   saveProduct: (product: ManagedProduct) => Promise<string | null>;
   deleteProduct: (id: string) => Promise<string | null>;
   uploadProductImages: (files: FileList) => Promise<string[]>;
-  uploadAvatar: (file: File) => Promise<string | null>;
+  uploadAvatar: (file: File) => Promise<{
+    url: string | null;
+    error: string | null;
+  }>;
   submitTicket: (message: string) => Promise<string | null>;
   replyToTicket: (
     id: string,

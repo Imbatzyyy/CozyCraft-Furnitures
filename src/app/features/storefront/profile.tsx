@@ -330,6 +330,7 @@ export function Profile() {
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [photoDialog, setPhotoDialog] = useState(false);
   const [photoError, setPhotoError] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
   const [securityView, setSecurityView] = useState<"home" | "setup" | "change">(
     "home",
@@ -394,20 +395,36 @@ export function Profile() {
   const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 3 * 1024 * 1024) {
+    if (file.size > 5 * 1024 * 1024) {
       setPhotoError(
-        "This image is too large. Please select a file smaller than 3 MB.",
+        "This image is too large. Please select a file smaller than 5 MB.",
       );
+      e.target.value = "";
       return;
     }
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      setPhotoError("Please select a JPEG or PNG image.");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setPhotoError("Please select a JPEG, PNG, or WebP image.");
+      e.target.value = "";
       return;
     }
     setPhotoError("");
-    const url = await uploadAvatar(file);
-    setNotice(url ? "Profile picture updated." : "Unable to upload that image.");
-    if (url) setPhotoDialog(false);
+    setPhotoUploading(true);
+    try {
+      const result = await uploadAvatar(file);
+      if (result.error) {
+        setPhotoError(result.error);
+        return;
+      }
+      setNotice("Profile picture updated and synced with your account.");
+      if (result.url) setPhotoDialog(false);
+    } catch {
+      setPhotoError(
+        "The upload was interrupted. Check your connection and try again.",
+      );
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = "";
+    }
   };
   const submitProfile = async () => {
     const fullName = `${first.trim()} ${last.trim()}`.trim();
@@ -1082,7 +1099,7 @@ export function Profile() {
                 Choose a new profile image
               </p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                Maximum 3 MB · JPEG or PNG
+                Maximum 5 MB · JPEG, PNG, or WebP
               </p>
               {photoError && (
                 <p
@@ -1092,11 +1109,18 @@ export function Profile() {
                   {photoError}
                 </p>
               )}
-              <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background">
-                Select image
+              <label
+                className={`mt-5 inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background ${
+                  photoUploading
+                    ? "cursor-wait opacity-60"
+                    : "cursor-pointer"
+                }`}
+              >
+                {photoUploading ? "Uploading and saving…" : "Select image"}
                 <input
                   type="file"
-                  accept="image/jpeg,image/png"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={photoUploading}
                   onChange={(event) => void upload(event)}
                   className="hidden"
                 />
