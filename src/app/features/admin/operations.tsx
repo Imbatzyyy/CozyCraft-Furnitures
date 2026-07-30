@@ -578,7 +578,13 @@ export function OrdersPage() {
   const [selectedId, setSelectedId] = useState("");
   const [notice, setNotice] = useState("");
   useEffect(()=>{ void refreshOrders(); },[refreshOrders]);
-  useEffect(()=>{ if(!selectedId&&orders[0]) setSelectedId(orders[0].id); },[orders,selectedId]);
+  useEffect(()=>{
+    if (!orders.length) {
+      if (selectedId) setSelectedId("");
+      return;
+    }
+    if (!orders.some((order) => order.id === selectedId)) setSelectedId(orders[0].id);
+  },[orders,selectedId]);
   const selected=orders.find(order=>order.id===selectedId)??orders[0];
   const update=async(status:DbOrder["status"])=>{if(!selected)return;const issue=await updateOrderStatus(selected.id,status);setNotice(issue??("Order "+selected.order_number+" updated to "+status+"."));};
   return <AdminShell title="Orders"><div className="flex flex-wrap justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LIVE FULFILLMENT</p><h2 className="mt-2 text-3xl font-semibold">Customer orders</h2><p className="mt-2 text-sm text-muted-foreground">Orders placed at checkout appear here immediately.</p></div><div className="rounded-xl bg-card px-4 py-3 text-sm shadow-sm"><b>{orders.length}</b> total orders</div></div>{!selected?<div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">No customer orders yet.</div>:<div className="mt-7 grid gap-5 xl:grid-cols-[.8fr_1.2fr]"><section className="overflow-hidden rounded-2xl border border-border bg-card">{orders.map(order=>{const addr=order.shipping_address;return <button key={order.id} onClick={()=>setSelectedId(order.id)} className={"flex w-full items-center justify-between border-b border-border p-4 text-left "+(selected.id===order.id?"bg-secondary":"hover:bg-secondary")}><span><b className="text-sm">#{order.order_number}</b><span className="mt-1 block text-xs text-muted-foreground">{addr.name||"Customer"} · {new Date(order.created_at).toLocaleDateString("en-PH")}</span></span><span className="text-right"><Status>{order.status}</Status><b className="mt-2 block text-xs">{money(Number(order.total))}</b></span></button>})}</section><section className="rounded-2xl border border-border bg-card p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs text-muted-foreground">ORDER #{selected.order_number}</p><h3 className="mt-2 font-serif text-3xl">{selected.shipping_address.name||"Customer"}</h3><p className="mt-2 text-sm text-muted-foreground">{selected.shipping_address.email} · {selected.shipping_address.mobile}</p></div><Status>{selected.status}</Status></div><div className="mt-6 rounded-xl bg-secondary p-4 text-sm"><b>Deliver to</b><p className="mt-2 text-muted-foreground">{[selected.shipping_address.line,selected.shipping_address.barangay,selected.shipping_address.city,selected.shipping_address.province,selected.shipping_address.postal].filter(Boolean).join(", ")}</p></div><div className="mt-6 divide-y divide-border border-y border-border">{selected.order_items.map(item=><div key={item.id} className="flex justify-between py-3 text-sm"><span>{item.product_name} × {item.quantity}</span><b>{money(Number(item.unit_price)*item.quantity)}</b></div>)}</div><div className="mt-5 flex justify-between text-lg font-semibold"><span>Total</span><span>{money(Number(selected.total))}</span></div><label className="mt-6 grid gap-2 text-sm font-semibold">Update fulfillment status<select value={selected.status} onChange={e=>void update(e.target.value as DbOrder["status"])} className="h-11 rounded-xl border border-border bg-card px-3 font-normal"><option value="pending">Pending</option><option value="processing">Processing</option><option value="packed">Packed</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option></select></label></section></div>}{notice&&<Toast message={notice} close={()=>setNotice("")}/>}</AdminShell>;
@@ -600,7 +606,13 @@ export function OrdersWorkspacePage() {
     void refreshOrders();
   }, [refreshOrders]);
   useEffect(() => {
-    if (!selectedId && orders[0]) setSelectedId(orders[0].id);
+    if (!orders.length) {
+      if (selectedId) setSelectedId("");
+      return;
+    }
+    if (!orders.some((order) => order.id === selectedId)) {
+      setSelectedId(orders[0].id);
+    }
   }, [orders, selectedId]);
 
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0];

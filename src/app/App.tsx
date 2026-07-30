@@ -316,13 +316,39 @@ function App() {
     const channel = supabase
       .channel("cozycraft-live-commerce")
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => void refreshProducts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => void refreshOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, (payload) => {
+        if (payload.eventType === "DELETE" && typeof payload.old?.id === "string") {
+          setOrders((current) => current.filter((order) => order.id !== payload.old.id));
+          return;
+        }
+        void refreshOrders();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refreshOrders())
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => void refreshCustomers())
       .on("postgres_changes", { event: "*", schema: "public", table: "addresses" }, () => void refreshCustomers())
       .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, () => { void refreshTickets(); void refreshCustomers(); })
       .subscribe();
     return () => { window.clearTimeout(timer); void supabase.removeChannel(channel); };
   }, [refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const syncOrders = () => void refreshOrders();
+    const syncVisibleOrders = () => {
+      if (document.visibilityState === "visible") syncOrders();
+    };
+    const interval = window.setInterval(syncVisibleOrders, 15_000);
+
+    window.addEventListener("focus", syncOrders);
+    document.addEventListener("visibilitychange", syncVisibleOrders);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", syncOrders);
+      document.removeEventListener("visibilitychange", syncVisibleOrders);
+    };
+  }, [refreshOrders, userId]);
 
   useEffect(() => {
     if (!userId) return;
