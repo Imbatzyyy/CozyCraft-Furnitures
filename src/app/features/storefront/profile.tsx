@@ -388,7 +388,7 @@ export function Profile() {
   useEffect(() => {
     if (!authReady || !user || !role || role === "customer") return;
     void signOut().then(() => {
-      nav("/login?reason=customer-only", { replace: true });
+      nav("/login?reason=invalid-login", { replace: true });
     });
   }, [authReady, nav, role, signOut, user]);
   if (!user) return <Account mode="login" />;

@@ -63,7 +63,7 @@ export async function signInForPortal(
       reason: "wrong_portal",
       error:
         portal === "customer"
-          ? "This sign-in page accepts customer accounts only."
+          ? "Incorrect email or password. Please check your credentials."
           : "This account is not approved for administrator access.",
     };
   }

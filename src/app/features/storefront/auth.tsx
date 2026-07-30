@@ -127,8 +127,8 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   const [verificationNotice, setVerificationNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
-    if (new URLSearchParams(location.search).get("reason") === "customer-only") {
-      setError("This sign-in page accepts customer accounts only.");
+    if (new URLSearchParams(location.search).get("reason") === "invalid-login") {
+      setError("Incorrect email or password. Please check your credentials.");
     }
   }, [location.search]);
   useEffect(() => {
@@ -138,7 +138,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       return;
     }
     void signOut().then(() => {
-      setError("This sign-in page accepts customer accounts only.");
+      setError("Incorrect email or password. Please check your credentials.");
     });
   }, [authReady, nav, role, signOut, user]);
   const score = [
