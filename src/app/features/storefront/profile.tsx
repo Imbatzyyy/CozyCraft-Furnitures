@@ -137,6 +137,11 @@ type PsgcBarangay = {
   brgyName: string;
 };
 
+const regionDisplayName = (region: PsgcRegion) =>
+  region.regCode === "13"
+    ? "Metro Manila (National Capital Region — NCR)"
+    : region.regionName;
+
 export function AddressManager({ notify }: { notify: (message: string) => void }) {
   const {
     addresses,
@@ -221,7 +226,9 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
       (item) => item.provName === address.province,
     );
     const matchedRegion = regionOptions.find(
-      (item) => item.regionName === address.province,
+      (item) =>
+        item.regionName === address.province ||
+        regionDisplayName(item) === address.province,
     );
     const cityMatch = (municipalities as PsgcMunicipality[]).find(
       (item) =>
@@ -246,9 +253,9 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
             : "";
     const locationName =
       matchedProvince?.provName ??
-      matchedRegion?.regionName ??
+      (matchedRegion ? regionDisplayName(matchedRegion) : undefined) ??
       inferredProvince?.provName ??
-      inferredRegion?.regionName ??
+      (inferredRegion ? regionDisplayName(inferredRegion) : undefined) ??
       address.province;
     setProvinceCode(selectorValue);
     setMunicipalityCode(cityMatch?.munCityCode ?? "");
@@ -416,8 +423,14 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
                 const [kind, code] = selectorValue.split(":");
                 const selectedName =
                   kind === "region"
-                    ? regionOptions.find((item) => item.regCode === code)
-                        ?.regionName
+                    ? (() => {
+                        const selectedRegion = regionOptions.find(
+                          (item) => item.regCode === code,
+                        );
+                        return selectedRegion
+                          ? regionDisplayName(selectedRegion)
+                          : undefined;
+                      })()
                     : provinceOptions.find((item) => item.provCode === code)
                         ?.provName;
                 setProvinceCode(selectorValue);
@@ -436,7 +449,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
                     key={`region-${item.regCode}`}
                     value={`region:${item.regCode}`}
                   >
-                    {item.regionName}
+                    {regionDisplayName(item)}
                   </option>
                 ))}
               </optgroup>
