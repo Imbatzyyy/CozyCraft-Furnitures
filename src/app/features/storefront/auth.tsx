@@ -508,15 +508,6 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
               {submitting ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
               <ArrowRight size={16} />
             </button>
-            {mode === "login" && (
-              <Link
-                to="/admin/login"
-                className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border text-sm font-semibold transition hover:bg-secondary"
-              >
-                <LockKeyhole size={15} />
-                Administrator access
-              </Link>
-            )}
             <div className="mt-2 border-t border-border pt-2 text-center text-sm text-muted-foreground">
               {mode === "login" ? (
                 <>
