@@ -12,6 +12,7 @@ import {
   createBrowserRouter,
   Link,
   RouterProvider,
+  useRouteError,
   useLocation,
   useNavigate,
   useParams,
@@ -806,6 +807,53 @@ const adminTeamRoute = async (name: string) => {
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
+function RouteErrorBoundary() {
+  const error = useRouteError();
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const isDeploymentUpdate =
+    /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk .* failed/i.test(
+      message,
+    );
+  return (
+    <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5">
+      <section className="w-full max-w-md rounded-[2rem] border border-border bg-card p-8 text-center shadow-xl">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#eee8df]">
+          <Archive size={20} />
+        </div>
+        <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+          {isDeploymentUpdate ? "WEBSITE UPDATED" : "TEMPORARY INTERRUPTION"}
+        </p>
+        <h1 className="mt-2 font-serif text-4xl">
+          {isDeploymentUpdate
+            ? "A fresh version is ready."
+            : "Let’s get you back inside."}
+        </h1>
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">
+          {isDeploymentUpdate
+            ? "CozyCraft was updated while this page was open. Refresh once to continue with the newest version."
+            : "The page could not finish loading. Your account and saved information are safe."}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            window.sessionStorage.removeItem("cozycraft-deployment-reload");
+            window.location.reload();
+          }}
+          className="mt-7 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
+        >
+          Refresh CozyCraft
+        </button>
+        <a
+          href="/home"
+          className="mt-4 inline-block text-xs font-semibold underline underline-offset-4"
+        >
+          Return to home
+        </a>
+      </section>
+    </main>
+  );
+}
+
 const router = createBrowserRouter([
   { path: "/", lazy: () => storefrontCatalogRoute("Home") },
   { path: "/home", lazy: () => storefrontCatalogRoute("Home") },
@@ -864,6 +912,6 @@ const router = createBrowserRouter([
   { path: "/admin/support", lazy: () => adminOperationsRoute("SupportPage") },
   { path: "/admin/settings", lazy: () => adminTeamRoute("StoreSettingsPage") },
   { path: "*", lazy: () => storefrontCatalogRoute("Home") },
-]);
+].map((route) => ({ ...route, errorElement: <RouteErrorBoundary /> })));
 
 export default App;

@@ -10,3 +10,16 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Always revalidate the application shell so it never references JavaScript
+# chunks from an older deployment.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# Vite filenames include a content hash, so these files can be cached forever.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
