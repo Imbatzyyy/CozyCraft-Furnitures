@@ -108,15 +108,24 @@ import {
 } from "../../core";
 
 import { Account } from "./auth";
+import regions from "@jobuntux/psgc/data/2025-2Q/regions.json";
 import provinces from "@jobuntux/psgc/data/2025-2Q/provinces.json";
 import municipalities from "@jobuntux/psgc/data/2025-2Q/muncities.json";
 
+type PsgcRegion = {
+  regCode: string;
+  regionName: string;
+};
+
 type PsgcProvince = {
+  regCode: string;
   provCode: string;
   provName: string;
+  cityClass: string | null;
 };
 
 type PsgcMunicipality = {
+  regCode: string;
   provCode: string;
   munCityCode: string;
   munCityName: string;
@@ -156,18 +165,33 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
   const [municipalityCode, setMunicipalityCode] = useState("");
   const [barangays, setBarangays] = useState<PsgcBarangay[]>([]);
   const [barangaysLoading, setBarangaysLoading] = useState(false);
-  const provinceOptions = useMemo(
+  const regionOptions = useMemo(
     () =>
-      [...(provinces as PsgcProvince[])].sort((a, b) =>
-        a.provName.localeCompare(b.provName),
+      [...(regions as PsgcRegion[])].sort((a, b) =>
+        a.regionName.localeCompare(b.regionName),
       ),
     [],
   );
-  const municipalityOptions = useMemo(
+  const provinceOptions = useMemo(
     () =>
-      (municipalities as PsgcMunicipality[])
-        .filter((item) => item.provCode === provinceCode)
-        .sort((a, b) => a.munCityName.localeCompare(b.munCityName)),
+      (provinces as PsgcProvince[])
+        .filter((item) => !item.cityClass)
+        .sort((a, b) => a.provName.localeCompare(b.provName)),
+    [],
+  );
+  const municipalityOptions = useMemo(
+    () => {
+      const [kind, code] = provinceCode.split(":");
+      return (municipalities as PsgcMunicipality[])
+        .filter((item) =>
+          kind === "region"
+            ? item.regCode === code
+            : kind === "province"
+              ? item.provCode === code
+              : false,
+        )
+        .sort((a, b) => a.munCityName.localeCompare(b.munCityName));
+    },
     [provinceCode],
   );
   const barangayOptions = useMemo(
@@ -196,16 +220,43 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     const matchedProvince = provinceOptions.find(
       (item) => item.provName === address.province,
     );
-    const matchedMunicipality = (
-      municipalities as PsgcMunicipality[]
-    ).find(
-      (item) =>
-        item.provCode === matchedProvince?.provCode &&
-        item.munCityName === address.city,
+    const matchedRegion = regionOptions.find(
+      (item) => item.regionName === address.province,
     );
-    setProvinceCode(matchedProvince?.provCode ?? "");
-    setMunicipalityCode(matchedMunicipality?.munCityCode ?? "");
-    setDraft({ ...address, email: userEmail ?? address.email });
+    const cityMatch = (municipalities as PsgcMunicipality[]).find(
+      (item) =>
+        item.munCityName.trim() === address.city.trim() &&
+        (!matchedProvince || item.provCode === matchedProvince.provCode) &&
+        (!matchedRegion || item.regCode === matchedRegion.regCode),
+    );
+    const inferredProvince = cityMatch
+      ? provinceOptions.find((item) => item.provCode === cityMatch.provCode)
+      : undefined;
+    const inferredRegion = cityMatch
+      ? regionOptions.find((item) => item.regCode === cityMatch.regCode)
+      : undefined;
+    const selectorValue = matchedProvince
+      ? `province:${matchedProvince.provCode}`
+      : matchedRegion
+        ? `region:${matchedRegion.regCode}`
+        : inferredProvince
+          ? `province:${inferredProvince.provCode}`
+          : inferredRegion
+            ? `region:${inferredRegion.regCode}`
+            : "";
+    const locationName =
+      matchedProvince?.provName ??
+      matchedRegion?.regionName ??
+      inferredProvince?.provName ??
+      inferredRegion?.regionName ??
+      address.province;
+    setProvinceCode(selectorValue);
+    setMunicipalityCode(cityMatch?.munCityCode ?? "");
+    setDraft({
+      ...address,
+      province: locationName,
+      email: userEmail ?? address.email,
+    });
   };
   const closeEditor = () => {
     setDraft(null);
@@ -361,13 +412,17 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
             <select
               value={provinceCode}
               onChange={(event) => {
-                const code = event.target.value;
-                const selected = provinceOptions.find(
-                  (item) => item.provCode === code,
-                );
-                setProvinceCode(code);
+                const selectorValue = event.target.value;
+                const [kind, code] = selectorValue.split(":");
+                const selectedName =
+                  kind === "region"
+                    ? regionOptions.find((item) => item.regCode === code)
+                        ?.regionName
+                    : provinceOptions.find((item) => item.provCode === code)
+                        ?.provName;
+                setProvinceCode(selectorValue);
                 setMunicipalityCode("");
-                update("province", selected?.provName ?? "");
+                update("province", selectedName ?? "");
                 update("city", "");
                 update("barangay", "");
               }}
@@ -375,11 +430,26 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
               className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
             >
               <option value="">Select province / region</option>
-              {provinceOptions.map((item) => (
-                <option key={item.provCode} value={item.provCode}>
-                  {item.provName}
-                </option>
-              ))}
+              <optgroup label="Regions">
+                {regionOptions.map((item) => (
+                  <option
+                    key={`region-${item.regCode}`}
+                    value={`region:${item.regCode}`}
+                  >
+                    {item.regionName}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Provinces">
+                {provinceOptions.map((item) => (
+                  <option
+                    key={`province-${item.provCode}`}
+                    value={`province:${item.provCode}`}
+                  >
+                    {item.provName}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <select
               value={municipalityCode}
