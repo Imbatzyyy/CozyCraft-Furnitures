@@ -1,0 +1,1871 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+  type FormEvent,
+} from "react";
+import {
+  createBrowserRouter,
+  Link,
+  RouterProvider,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router";
+import {
+  Activity,
+  ArrowLeft,
+  ArrowRight,
+  Archive,
+  Bell,
+  Boxes,
+  ChartNoAxesCombined,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardList,
+  CreditCard,
+  Download,
+  Eye,
+  EyeOff,
+  FileText,
+  Grid2X2,
+  Heart,
+  ImagePlus,
+  LayoutDashboard,
+  List,
+  LockKeyhole,
+  MessageCircle,
+  LogOut,
+  Menu,
+  Minus,
+  MoreHorizontal,
+  Package,
+  PackagePlus,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  ShieldCheck,
+  ShoppingBag,
+  SlidersHorizontal,
+  Star,
+  Tag,
+  Trash2,
+  Upload,
+  UserRound,
+  Users,
+  Warehouse,
+  X,
+} from "lucide-react";
+import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import cozyCraftLogo from "@/imports/COZy.png";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import {
+  isStaffRole,
+  safeFileName,
+  supabase,
+  type DbCustomerProfile,
+  type DbOrder,
+  type DbProduct,
+  type DbRole,
+  type DbSupportTicket,
+} from "@/lib/supabase";
+
+import {
+  Product,
+  fallbackProducts,
+  CartLine,
+  Address,
+  Store,
+  StoreContext,
+  AdminRole,
+  AdminSession,
+  AdminSessionContext,
+  useAdminSession,
+  money,
+  materialFor,
+  subcategoryFor,
+  useStore,
+  Logo,
+  Header,
+  Layout,
+  ProductCard,
+  Empty,
+  ConfirmSignOut,
+  Status,
+  ManagedProduct,
+  Toast,
+  Metric,
+  Splash,
+  ShopSignInPrompt
+} from "../../core";
+
+import { AdminShell } from "./shell";
+
+export const salesData = [
+  { m: "Jan", v: 82 },
+  { m: "Feb", v: 104 },
+  { m: "Mar", v: 96 },
+  { m: "Apr", v: 126 },
+  { m: "May", v: 147 },
+  { m: "Jun", v: 139 },
+  { m: "Jul", v: 178 },
+];
+
+export function AdminOverview() {
+  const { orders, adminProducts, user } = useStore();
+  const [now, setNow] = useState(() => new Date());
+  const firstName = user?.trim().split(/\s+/)[0] || "there";
+  const philippineHour = Number(
+    new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(now),
+  );
+  const greeting =
+    philippineHour < 12
+      ? "Good morning"
+      : philippineHour < 18
+        ? "Good afternoon"
+        : "Good evening";
+  const philippineDate = new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  })
+    .format(now)
+    .toUpperCase();
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const sales = orders.filter(order=>order.status!=="cancelled").reduce((sum,order)=>sum+Number(order.total),0);
+  const pending = orders.filter(order=>order.status==="pending").length;
+  const lowStock = adminProducts.filter(product=>(product.stockQuantity??0)<=8).length;
+  return (
+    <AdminShell title="Overview">
+      <section className="relative overflow-hidden rounded-3xl bg-[#25221f] px-6 py-7 text-[#f4f2ee] shadow-[0_18px_40px_rgba(33,31,29,.16)] sm:px-8">
+        <div className="absolute -right-10 -top-12 h-48 w-48 rounded-full bg-[#b8a58d]/20" />
+        <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+          <div>
+            <p className="text-[10px] font-bold tracking-[.18em] text-[#d8c7b0]">
+              {philippineDate}
+            </p>
+            <h2 className="mt-3 font-[Playfair_Display] text-4xl tracking-[-.04em]">
+              {greeting}, {firstName}.
+            </h2>
+            <p className="mt-2 text-sm text-[#f4f2ee]/65">
+              A clear view of today’s orders, inventory, and sales momentum.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              to="/admin/inventory"
+              className="rounded-xl border border-white/25 bg-white/8 px-3.5 py-2.5 text-sm font-semibold"
+            >
+              Update stock
+            </Link>
+            <Link
+              to="/admin/products/new"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#f4f2ee] px-3.5 py-2.5 text-sm font-semibold text-foreground"
+            >
+              <PackagePlus size={16} />
+              Add product
+            </Link>
+          </div>
+        </div>
+      </section>
+      <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric
+          label="Total sales"
+          value={money(sales)}
+          note="↗ 12.5% vs last month"
+        />
+        <Metric
+          label="Orders this month"
+          value={String(orders.length)}
+          note="Live storefront orders"
+        />
+        <Metric label="Pending orders" value={String(pending)} note="Requires attention" />
+        <Metric label="Low-stock products" value={String(lowStock)} note="Review inventory" />
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_.85fr]">
+        <section className="border border-border bg-card p-5">
+          <div className="flex justify-between">
+            <div>
+              <h3 className="font-semibold">Sales performance</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Revenue · last 7 months
+              </p>
+            </div>
+            <button className="text-xs font-semibold">
+              This year <ChevronDown className="inline" size={14} />
+            </button>
+          </div>
+          <div className="mt-6 h-[245px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={salesData}>
+                <defs>
+                  <linearGradient id="adminSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#b8a58d" stopOpacity=".45" />
+                    <stop offset="100%" stopColor="#b8a58d" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="m"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "#706d67" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    fontSize: 12,
+                    border: "1px solid #ded9d0",
+                    borderRadius: 0,
+                  }}
+                />
+                <Area
+                  dataKey="v"
+                  stroke="#211f1d"
+                  strokeWidth={2}
+                  fill="url(#adminSales)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+        <section className="border border-border bg-card p-5">
+          <h3 className="font-semibold">Order status</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            126 orders this month
+          </p>
+          <div className="mt-7 grid gap-4">
+            {[
+              ["Completed", "78", "bg-[#68805f]"],
+              ["Processing", "20", "bg-[#b8a58d]"],
+              ["Pending", "18", "bg-[#d39a64]"],
+              ["Cancelled", "10", "bg-[#bbb5ac]"],
+            ].map(([label, value, color]) => (
+              <div key={label}>
+                <div className="mb-2 flex justify-between text-xs">
+                  <span>{label}</span>
+                  <b>{value}</b>
+                </div>
+                <div className="h-1.5 bg-secondary">
+                  <div
+                    className={`h-full ${color}`}
+                    style={{ width: `${(Number(value) / 78) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_.85fr]">
+        <RecentOrders />
+        <section className="border border-border bg-[#ece7df] p-5">
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-[#d8c7b0]">
+            <Warehouse size={17} />
+          </span>
+          <p className="mt-5 text-sm font-semibold">Inventory needs a look.</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Seven popular pieces are nearing their reorder point.
+          </p>
+          <Link
+            to="/admin/inventory"
+            className="mt-6 inline-flex text-sm font-semibold underline underline-offset-4"
+          >
+            Review low stock
+          </Link>
+        </section>
+      </div>
+    </AdminShell>
+  );
+}
+
+export function RecentOrders() {
+  const { orders } = useStore();
+  return <section className="overflow-hidden border border-border bg-card"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="font-semibold">Recent orders</h3><p className="mt-1 text-xs text-muted-foreground">Live customer purchases</p></div><Link to="/admin/orders" className="text-xs font-semibold underline underline-offset-4">View all</Link></div><div className="overflow-x-auto"><table className="w-full min-w-[540px] text-left text-sm"><thead className="bg-[#faf9f6] text-[10px] tracking-[.1em] text-muted-foreground"><tr><th className="px-5 py-3">ORDER</th><th>CUSTOMER</th><th>TOTAL</th><th>STATUS</th></tr></thead><tbody>{orders.slice(0,5).map(order=><tr className="border-t border-border" key={order.id}><td className="px-5 py-4 text-xs font-semibold">#{order.order_number}</td><td className="py-4 text-xs">{order.shipping_address.name||"Customer"}</td><td className="py-4 text-xs">{money(Number(order.total))}</td><td className="py-4"><Status>{order.status}</Status></td></tr>)}</tbody></table>{!orders.length&&<p className="p-6 text-center text-sm text-muted-foreground">No orders yet.</p>}</div></section>;
+}
+
+export function AdminRecordList({ kind }: { kind: string }) {
+  const { products } = useStore();
+  const [query, setQuery] = useState("");
+  const [notice, setNotice] = useState("");
+  const name = kind.charAt(0).toUpperCase() + kind.slice(1);
+  const records =
+    kind === "products"
+      ? products.map((p, i) => ({
+          title: p.name,
+          detail: `${p.category} · ${p.color}`,
+          amount: money(p.price),
+          state: i === 1 ? "Low stock" : "Active",
+          image: p.images[0],
+        }))
+      : kind === "orders"
+        ? [
+            ["#CC-2026-0814", "Althea Cruz · 3 items", "₱42,700", "Processing"],
+            ["#CC-2026-0813", "Julian Santos · 1 item", "₱18,900", "Completed"],
+            ["#CC-2026-0812", "Mika Tan · 2 items", "₱30,500", "Pending"],
+          ].map((x) => ({
+            title: x[0],
+            detail: x[1],
+            amount: x[2],
+            state: x[3],
+          }))
+        : [
+            ["Luna Reyes", "luna@email.com", "₱72,300", "Active"],
+            ["Carlos Lim", "carlos@email.com", "₱43,900", "Active"],
+            ["Elena Cruz", "elena@email.com", "₱19,800", "Active"],
+          ].map((x) => ({
+            title: x[0],
+            detail: x[1],
+            amount: x[2],
+            state: x[3],
+          }));
+  const shown = records.filter((r) =>
+    r.title.toLowerCase().includes(query.toLowerCase()),
+  );
+  return (
+    <AdminShell title={name}>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs text-muted-foreground">Operations</p>
+          <h2 className="mt-1 text-3xl font-semibold tracking-[-.04em]">
+            {name}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Manage every {kind} record from one considered workspace.
+          </p>
+        </div>
+        <button
+          onClick={() => setNotice(`${name.slice(0, -1)} draft created.`)}
+          className="inline-flex w-fit items-center gap-2 rounded-xl bg-foreground px-3.5 py-2.5 text-sm font-semibold text-background"
+        >
+          <Plus size={16} />
+          Add {name.slice(0, -1)}
+        </button>
+      </div>
+      <section className="mt-8 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_25px_rgba(33,31,29,.035)]">
+        <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row">
+          <label className="flex flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3">
+            <Search size={16} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-10 w-full bg-transparent text-sm outline-none"
+              placeholder={`Search ${kind}`}
+            />
+          </label>
+          <button className="inline-flex items-center justify-center gap-2 border border-border px-3 text-xs">
+            <SlidersHorizontal size={15} />
+            Filters
+          </button>
+          <button className="inline-flex items-center justify-center gap-2 border border-border px-3 text-xs">
+            <Download size={15} />
+            Export
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px] text-left">
+            <thead className="bg-[#faf9f6] text-[10px] tracking-[.1em] text-muted-foreground">
+              <tr>
+                <th className="px-5 py-3">RECORD</th>
+                <th>DETAILS</th>
+                <th>VALUE</th>
+                <th>STATUS</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r: any) => (
+                <tr className="border-t border-border" key={r.title}>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      {r.image && (
+                        <ImageWithFallback
+                          src={r.image}
+                          alt=""
+                          className="h-10 w-10 object-cover"
+                        />
+                      )}
+                      <b className="text-sm">{r.title}</b>
+                    </div>
+                  </td>
+                  <td className="py-3 text-xs text-muted-foreground">
+                    {r.detail}
+                  </td>
+                  <td className="py-3 text-xs">{r.amount}</td>
+                  <td className="py-3">
+                    <Status>{r.state}</Status>
+                  </td>
+                  <td className="px-5 py-3">
+                    <button
+                      onClick={() => setNotice(`${r.title} opened for review.`)}
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {shown.length === 0 && (
+          <div className="p-16 text-center text-sm text-muted-foreground">
+            No matching {kind} found.
+          </div>
+        )}
+      </section>
+      {notice && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-[#201f1d] px-4 py-3 text-sm text-white">
+          <Check size={16} />
+          {notice}
+          <button onClick={() => setNotice("")}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+    </AdminShell>
+  );
+}
+
+export const moduleContent = {
+  categories: {
+    title: "Categories",
+    icon: Boxes,
+    eyebrow: "CATALOG STRUCTURE",
+    description: "Organize every room, collection, and shoppable product type.",
+    action: "Add category",
+    stats: [
+      ["3", "Room categories"],
+      ["9", "Primary groups"],
+      ["45", "Subcategories"],
+    ],
+    rows: [
+      ["Living Room", "3 groups · 15 types", "Active"],
+      ["Bedroom", "3 groups · 15 types", "Active"],
+      ["Dining Room", "3 groups · 15 types", "Active"],
+    ],
+  },
+  inventory: {
+    title: "Inventory",
+    icon: Warehouse,
+    eyebrow: "STOCK CONTROL",
+    description:
+      "Monitor availability, reorder points, and latest stock movements.",
+    action: "Adjust stock",
+    stats: [
+      ["128", "Units on hand"],
+      ["7", "Below reorder point"],
+      ["2", "Out of stock"],
+    ],
+    rows: [
+      ["Mara Lounge Chair", "4 units · reorder at 6", "Low stock"],
+      ["Lino Oak Console", "9 units · reorder at 4", "Active"],
+      ["Santo Bed Frame", "0 units · reorder at 3", "Out of stock"],
+    ],
+  },
+  payments: {
+    title: "Payments",
+    icon: CircleDollarSign,
+    eyebrow: "FINANCIAL CONTROL",
+    description:
+      "Review payment status, settlement timing, and recent transaction activity.",
+    action: "Export payments",
+    stats: [
+      ["₱248,500", "Collected this month"],
+      ["₱34,200", "Awaiting settlement"],
+      ["98.4%", "Successful payments"],
+    ],
+    rows: [
+      ["PAY-10482", "Order #CC-2026-0814 · Visa", "Paid"],
+      ["PAY-10479", "Order #CC-2026-0812 · GCash", "Pending"],
+      ["PAY-10475", "Order #CC-2026-0808 · Mastercard", "Paid"],
+    ],
+  },
+  reviews: {
+    title: "Reviews",
+    icon: Star,
+    eyebrow: "CUSTOMER VOICE",
+    description:
+      "Moderate feedback while protecting the quality of the CozyCraft catalog.",
+    action: "Review queue",
+    stats: [
+      ["184", "Published reviews"],
+      ["6", "Awaiting approval"],
+      ["4.8", "Average rating"],
+    ],
+    rows: [
+      ["Mara Lounge Chair", "Luna Reyes · 5 stars", "Pending"],
+      ["Arco Dining Table", "Jerome Lim · 5 stars", "Pending"],
+      ["Santo Bed Frame", "Elena Cruz · 4 stars", "Active"],
+    ],
+  },
+  reports: {
+    title: "Reports",
+    icon: ChartNoAxesCombined,
+    eyebrow: "REPORTING",
+    description:
+      "Generate clear, export-ready views of sales, catalog, and inventory health.",
+    action: "Generate report",
+    stats: [
+      ["₱248,500", "Sales this month"],
+      ["126", "Orders this month"],
+      ["38", "Products sold"],
+    ],
+    rows: [
+      ["Monthly sales", "Jun 1 — Jun 30", "Ready"],
+      ["Inventory status", "Current stock position", "Ready"],
+      ["Product performance", "Last 90 days", "Ready"],
+    ],
+  },
+  "activity-logs": {
+    title: "Activity logs",
+    icon: Activity,
+    eyebrow: "AUDIT TRAIL",
+    description:
+      "A clear record of the operational changes made across the store.",
+    action: "Export log",
+    stats: [
+      ["42", "Actions this week"],
+      ["5", "Administrators"],
+      ["0", "Unresolved flags"],
+    ],
+    rows: [
+      ["Mara Mendoza", "Adjusted Mara Lounge Chair inventory", "Today · 09:42"],
+      ["Jules Santos", "Approved a customer review", "Today · 08:15"],
+      [
+        "Mara Mendoza",
+        "Published Lino Oak Console update",
+        "Yesterday · 16:20",
+      ],
+    ],
+  },
+  settings: {
+    title: "Settings",
+    icon: Settings,
+    eyebrow: "STORE PREFERENCES",
+    description:
+      "Manage the defaults and operational rules behind the CozyCraft storefront.",
+    action: "Save settings",
+    stats: [
+      ["Metro Manila", "Delivery zone"],
+      ["8 units", "Default reorder point"],
+      ["5", "Operations members"],
+    ],
+    rows: [
+      ["Store information", "CozyCraft Furnitures · Est. 2026", "Ready"],
+      ["Delivery & fulfillment", "Metro Manila delivery enabled", "Active"],
+      ["Security & access", "Role permissions enabled", "Active"],
+    ],
+  },
+} as const;
+
+export function OrdersPage() {
+  const { orders, updateOrderStatus, refreshOrders } = useStore();
+  const [selectedId, setSelectedId] = useState("");
+  const [notice, setNotice] = useState("");
+  useEffect(()=>{ void refreshOrders(); },[refreshOrders]);
+  useEffect(()=>{ if(!selectedId&&orders[0]) setSelectedId(orders[0].id); },[orders,selectedId]);
+  const selected=orders.find(order=>order.id===selectedId)??orders[0];
+  const update=async(status:DbOrder["status"])=>{if(!selected)return;const issue=await updateOrderStatus(selected.id,status);setNotice(issue??("Order "+selected.order_number+" updated to "+status+"."));};
+  return <AdminShell title="Orders"><div className="flex flex-wrap justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LIVE FULFILLMENT</p><h2 className="mt-2 text-3xl font-semibold">Customer orders</h2><p className="mt-2 text-sm text-muted-foreground">Orders placed at checkout appear here immediately.</p></div><div className="rounded-xl bg-card px-4 py-3 text-sm shadow-sm"><b>{orders.length}</b> total orders</div></div>{!selected?<div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">No customer orders yet.</div>:<div className="mt-7 grid gap-5 xl:grid-cols-[.8fr_1.2fr]"><section className="overflow-hidden rounded-2xl border border-border bg-card">{orders.map(order=>{const addr=order.shipping_address;return <button key={order.id} onClick={()=>setSelectedId(order.id)} className={"flex w-full items-center justify-between border-b border-border p-4 text-left "+(selected.id===order.id?"bg-secondary":"hover:bg-secondary")}><span><b className="text-sm">#{order.order_number}</b><span className="mt-1 block text-xs text-muted-foreground">{addr.name||"Customer"} · {new Date(order.created_at).toLocaleDateString("en-PH")}</span></span><span className="text-right"><Status>{order.status}</Status><b className="mt-2 block text-xs">{money(Number(order.total))}</b></span></button>})}</section><section className="rounded-2xl border border-border bg-card p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs text-muted-foreground">ORDER #{selected.order_number}</p><h3 className="mt-2 font-serif text-3xl">{selected.shipping_address.name||"Customer"}</h3><p className="mt-2 text-sm text-muted-foreground">{selected.shipping_address.email} · {selected.shipping_address.mobile}</p></div><Status>{selected.status}</Status></div><div className="mt-6 rounded-xl bg-secondary p-4 text-sm"><b>Deliver to</b><p className="mt-2 text-muted-foreground">{[selected.shipping_address.line,selected.shipping_address.barangay,selected.shipping_address.city,selected.shipping_address.province,selected.shipping_address.postal].filter(Boolean).join(", ")}</p></div><div className="mt-6 divide-y divide-border border-y border-border">{selected.order_items.map(item=><div key={item.id} className="flex justify-between py-3 text-sm"><span>{item.product_name} × {item.quantity}</span><b>{money(Number(item.unit_price)*item.quantity)}</b></div>)}</div><div className="mt-5 flex justify-between text-lg font-semibold"><span>Total</span><span>{money(Number(selected.total))}</span></div><label className="mt-6 grid gap-2 text-sm font-semibold">Update fulfillment status<select value={selected.status} onChange={e=>void update(e.target.value as DbOrder["status"])} className="h-11 rounded-xl border border-border bg-card px-3 font-normal"><option value="pending">Pending</option><option value="processing">Processing</option><option value="packed">Packed</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option></select></label></section></div>}{notice&&<Toast message={notice} close={()=>setNotice("")}/>}</AdminShell>;
+}
+
+export function OrdersWorkspacePage() {
+  const { orders, updateOrderStatus, refreshOrders } = useStore();
+  const [selectedId, setSelectedId] = useState("");
+  const [notice, setNotice] = useState("");
+  const fulfillmentSteps: DbOrder["status"][] = [
+    "pending",
+    "processing",
+    "packed",
+    "shipped",
+    "delivered",
+  ];
+
+  useEffect(() => {
+    void refreshOrders();
+  }, [refreshOrders]);
+  useEffect(() => {
+    if (!selectedId && orders[0]) setSelectedId(orders[0].id);
+  }, [orders, selectedId]);
+
+  const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
+  const update = async (status: DbOrder["status"]) => {
+    if (!selected) return;
+    const issue = await updateOrderStatus(selected.id, status);
+    setNotice(
+      issue ??
+        `Order ${selected.order_number} is now ${status.replace(/_/g, " ")} across the customer and admin views.`,
+    );
+  };
+  const nextStatus = selected
+    ? fulfillmentSteps[
+        Math.min(
+          fulfillmentSteps.indexOf(selected.status) + 1,
+          fulfillmentSteps.length - 1,
+        )
+      ]
+    : "pending";
+
+  return (
+    <AdminShell title="Orders">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            LIVE FULFILLMENT CONTROL
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold">Order desk</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Select an order to review its customer, products, and live delivery status.
+          </p>
+        </div>
+        <button
+          onClick={() => window.print()}
+          className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold shadow-sm"
+        >
+          <Download size={15} />
+          Print packing list
+        </button>
+      </div>
+
+      {!selected ? (
+        <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
+          No customer orders yet. New storefront orders will appear here automatically.
+        </div>
+      ) : (
+        <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(280px,.78fr)_minmax(400px,1.2fr)_minmax(260px,.7fr)]">
+          <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <div className="border-b border-border px-5 py-4">
+              <b className="text-sm">Customer orders</b>
+              <span className="ml-2 rounded-full bg-secondary px-2 py-1 text-[10px]">
+                {orders.length}
+              </span>
+            </div>
+            <div className="divide-y divide-border">
+              {orders.map((order) => {
+                const address = order.shipping_address;
+                return (
+                  <button
+                    key={order.id}
+                    onClick={() => setSelectedId(order.id)}
+                    className={`w-full p-4 text-left transition ${
+                      selected.id === order.id ? "bg-[#eee8de]" : "hover:bg-secondary/70"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <b className="text-sm">#{order.order_number}</b>
+                      <Status>
+                        {order.status.replace(/_/g, " ").replace(/^./, (character) => character.toUpperCase())}
+                      </Status>
+                    </div>
+                    <p className="mt-2 text-sm font-medium">
+                      {address.name || order.profiles?.full_name || "Customer"}
+                    </p>
+                    <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+                      <span>
+                        {order.order_items.length} {order.order_items.length === 1 ? "item" : "items"} ·{" "}
+                        {new Date(order.created_at).toLocaleDateString("en-PH")}
+                      </span>
+                      <span>{money(Number(order.total))}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-semibold">#{selected.order_number}</h3>
+                  <Status>
+                    {selected.status.replace(/_/g, " ").replace(/^./, (character) => character.toUpperCase())}
+                  </Status>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Placed {new Date(selected.created_at).toLocaleString("en-PH")} ·{" "}
+                  {money(Number(selected.total))}
+                </p>
+              </div>
+              <button
+                onClick={() => void update(nextStatus)}
+                disabled={
+                  selected.status === "delivered" || selected.status === "cancelled"
+                }
+                className="rounded-xl bg-foreground px-3.5 py-2 text-xs font-semibold text-background disabled:opacity-40"
+              >
+                {selected.status === "pending"
+                  ? "Begin fulfillment"
+                  : selected.status === "processing"
+                    ? "Mark as packed"
+                    : selected.status === "packed"
+                      ? "Mark as shipped"
+                      : selected.status === "shipped"
+                        ? "Mark as delivered"
+                        : selected.status === "cancelled"
+                          ? "Cancelled"
+                          : "Delivered"}
+              </button>
+            </div>
+
+            <div className="p-5">
+              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                ORDERED ITEMS
+              </p>
+              <div className="mt-3 grid gap-2">
+                {selected.order_items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl bg-secondary/70 px-3 py-3"
+                  >
+                    <span className="text-sm font-medium">
+                      {item.product_name} × {item.quantity}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {money(Number(item.unit_price) * item.quantity)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 border-t border-border pt-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                      DELIVERY PROGRESS
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {selected.payment_method.toUpperCase()}{" "}
+                      <span className="font-normal text-muted-foreground">
+                        · Payment {selected.payment_status}
+                      </span>
+                    </p>
+                  </div>
+                  <select
+                    value={selected.status}
+                    onChange={(event) =>
+                      void update(event.target.value as DbOrder["status"])
+                    }
+                    className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-semibold"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="processing">Processing</option>
+                    <option value="packed">Packed</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <ol className="mt-5 grid gap-4">
+                  {fulfillmentSteps.map((step, index) => {
+                    const currentIndex = fulfillmentSteps.indexOf(selected.status);
+                    const complete = selected.status !== "cancelled" && index <= currentIndex;
+                    return (
+                      <li key={step} className="relative flex gap-3">
+                        <span
+                          className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+                            complete
+                              ? "bg-foreground text-background"
+                              : "bg-[#d9ccba] text-foreground"
+                          }`}
+                        >
+                          {complete && <Check size={11} />}
+                        </span>
+                        <span className="text-xs capitalize leading-5 text-muted-foreground">
+                          {step}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            </div>
+          </section>
+
+          <aside className="rounded-2xl border border-border bg-[#252723] p-5 text-[#f7f3ec] shadow-sm">
+            <p className="text-[10px] font-bold tracking-[.16em] text-[#c9c0b3]">
+              CUSTOMER RECORD
+            </p>
+            <div className="mt-5 flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-full bg-[#b8a58d] text-sm font-bold text-[#252723]">
+                {(selected.shipping_address.name ||
+                  selected.profiles?.full_name ||
+                  "Customer")
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join("")
+                  .toUpperCase()}
+              </div>
+              <div>
+                <b className="block text-sm">
+                  {selected.shipping_address.name ||
+                    selected.profiles?.full_name ||
+                    "Customer"}
+                </b>
+                <span className="text-xs text-[#c9c0b3]">Storefront buyer</span>
+              </div>
+            </div>
+            <dl className="mt-6 grid gap-4 border-t border-white/10 pt-5 text-xs">
+              <div>
+                <dt className="text-[#c9c0b3]">Customer account</dt>
+                <dd className="mt-1 break-words font-medium">
+                  {selected.profiles?.email ||
+                    selected.shipping_address.email ||
+                    "Not provided"}
+                </dd>
+                <dd className="mt-1 break-all text-[10px] text-[#9e9589]">
+                  User ID: {selected.user_id}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[#c9c0b3]">Mobile</dt>
+                <dd className="mt-1 font-medium">
+                  {selected.shipping_address.mobile ||
+                    selected.profiles?.phone ||
+                    "Not provided"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[#c9c0b3]">Delivery address</dt>
+                <dd className="mt-1 font-medium leading-5">
+                  {[
+                    selected.shipping_address.line,
+                    selected.shipping_address.barangay,
+                    selected.shipping_address.city,
+                    selected.shipping_address.province,
+                    selected.shipping_address.postal,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "Not provided"}
+                </dd>
+              </div>
+            </dl>
+            <Link
+              to="/admin/customers"
+              className="mt-6 block w-full rounded-xl bg-[#f7f3ec] px-3 py-2.5 text-center text-xs font-bold text-[#252723]"
+            >
+              Open customer profiles
+            </Link>
+          </aside>
+        </div>
+      )}
+      {notice && <Toast message={notice} close={() => setNotice("")} />}
+    </AdminShell>
+  );
+}
+
+export function PaymentsPage() {
+  const [paid, setPaid] = useState([true, false, true]);
+  const [notice, setNotice] = useState("");
+  const invoices = [
+    ["#PAY-10482", "#CC-0814", "Visa · ₱42,700"],
+    ["#PAY-10479", "#CC-0812", "GCash · ₱30,500"],
+    ["#PAY-10475", "#CC-0808", "Mastercard · ₱18,900"],
+  ];
+  return (
+    <AdminShell title="Payments">
+      <div className="rounded-3xl bg-[#e6d7c4] p-7">
+        <p className="text-[10px] font-bold tracking-[.18em] text-[#735c48]">
+          PAYMENT RECONCILIATION
+        </p>
+        <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div>
+            <h2 className="font-[Playfair_Display] text-5xl">₱248,500</h2>
+            <p className="mt-2 text-sm text-[#735c48]">
+              Collected this month across 126 transactions.
+            </p>
+          </div>
+          <button
+            onClick={() => setNotice("Settlement report generated.")}
+            className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
+          >
+            Generate settlement report
+          </button>
+        </div>
+      </div>
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="grid grid-cols-[1fr_auto] border-b border-border px-5 py-4 text-xs font-semibold">
+          <span>Transactions needing review</span>
+          <span>Action</span>
+        </div>
+        {invoices.map(([id, order, detail], i) => (
+          <div
+            key={id}
+            className="grid grid-cols-[1fr_auto] items-center border-b border-border px-5 py-4"
+          >
+            <div>
+              <b className="text-sm">{id}</b>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {order} · {detail}
+              </p>
+            </div>
+            {paid[i] ? (
+              <Status>Paid</Status>
+            ) : (
+              <button
+                onClick={() => {
+                  setPaid((p) => p.map((v, index) => (index === i ? true : v)));
+                  setNotice("Payment marked as received.");
+                }}
+                className="rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
+              >
+                Mark received
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {notice && <Toast message={notice} close={() => setNotice("")} />}
+    </AdminShell>
+  );
+}
+
+export function CustomersPage() {
+  const { customerProfiles, refreshCustomers } = useStore();
+  const [selectedId, setSelectedId] = useState("");
+  useEffect(() => {
+    void refreshCustomers();
+  }, [refreshCustomers]);
+  useEffect(() => {
+    if (!selectedId && customerProfiles[0]) {
+      setSelectedId(customerProfiles[0].id);
+    }
+  }, [customerProfiles, selectedId]);
+  const customer =
+    customerProfiles.find((item) => item.id === selectedId) ??
+    customerProfiles[0];
+  const lifetimeValue = (profile: DbCustomerProfile) =>
+    profile.orders.reduce((sum, order) => sum + Number(order.total), 0);
+  const primaryAddress = customer?.addresses.find(
+    (address) => address.is_primary,
+  ) ?? customer?.addresses[0];
+
+  return (
+    <AdminShell title="Customers">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            CUSTOMER RELATIONSHIPS
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold">Customer records</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Live Supabase profiles appear here even before a customer places an
+            order.
+          </p>
+        </div>
+        <span className="rounded-xl bg-card px-4 py-3 text-sm shadow-sm">
+          <b>{customerProfiles.length}</b> registered customers
+        </span>
+      </div>
+      {!customer ? (
+        <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
+          No registered customer profiles yet.
+        </div>
+      ) : (
+        <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(300px,.75fr)_minmax(520px,1.25fr)]">
+          <section className="h-fit rounded-2xl border border-border bg-card p-3 shadow-sm">
+            {customerProfiles.map((profile) => (
+              <button
+                onClick={() => setSelectedId(profile.id)}
+                key={profile.id}
+                className={`flex w-full items-center justify-between gap-3 rounded-xl p-3 text-left ${
+                  customer.id === profile.id
+                    ? "bg-secondary"
+                    : "hover:bg-secondary"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#b8a58d] text-sm font-bold">
+                    {profile.avatar_url ? (
+                      <img
+                        src={profile.avatar_url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      (profile.full_name || profile.email || "C")[0].toUpperCase()
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <b className="block truncate text-sm">
+                      {profile.full_name || "Customer"}
+                    </b>
+                    <span className="mt-1 block truncate text-xs text-muted-foreground">
+                      {profile.email || "No email"}
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-right text-xs">
+                  <b>{money(lifetimeValue(profile))}</b>
+                  <span className="mt-1 block text-muted-foreground">
+                    {profile.orders.length} orders
+                  </span>
+                </span>
+              </button>
+            ))}
+          </section>
+          <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <div className="bg-[#292622] p-6 text-[#f4f2ee]">
+              <div className="flex flex-wrap items-center gap-4">
+                <span className="grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-[#b8a58d] text-xl font-bold text-foreground">
+                  {customer.avatar_url ? (
+                    <img
+                      src={customer.avatar_url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    (customer.full_name || customer.email || "C")[0].toUpperCase()
+                  )}
+                </span>
+                <div>
+                  <p className="text-[10px] font-bold tracking-[.16em] text-white/50">
+                    VERIFIED CUSTOMER ACCOUNT
+                  </p>
+                  <h3 className="mt-2 font-serif text-4xl">
+                    {customer.full_name || "Customer"}
+                  </h3>
+                  <p className="mt-1 text-sm text-white/65">
+                    @{customer.username || "username-not-set"}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  ["Lifetime value", money(lifetimeValue(customer))],
+                  ["Orders", customer.orders.length],
+                  ["Addresses", customer.addresses.length],
+                  ["Support tickets", customer.support_tickets.length],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl bg-white/8 p-3">
+                    <p className="text-[10px] text-white/50">{label}</p>
+                    <b className="mt-2 block text-sm">{value}</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-5 p-6 lg:grid-cols-2">
+              <div className="rounded-2xl bg-secondary p-5">
+                <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                  ACCOUNT DETAILS
+                </p>
+                <dl className="mt-4 grid gap-3 text-sm">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Email</dt>
+                    <dd className="mt-1 break-words font-semibold">
+                      {customer.email || "Not provided"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Phone</dt>
+                    <dd className="mt-1 font-semibold">
+                      {customer.phone || "Not provided"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      Gender · Birthday
+                    </dt>
+                    <dd className="mt-1 font-semibold">
+                      {customer.gender || "Not provided"} ·{" "}
+                      {customer.date_of_birth
+                        ? new Date(
+                            `${customer.date_of_birth}T00:00:00`,
+                          ).toLocaleDateString("en-PH")
+                        : "Not provided"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      Payment preference
+                    </dt>
+                    <dd className="mt-1 font-semibold uppercase">
+                      {customer.preferred_payment_method}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="rounded-2xl border border-border p-5">
+                <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                  DEFAULT DELIVERY ADDRESS
+                </p>
+                {primaryAddress ? (
+                  <div className="mt-4 text-sm">
+                    <b>
+                      {primaryAddress.label} · {primaryAddress.recipient_name}
+                    </b>
+                    <p className="mt-2 leading-6 text-muted-foreground">
+                      {primaryAddress.address_line},{" "}
+                      {primaryAddress.barangay}
+                      <br />
+                      {primaryAddress.city}, {primaryAddress.province}{" "}
+                      {primaryAddress.postal_code}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {primaryAddress.mobile} · {primaryAddress.email}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    No saved address.
+                  </p>
+                )}
+              </div>
+              <div className="rounded-2xl border border-border p-5 lg:col-span-2">
+                <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                  ACCOUNT ID
+                </p>
+                <p className="mt-2 break-all font-mono text-xs">
+                  {customer.id}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Registered{" "}
+                  {new Date(customer.created_at).toLocaleString("en-PH")}
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+    </AdminShell>
+  );
+}
+
+export function ReviewsPage() {
+  const [reviews, setReviews] = useState([
+    {
+      name: "Luna Reyes",
+      product: "Mara Lounge Chair",
+      rating: 5,
+      status: "Pending",
+    },
+    {
+      name: "Jerome Lim",
+      product: "Arco Dining Table",
+      rating: 5,
+      status: "Pending",
+    },
+    {
+      name: "Elena Cruz",
+      product: "Santo Bed Frame",
+      rating: 4,
+      status: "Published",
+    },
+  ]);
+  const update = (i: number, status: string) =>
+    setReviews((r) =>
+      r.map((item, index) => (index === i ? { ...item, status } : item)),
+    );
+  return (
+    <AdminShell title="Reviews">
+      <div className="flex justify-between">
+        <div>
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            MODERATION QUEUE
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold">Reviews</h2>
+        </div>
+        <div className="rounded-xl bg-secondary px-3 py-2 text-xs">
+          Average rating <b className="ml-2">4.8 / 5</b>
+        </div>
+      </div>
+      <div className="mt-7 grid gap-4">
+        {reviews.map((review, i) => (
+          <article
+            key={review.name}
+            className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center"
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <b>{review.name}</b>
+                <span className="text-[#b8875c]">
+                  {"★".repeat(review.rating)}
+                </span>
+              </div>
+              <p className="mt-2 text-sm">
+                “Beautifully made and even more comfortable than expected.”
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {review.product} · verified purchase
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {review.status === "Pending" ? (
+                <>
+                  <button
+                    onClick={() => update(i, "Published")}
+                    className="rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => update(i, "Hidden")}
+                    className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
+                  >
+                    Hide
+                  </button>
+                </>
+              ) : (
+                <Status>{review.status}</Status>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </AdminShell>
+  );
+}
+
+export function SupportPage() {
+  const { supportTickets, refreshTickets, replyToTicket } = useStore();
+  const [activeId, setActiveId] = useState("");
+  const [reply, setReply] = useState("");
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    void refreshTickets();
+  }, [refreshTickets]);
+  useEffect(() => {
+    if (!activeId && supportTickets[0]) setActiveId(supportTickets[0].id);
+  }, [activeId, supportTickets]);
+  const active =
+    supportTickets.find((item) => item.id === activeId) ?? supportTickets[0];
+  const sendReply = async () => {
+    if (!active || !reply.trim()) return;
+    const error = await replyToTicket(active.id, reply.trim(), "in_progress");
+    setNotice(error ?? `Reply sent for ${active.ticket_number}.`);
+    if (!error) setReply("");
+  };
+  return (
+    <AdminShell title="Support">
+      <div>
+        <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+          CUSTOMER CARE
+        </p>
+        <h2 className="mt-2 text-3xl font-semibold">Support inbox</h2>
+      </div>
+      {!active ? (
+        <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
+          No customer support tickets yet.
+        </div>
+      ) : (
+        <div className="mt-7 grid min-h-[580px] overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-[340px_1fr]">
+          <aside className="border-r border-border">
+          {supportTickets.map((item) => (
+            <button
+              onClick={() => {
+                setActiveId(item.id);
+                setReply("");
+              }}
+              className={`w-full border-b border-border p-4 text-left ${active.id === item.id ? "bg-secondary" : "hover:bg-secondary"}`}
+              key={item.id}
+            >
+              <div className="flex justify-between">
+                <b className="text-sm">{item.subject}</b>
+                <Status>{item.status.replace(/_/g, " ")}</Status>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {item.profiles?.full_name || item.profiles?.email || "Customer"}
+              </p>
+              <p className="mt-2 truncate text-xs">{item.message}</p>
+            </button>
+          ))}
+          </aside>
+          <section className="flex flex-col p-6">
+            <div className="border-b border-border pb-5">
+              <p className="text-xs text-muted-foreground">
+                Ticket #{active.ticket_number} ·{" "}
+                {new Date(active.created_at).toLocaleString("en-PH")}
+              </p>
+              <h3 className="mt-2 text-xl font-semibold">{active.subject}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                From{" "}
+                {active.profiles?.full_name ||
+                  active.profiles?.email ||
+                  "Customer"}
+              </p>
+            </div>
+            <div className="flex-1 py-6">
+              <div className="max-w-md rounded-2xl bg-secondary p-4 text-sm">
+                {active.message}
+              </div>
+              {active.admin_reply && (
+              <div className="ml-auto mt-5 max-w-md rounded-2xl bg-[#292622] p-4 text-sm text-white">
+                  {active.admin_reply}
+              </div>
+            )}
+            </div>
+            <div className="flex gap-3">
+              <input
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                className="h-11 flex-1 rounded-xl border border-border px-3 text-sm"
+                placeholder="Write a helpful reply…"
+              />
+              <button
+                onClick={() => void sendReply()}
+                className="rounded-xl bg-foreground px-4 text-sm font-semibold text-background"
+              >
+                Send
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {notice && <Toast message={notice} close={() => setNotice("")} />}
+    </AdminShell>
+  );
+}
+
+export function ActivityLogsPage() {
+  const [scope, setScope] = useState("All actions");
+  const rows = [
+    ["Mara Mendoza", "Adjusted inventory", "Mara Lounge Chair", "09:42"],
+    ["Jules Santos", "Approved review", "Noma Dining Chair", "08:15"],
+    [
+      "Mara Mendoza",
+      "Published product update",
+      "Lino Oak Console",
+      "Yesterday",
+    ],
+  ];
+  return (
+    <AdminShell title="Activity logs">
+      <div className="flex justify-between">
+        <div>
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            AUDIT TRAIL
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold">Activity logs</h2>
+        </div>
+        <select
+          value={scope}
+          onChange={(e) => setScope(e.target.value)}
+          className="h-10 rounded-xl border border-border bg-card px-3 text-xs"
+        >
+          <option>All actions</option>
+          <option>Products</option>
+          <option>Inventory</option>
+          <option>Orders</option>
+        </select>
+      </div>
+      <section className="mt-7 rounded-2xl border border-border bg-card p-6">
+        <div className="border-l-2 border-[#b8a58d] pl-4">
+          <p className="text-xs text-muted-foreground">
+            Showing {scope.toLowerCase()} · Last 7 days
+          </p>
+        </div>
+        <div className="mt-7 space-y-6">
+          {rows.map(([person, action, record, time], i) => (
+            <div className="relative flex gap-4" key={action}>
+              <span className="mt-1.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-secondary text-xs font-bold">
+                {i + 1}
+              </span>
+              <div>
+                <p className="text-sm">
+                  <b>{person}</b> {action}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {record} · {time} · 192.0.2.{16 + i}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </AdminShell>
+  );
+}
+
+export function ReportsPage() {
+  const [range, setRange] = useState("This month");
+  const [format, setFormat] = useState("PDF");
+  const [notice, setNotice] = useState("");
+  const [scheduled, setScheduled] = useState(false);
+  const bars = [46, 58, 51, 69, 63, 82, 75, 92, 84, 96, 88, 100];
+  const reports = [
+    {
+      name: "Sales performance",
+      meta: "Revenue, order volume & AOV",
+      accent: "bg-[#b99a76]",
+    },
+    {
+      name: "Inventory velocity",
+      meta: "Sell-through & stock aging",
+      accent: "bg-[#879b7d]",
+    },
+    {
+      name: "Customer retention",
+      meta: "Repeat buyers & cohorts",
+      accent: "bg-[#7d8a9f]",
+    },
+  ];
+  return (
+    <AdminShell title="Reports">
+      <div className="rounded-2xl bg-[#252724] px-6 py-7 text-[#f7f3ec] shadow-sm lg:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div>
+            <p className="font-mono text-[10px] font-bold tracking-[.18em] text-[#c8bcae]">
+              EXECUTIVE INTELLIGENCE
+            </p>
+            <h2 className="mt-3 font-serif text-4xl">Reports studio</h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[#d2c9bf]">
+              A clear read on how the collection is selling, moving, and
+              returning to customers.
+            </p>
+          </div>
+          <div className="flex rounded-xl bg-white/10 p-1">
+            {["This week", "This month", "Quarter"].map((item) => (
+              <button
+                key={item}
+                onClick={() => setRange(item)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${range === item ? "bg-[#f7f3ec] text-[#252724]" : "text-[#d2c9bf] hover:text-white"}`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="border-l border-[#b99a76] pl-4">
+            <p className="text-xs text-[#c8bcae]">Gross sales</p>
+            <p className="mt-1 font-serif text-3xl">₱384,250</p>
+            <p className="mt-1 text-xs text-[#acc59f]">↑ 18.4% vs. previous</p>
+          </div>
+          <div className="border-l border-white/20 pl-4">
+            <p className="text-xs text-[#c8bcae]">Orders fulfilled</p>
+            <p className="mt-1 font-serif text-3xl">126</p>
+            <p className="mt-1 text-xs text-[#acc59f]">
+              ↑ 12 orders this period
+            </p>
+          </div>
+          <div className="border-l border-white/20 pl-4">
+            <p className="text-xs text-[#c8bcae]">Average order value</p>
+            <p className="mt-1 font-serif text-3xl">₱24,680</p>
+            <p className="mt-1 text-xs text-[#c8bcae]">
+              Living room leads demand
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.45fr_.75fr]">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                REVENUE PULSE
+              </p>
+              <h3 className="mt-1 text-lg font-semibold">
+                Sales trend · {range}
+              </h3>
+            </div>
+            <span className="rounded-full bg-[#e3ecdf] px-3 py-1.5 text-xs font-semibold text-[#56714f]">
+              +18.4% growth
+            </span>
+          </div>
+          <div className="mt-7 flex h-52 items-end gap-2 border-b border-border pb-1">
+            {bars.map((height, index) => (
+              <div
+                key={index}
+                className="group relative flex flex-1 justify-center"
+              >
+                <span className="absolute -top-7 hidden rounded bg-foreground px-2 py-1 text-[10px] text-background group-hover:block">
+                  ₱{(height * 3.84).toFixed(1)}k
+                </span>
+                <div
+                  className={`w-full rounded-t-md transition-all ${index === bars.length - 1 ? "bg-[#b99a76]" : "bg-[#ded7cd] group-hover:bg-[#c5b19a]"}`}
+                  style={{ height: `${height}%` }}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex justify-between font-mono text-[10px] text-muted-foreground">
+            <span>01 AUG</span>
+            <span>08 AUG</span>
+            <span>16 AUG</span>
+            <span>24 AUG</span>
+            <span>31 AUG</span>
+          </div>
+          <div className="mt-6 grid gap-3 border-t border-border pt-5 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold">Best-selling category</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Living room · 46% of revenue
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold">Strongest channel</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Direct storefront · ₱251,400
+              </p>
+            </div>
+          </div>
+        </section>
+        <aside className="rounded-2xl border border-border bg-[#ede6dc] p-5 shadow-sm">
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            ANALYST NOTE
+          </p>
+          <h3 className="mt-4 font-serif text-2xl leading-tight">
+            Dining chairs are moving 1.7× faster this month.
+          </h3>
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">
+            Consider surfacing the Noma collection on the homepage and reorder
+            12 units before the next delivery window.
+          </p>
+          <button
+            onClick={() => setNotice("Priority inventory report created.")}
+            className="mt-6 flex items-center gap-2 text-xs font-bold underline underline-offset-4"
+          >
+            Create action report <ArrowRight size={14} />
+          </button>
+        </aside>
+      </div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
+        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                REPORT LIBRARY
+              </p>
+              <h3 className="mt-1 text-lg font-semibold">
+                Ready-made analysis
+              </h3>
+            </div>
+            <button
+              onClick={() => setNotice("Report library refreshed.")}
+              className="text-xs font-semibold underline underline-offset-4"
+            >
+              Refresh
+            </button>
+          </div>
+          <div className="divide-y divide-border">
+            {reports.map((report) => (
+              <div key={report.name} className="flex items-center gap-4 p-4">
+                <span className={`h-10 w-1 rounded-full ${report.accent}`} />
+                <div className="min-w-0 flex-1">
+                  <b className="block text-sm">{report.name}</b>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {report.meta}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setNotice(`${report.name} opened.`)}
+                  className="rounded-lg border border-border px-3 py-2 text-xs font-semibold"
+                >
+                  Open
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            DELIVERY DESK
+          </p>
+          <h3 className="mt-1 text-lg font-semibold">Export or schedule</h3>
+          <div className="mt-5 flex gap-2">
+            {["PDF", "CSV", "XLSX"].map((type) => (
+              <button
+                key={type}
+                onClick={() => setFormat(type)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold ${format === type ? "bg-foreground text-background" : "border border-border"}`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() =>
+              setNotice(`${format} report is being prepared for download.`)
+            }
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background"
+          >
+            <Download size={15} />
+            Export {format}
+          </button>
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-secondary p-3">
+            <div>
+              <p className="text-xs font-semibold">Monday briefing</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Email sales digest every Monday, 8:00 AM
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setScheduled(!scheduled);
+                setNotice(
+                  scheduled
+                    ? "Weekly delivery paused."
+                    : "Weekly briefing scheduled.",
+                );
+              }}
+              className={`rounded-full px-3 py-1.5 text-[10px] font-bold ${scheduled ? "bg-[#e3ecdf] text-[#56714f]" : "bg-card text-muted-foreground"}`}
+            >
+              {scheduled ? "SCHEDULED" : "ENABLE"}
+            </button>
+          </div>
+        </section>
+      </div>
+      {notice && <Toast message={notice} close={() => setNotice("")} />}
+    </AdminShell>
+  );
+}
+
+export function AdminModule({ module }: { module: keyof typeof moduleContent }) {
+  const config = moduleContent[module];
+  const Icon = config.icon;
+  const [notice, setNotice] = useState("");
+  const [query, setQuery] = useState("");
+  const [tab, setTab] = useState("Overview");
+  const rows = config.rows.filter((row) =>
+    row.join(" ").toLowerCase().includes(query.toLowerCase()),
+  );
+  const isSettings = module === "settings";
+  const isReports = module === "reports";
+  const isReviews = module === "reviews";
+  return (
+    <AdminShell title={config.title}>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            {config.eyebrow}
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-[-.045em]">
+            {config.title}
+          </h2>
+          <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+            {config.description}
+          </p>
+        </div>
+        <button
+          onClick={() => setNotice(`${config.title} action prepared.`)}
+          className="inline-flex w-fit items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
+        >
+          <Icon size={16} />
+          {config.action}
+        </button>
+      </div>
+      <div className="mt-7 grid gap-3 sm:grid-cols-3">
+        {config.stats.map(([value, label]) => (
+          <section
+            key={label}
+            className="rounded-2xl border border-border bg-card p-5 shadow-[0_8px_25px_rgba(33,31,29,.035)]"
+          >
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-3 text-2xl font-semibold tracking-[-.04em]">
+              {value}
+            </p>
+          </section>
+        ))}
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_.75fr]">
+        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_25px_rgba(33,31,29,.035)]">
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex rounded-xl bg-secondary p-1">
+              {[
+                "Overview",
+                isSettings
+                  ? "Preferences"
+                  : isReports
+                    ? "Exports"
+                    : isReviews
+                      ? "Moderation"
+                      : "Activity",
+              ].map((item) => (
+                <button
+                  onClick={() => setTab(item)}
+                  key={item}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${tab === item ? "bg-card shadow-sm" : "text-muted-foreground"}`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+            <label className="flex h-9 items-center gap-2 rounded-xl border border-border bg-[#fcfbf8] px-3">
+              <Search size={14} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search ${config.title.toLowerCase()}`}
+                className="w-40 bg-transparent text-xs outline-none"
+              />
+            </label>
+          </div>
+          {isSettings ? (
+            <SettingsPanel notice={notice} setNotice={setNotice} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[580px] text-left">
+                <thead className="bg-[#faf9f6] text-[10px] tracking-[.12em] text-muted-foreground">
+                  <tr>
+                    <th className="px-5 py-3">RECORD</th>
+                    <th>DETAIL</th>
+                    <th>STATUS</th>
+                    <th className="px-5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, i) => (
+                    <tr key={row[0]} className="border-t border-border">
+                      <td className="px-5 py-4 text-sm font-semibold">
+                        {row[0]}
+                      </td>
+                      <td className="py-4 text-xs text-muted-foreground">
+                        {row[1]}
+                      </td>
+                      <td className="py-4">
+                        <Status>{row[2]}</Status>
+                      </td>
+                      <td className="px-5 py-4">
+                        <button
+                          onClick={() =>
+                            setNotice(`${row[0]} opened for review.`)
+                          }
+                          className="grid h-8 w-8 place-items-center rounded-lg hover:bg-secondary"
+                        >
+                          <MoreHorizontal size={17} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
+            <span>{rows.length} records shown</span>
+            <button
+              onClick={() => setNotice("Data refreshed.")}
+              className="font-semibold text-foreground"
+            >
+              Refresh data
+            </button>
+          </div>
+        </section>
+        <aside className="rounded-2xl border border-border bg-[#eee8df] p-5 shadow-[0_8px_25px_rgba(33,31,29,.035)]">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#d8c7b0]">
+            <Icon size={19} />
+          </span>
+          <p className="mt-5 text-sm font-semibold">
+            {isReports ? "Report delivery" : "Next best action"}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {isReports
+              ? "Schedule recurring exports or create a report-ready view for your next review."
+              : "Review the items that need attention, then record a clear operational decision."}
+          </p>
+          <button
+            onClick={() => setNotice(`${config.title} update saved.`)}
+            className="mt-6 rounded-xl border border-foreground px-3 py-2 text-xs font-semibold"
+          >
+            {isReviews ? "Approve selected" : "View priority items"}
+          </button>
+          <div className="mt-6 border-t border-border pt-5">
+            <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+              RECENT NOTE
+            </p>
+            <p className="mt-2 text-xs leading-5">
+              Mara Mendoza updated this workspace 18 minutes ago.
+            </p>
+          </div>
+        </aside>
+      </div>
+      {notice && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl bg-[#201f1d] px-4 py-3 text-sm text-white shadow-xl">
+          <Check size={16} />
+          {notice}
+          <button onClick={() => setNotice("")}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+    </AdminShell>
+  );
+}
+
+export function SettingsPanel({
+  notice,
+  setNotice,
+}: {
+  notice: string;
+  setNotice: (value: string) => void;
+}) {
+  const [alerts, setAlerts] = useState(true);
+  const [threshold, setThreshold] = useState("8");
+  return (
+    <div className="p-5">
+      <div className="grid gap-5 sm:grid-cols-2">
+        <label className="grid gap-2 text-sm font-semibold">
+          Store name
+          <input
+            defaultValue="CozyCraft Furnitures"
+            className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"
+          />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Contact email
+          <input
+            defaultValue="hello@cozycraft.com"
+            className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"
+          />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Low-stock threshold
+          <input
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"
+          />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Delivery area
+          <select className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal">
+            <option>Metro Manila</option>
+            <option>Luzon</option>
+            <option>Nationwide</option>
+          </select>
+        </label>
+      </div>
+      <label className="mt-6 flex items-center justify-between rounded-xl bg-secondary p-4 text-sm">
+        <span>
+          <b>Inventory alerts</b>
+          <br />
+          <span className="text-xs text-muted-foreground">
+            Notify the operations team at reorder point.
+          </span>
+        </span>
+        <input
+          checked={alerts}
+          onChange={(e) => setAlerts(e.target.checked)}
+          type="checkbox"
+          className="h-4 w-4 accent-foreground"
+        />
+      </label>
+      <button
+        onClick={() => setNotice("Store settings saved.")}
+        className="mt-6 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
+      >
+        Save preferences
+      </button>
+    </div>
+  );
+}
+
+export function Admin() {
+  return <AdminOverview />;
+}
