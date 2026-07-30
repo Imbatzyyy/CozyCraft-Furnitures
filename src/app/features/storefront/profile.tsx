@@ -108,16 +108,41 @@ import {
 } from "../../core";
 
 import { Account } from "./auth";
+import provinces from "@jobuntux/psgc/data/2025-2Q/provinces.json";
+import municipalities from "@jobuntux/psgc/data/2025-2Q/muncities.json";
+
+type PsgcProvince = {
+  provCode: string;
+  provName: string;
+};
+
+type PsgcMunicipality = {
+  provCode: string;
+  munCityCode: string;
+  munCityName: string;
+};
+
+type PsgcBarangay = {
+  munCityCode: string;
+  brgyCode: string;
+  brgyName: string;
+};
 
 export function AddressManager({ notify }: { notify: (message: string) => void }) {
-  const { addresses, saveAddress, deleteAddress, setDefaultAddress, user } =
-    useStore();
+  const {
+    addresses,
+    saveAddress,
+    deleteAddress,
+    setDefaultAddress,
+    user,
+    userEmail,
+  } = useStore();
   const blank: Address = {
     id: "",
     label: "Home",
     name: user ?? "",
     mobile: "",
-    email: "",
+    email: userEmail ?? "",
     line: "",
     barangay: "",
     city: "",
@@ -127,6 +152,66 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     primary: addresses.length === 0,
   };
   const [draft, setDraft] = useState<Address | null>(null);
+  const [provinceCode, setProvinceCode] = useState("");
+  const [municipalityCode, setMunicipalityCode] = useState("");
+  const [barangays, setBarangays] = useState<PsgcBarangay[]>([]);
+  const [barangaysLoading, setBarangaysLoading] = useState(false);
+  const provinceOptions = useMemo(
+    () =>
+      [...(provinces as PsgcProvince[])].sort((a, b) =>
+        a.provName.localeCompare(b.provName),
+      ),
+    [],
+  );
+  const municipalityOptions = useMemo(
+    () =>
+      (municipalities as PsgcMunicipality[])
+        .filter((item) => item.provCode === provinceCode)
+        .sort((a, b) => a.munCityName.localeCompare(b.munCityName)),
+    [provinceCode],
+  );
+  const barangayOptions = useMemo(
+    () =>
+      barangays
+        .filter((item) => item.munCityCode === municipalityCode)
+        .sort((a, b) => a.brgyName.localeCompare(b.brgyName)),
+    [barangays, municipalityCode],
+  );
+  useEffect(() => {
+    if (!municipalityCode || barangays.length) return;
+    let active = true;
+    setBarangaysLoading(true);
+    void import("@jobuntux/psgc/data/2025-2Q/barangays.json")
+      .then((module) => {
+        if (active) setBarangays(module.default as PsgcBarangay[]);
+      })
+      .finally(() => {
+        if (active) setBarangaysLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [barangays.length, municipalityCode]);
+  const openEditor = (address: Address) => {
+    const matchedProvince = provinceOptions.find(
+      (item) => item.provName === address.province,
+    );
+    const matchedMunicipality = (
+      municipalities as PsgcMunicipality[]
+    ).find(
+      (item) =>
+        item.provCode === matchedProvince?.provCode &&
+        item.munCityName === address.city,
+    );
+    setProvinceCode(matchedProvince?.provCode ?? "");
+    setMunicipalityCode(matchedMunicipality?.munCityCode ?? "");
+    setDraft({ ...address, email: userEmail ?? address.email });
+  };
+  const closeEditor = () => {
+    setDraft(null);
+    setProvinceCode("");
+    setMunicipalityCode("");
+  };
   const update = (key: keyof Address, value: string | boolean) =>
     setDraft((current) => (current ? { ...current, [key]: value } : current));
   const submit = async (e: FormEvent) => {
@@ -134,13 +219,14 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     if (!draft) return;
     const error = await saveAddress({
       ...draft,
+      email: userEmail ?? "",
       id: draft.id || String(Date.now()),
     });
     if (error) {
       notify(error);
       return;
     }
-    setDraft(null);
+    closeEditor();
     notify("Delivery address saved.");
   };
   return (
@@ -156,7 +242,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
           </p>
         </div>
         <button
-          onClick={() => setDraft(blank)}
+          onClick={() => openEditor(blank)}
           className="rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background"
         >
           + Add new address
@@ -179,7 +265,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
               </div>
               <div className="flex gap-3 text-xs font-semibold">
                 <button
-                  onClick={() => setDraft(address)}
+                  onClick={() => openEditor(address)}
                   className="underline underline-offset-4"
                 >
                   Edit
@@ -238,33 +324,117 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
                 Complete delivery details
               </h3>
             </div>
-            <button type="button" onClick={() => setDraft(null)}>
+            <button type="button" onClick={closeEditor}>
               <X size={18} />
             </button>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {(
-              [
-                ["label", "Address label (e.g. Home)"],
-                ["name", "Recipient full name"],
-                ["mobile", "Mobile number"],
-                ["email", "Email for delivery updates"],
-                ["line", "House / unit / building / street"],
-                ["barangay", "Barangay"],
-                ["city", "City / municipality"],
-                ["province", "Province / region"],
-                ["postal", "Postal code"],
-              ] as [keyof Address, string][]
-            ).map(([key, placeholder]) => (
-              <input
-                key={key}
-                value={String(draft[key])}
-                onChange={(e) => update(key, e.target.value)}
-                required
-                placeholder={placeholder}
-                className={`h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none ${key === "line" ? "sm:col-span-2" : ""}`}
-              />
-            ))}
+            <input
+              value={draft.label}
+              onChange={(event) => update("label", event.target.value)}
+              required
+              placeholder="Address label (e.g. Home)"
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
+            />
+            <input
+              value={draft.name}
+              onChange={(event) => update("name", event.target.value)}
+              required
+              placeholder="Recipient full name"
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
+            />
+            <input
+              value={draft.mobile}
+              onChange={(event) => update("mobile", event.target.value)}
+              required
+              inputMode="tel"
+              placeholder="Mobile number"
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none sm:col-span-2"
+            />
+            <input
+              value={draft.line}
+              onChange={(event) => update("line", event.target.value)}
+              required
+              placeholder="House / unit / building / street"
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none sm:col-span-2"
+            />
+            <select
+              value={provinceCode}
+              onChange={(event) => {
+                const code = event.target.value;
+                const selected = provinceOptions.find(
+                  (item) => item.provCode === code,
+                );
+                setProvinceCode(code);
+                setMunicipalityCode("");
+                update("province", selected?.provName ?? "");
+                update("city", "");
+                update("barangay", "");
+              }}
+              required
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
+            >
+              <option value="">Select province / region</option>
+              {provinceOptions.map((item) => (
+                <option key={item.provCode} value={item.provCode}>
+                  {item.provName}
+                </option>
+              ))}
+            </select>
+            <select
+              value={municipalityCode}
+              onChange={(event) => {
+                const code = event.target.value;
+                const selected = municipalityOptions.find(
+                  (item) => item.munCityCode === code,
+                );
+                setMunicipalityCode(code);
+                update("city", selected?.munCityName ?? "");
+                update("barangay", "");
+              }}
+              required
+              disabled={!provinceCode}
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">
+                {provinceCode
+                  ? "Select city / municipality"
+                  : "Select province / region first"}
+              </option>
+              {municipalityOptions.map((item) => (
+                <option key={item.munCityCode} value={item.munCityCode}>
+                  {item.munCityName}
+                </option>
+              ))}
+            </select>
+            <select
+              value={draft.barangay}
+              onChange={(event) => update("barangay", event.target.value)}
+              required
+              disabled={!municipalityCode || barangaysLoading}
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">
+                {barangaysLoading
+                  ? "Loading barangays…"
+                  : municipalityCode
+                    ? "Select barangay"
+                    : "Select city / municipality first"}
+              </option>
+              {barangayOptions.map((item) => (
+                <option key={item.brgyCode} value={item.brgyName.trim()}>
+                  {item.brgyName.trim()}
+                </option>
+              ))}
+            </select>
+            <input
+              value={draft.postal}
+              onChange={(event) => update("postal", event.target.value)}
+              required
+              inputMode="numeric"
+              placeholder="Postal code"
+              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
+            />
           </div>
           <textarea
             value={draft.note}
@@ -287,7 +457,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
             </button>
             <button
               type="button"
-              onClick={() => setDraft(null)}
+              onClick={closeEditor}
               className="rounded-xl border border-border px-4 py-2.5 text-xs font-semibold"
             >
               Cancel
