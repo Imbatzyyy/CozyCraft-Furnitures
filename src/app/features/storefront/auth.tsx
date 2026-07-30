@@ -196,7 +196,10 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   };
   const google = async () => {
     setError("");
-    const { error } = await supabase.auth.signInWithOAuth({ provider:"google", options:{ redirectTo:window.location.origin + "/profile" } });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + "/home" },
+    });
     if (error) setError(error.message);
   };
   if (view !== "auth")

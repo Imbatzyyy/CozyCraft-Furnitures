@@ -621,10 +621,12 @@ function App() {
     birth: string;
   }) => {
     if (!userId) return "Please sign in first.";
+    const normalizedUsername = details.username.trim();
+    if (!normalizedUsername) return "Username is required.";
     const attributes = {
       data: {
         full_name: details.fullName,
-        username: details.username,
+        username: normalizedUsername,
         gender: details.gender,
         date_of_birth: details.birth,
       },
@@ -636,7 +638,7 @@ function App() {
       .update({
         full_name: details.fullName,
         phone: details.phone,
-        username: details.username,
+        username: normalizedUsername,
         gender: details.gender,
         date_of_birth: details.birth || null,
         preferred_payment_method: "cod",
@@ -645,7 +647,7 @@ function App() {
     if (profileError) return profileError.message;
     setUser(details.fullName);
     setProfilePhone(details.phone);
-    setProfileUsername(details.username);
+    setProfileUsername(normalizedUsername);
     setProfileGender(details.gender);
     setProfileBirth(details.birth);
     setProfilePaymentMethod("cod");

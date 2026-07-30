@@ -334,10 +334,15 @@ export function Profile() {
   const [photoError, setPhotoError] = useState("");
   const [photoUploading, setPhotoUploading] = useState(false);
   const [authFailed, setAuthFailed] = useState(false);
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [confirmProfileSave, setConfirmProfileSave] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
   const [securityView, setSecurityView] = useState<"home" | "setup" | "change">(
     "home",
   );
-  const [username, setUsername] = useState(profileUsername);
+  const defaultUsername =
+    profileUsername.trim() || (user ?? "").trim().split(/\s+/)[0] || "";
+  const [username, setUsername] = useState(defaultUsername);
   const [first, setFirst] = useState((user ?? "").split(" ")[0] ?? "");
   const [last, setLast] = useState(
     (user ?? "").split(" ").slice(1).join(" "),
@@ -355,6 +360,26 @@ export function Profile() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const resetProfileDraft = useCallback(() => {
+    const nameParts = (user ?? "").trim().split(/\s+/).filter(Boolean);
+    setUsername(
+      profileUsername.trim() || nameParts[0] || "",
+    );
+    setFirst(nameParts[0] ?? "");
+    setLast(nameParts.slice(1).join(" "));
+    setPhone(profilePhone);
+    setGender(profileGender);
+    setBirth(profileBirth);
+  }, [
+    profileBirth,
+    profileGender,
+    profilePhone,
+    profileUsername,
+    user,
+  ]);
+  useEffect(() => {
+    if (!profileEditing) resetProfileDraft();
+  }, [profileEditing, resetProfileDraft]);
   const verifyPendingEmail = useCallback(async () => {
     if (!pendingEmail) return;
     const result = await confirmEmailChange(pendingEmail);
@@ -441,12 +466,22 @@ export function Profile() {
       e.target.value = "";
     }
   };
-  const submitProfile = async () => {
+  const requestProfileSave = () => {
     const fullName = `${first.trim()} ${last.trim()}`.trim();
+    if (!username.trim()) {
+      setNotice("Username is required.");
+      return;
+    }
     if (!fullName) {
       setNotice("Please enter your name.");
       return;
     }
+    setNotice("");
+    setConfirmProfileSave(true);
+  };
+  const submitProfile = async () => {
+    const fullName = `${first.trim()} ${last.trim()}`.trim();
+    setProfileSaving(true);
     const error = await saveProfile({
       fullName,
       phone: phone.trim(),
@@ -454,9 +489,15 @@ export function Profile() {
       gender,
       birth,
     });
-    setNotice(
-      error ?? "Profile details saved.",
-    );
+    setProfileSaving(false);
+    if (error) {
+      setConfirmProfileSave(false);
+      setNotice(error);
+      return;
+    }
+    setConfirmProfileSave(false);
+    setProfileEditing(false);
+    setNotice("Profile details saved.");
   };
   const submitEmailChange = async () => {
     const nextEmail = email.trim().toLowerCase();
@@ -612,17 +653,34 @@ export function Profile() {
                       delivery.
                     </p>
                   </div>
-                  <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-[10px] font-bold tracking-[.1em] text-[#56714f]">
-                    MEMBER
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-[10px] font-bold tracking-[.1em] text-[#56714f]">
+                      MEMBER
+                    </span>
+                    {!profileEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNotice("");
+                          setProfileEditing(true);
+                        }}
+                        className="flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-xs font-semibold transition hover:bg-secondary"
+                      >
+                        <Pencil size={14} />
+                        Edit profile
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-8 grid gap-5">
                   <label className="grid gap-2 text-sm font-semibold">
                     Username
                     <input
+                      required
+                      disabled={!profileEditing}
                       value={username}
                       onChange={(event) => setUsername(event.target.value)}
-                      className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none transition focus:border-foreground focus:ring-4 focus:ring-[#d9c9b4]/25"
+                      className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none transition enabled:focus:border-foreground enabled:focus:ring-4 enabled:focus:ring-[#d9c9b4]/25 disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                       placeholder="Your username"
                     />
                   </label>
@@ -630,17 +688,19 @@ export function Profile() {
                     <label className="grid gap-2 text-sm font-semibold">
                       First name
                       <input
+                        disabled={!profileEditing}
                         value={first}
                         onChange={(event) => setFirst(event.target.value)}
-                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
+                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                       />
                     </label>
                     <label className="grid gap-2 text-sm font-semibold">
                       Last name
                       <input
+                        disabled={!profileEditing}
                         value={last}
                         onChange={(event) => setLast(event.target.value)}
-                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
+                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                       />
                     </label>
                   </div>
@@ -661,39 +721,43 @@ export function Profile() {
                           </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => {
-                          if (emailEditing) void submitEmailChange();
-                          else if (!hasPassword) setAuthFailed(true);
-                          else setEmailEditing(true);
-                        }}
-                        disabled={emailRequesting}
-                        className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
-                      >
-                        {emailRequesting
-                          ? "Sending…"
-                          : emailEditing
-                            ? "Done"
-                            : "Change"}
-                      </button>
+                      {profileEditing && (
+                        <button
+                          onClick={() => {
+                            if (emailEditing) void submitEmailChange();
+                            else if (!hasPassword) setAuthFailed(true);
+                            else setEmailEditing(true);
+                          }}
+                          disabled={emailRequesting}
+                          className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
+                        >
+                          {emailRequesting
+                            ? "Sending…"
+                            : emailEditing
+                              ? "Done"
+                              : "Change"}
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="grid gap-2 text-sm font-semibold">
                       Phone number
                       <input
+                        disabled={!profileEditing}
                         value={phone}
                         onChange={(event) => setPhone(event.target.value)}
-                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
+                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                         placeholder="Add a phone number"
                       />
                     </label>
                     <label className="grid gap-2 text-sm font-semibold">
                       Gender
                       <select
+                        disabled={!profileEditing}
                         value={gender}
                         onChange={(event) => setGender(event.target.value)}
-                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
+                        className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                       >
                         <option value="">Prefer not to say</option>
                         <option>Male</option>
@@ -705,10 +769,11 @@ export function Profile() {
                   <label className="grid gap-2 text-sm font-semibold sm:max-w-[calc(50%-0.5rem)]">
                     Date of birth
                     <input
+                      disabled={!profileEditing}
                       value={birth}
                       onChange={(event) => setBirth(event.target.value)}
                       type="date"
-                      className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
+                      className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                     />
                   </label>
                   <div className="grid gap-3 rounded-2xl bg-secondary p-4 sm:grid-cols-3">
@@ -726,12 +791,30 @@ export function Profile() {
                     ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => void submitProfile()}
-                  className="mt-7 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
-                >
-                  Save changes
-                </button>
+                {profileEditing && (
+                  <div className="mt-7 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={requestProfileSave}
+                      className="rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
+                    >
+                      Save changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetProfileDraft();
+                        setEmail(userEmail ?? "");
+                        setEmailEditing(false);
+                        setNotice("");
+                        setProfileEditing(false);
+                      }}
+                      className="rounded-xl border border-border px-5 py-3 text-sm font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </>
             )}
             {tab === "Change password" && (
@@ -998,6 +1081,48 @@ export function Profile() {
           </section>
         </div>
       </main>
+      {confirmProfileSave && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-profile-title"
+          className="fixed inset-0 z-[130] grid place-items-center bg-black/50 p-5 backdrop-blur-sm"
+        >
+          <section className="w-full max-w-md rounded-3xl border border-border bg-card p-7 shadow-2xl">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e3ecdf] text-[#56714f]">
+              <Pencil size={18} />
+            </span>
+            <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              CONFIRM PROFILE CHANGES
+            </p>
+            <h2 id="confirm-profile-title" className="mt-2 font-serif text-3xl">
+              Save these details?
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Your updated username and personal information will be saved to
+              your CozyCraft account and shown wherever your profile is used.
+            </p>
+            <div className="mt-7 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmProfileSave(false)}
+                disabled={profileSaving}
+                className="flex-1 rounded-xl border border-border px-4 py-3 text-sm font-semibold disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitProfile()}
+                disabled={profileSaving}
+                className="flex-1 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background disabled:opacity-60"
+              >
+                {profileSaving ? "Saving…" : "Confirm changes"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {pendingEmail && (
         <div
           role="dialog"

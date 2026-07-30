@@ -451,13 +451,15 @@ export function Logo({
 }
 
 export function Header({ immersive = false }: { immersive?: boolean }) {
-  const { cart, saved, user, avatar, products } = useStore();
+  const { cart, saved, user, avatar, products, profileUsername } = useStore();
   const nav = useNavigate();
   const [menu, setMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
   const cartQty = cart.reduce((n, x) => n + x.quantity, 0);
+  const profileDisplayName =
+    profileUsername.trim() || user?.trim().split(/\s+/)[0] || "Member";
   useEffect(() => {
     if (!immersive) return;
     const update = () => setScrolled(window.scrollY > 80);
@@ -542,7 +544,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                   </span>
                 )}
                 <span className="hidden text-xs font-semibold xl:block">
-                  {user.split(" ")[0]}
+                  {profileDisplayName}
                 </span>
               </Link>
             ) : (
