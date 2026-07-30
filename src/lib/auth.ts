@@ -44,7 +44,7 @@ export async function signInForPortal(
     .single();
 
   if (profileError || !profile?.role) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     return {
       ok: false,
       role: null,
@@ -56,7 +56,7 @@ export async function signInForPortal(
 
   const role = profile.role as DbRole;
   if (!roleCanUsePortal(role, portal)) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     return {
       ok: false,
       role,

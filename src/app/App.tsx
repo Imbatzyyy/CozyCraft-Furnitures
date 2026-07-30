@@ -199,6 +199,13 @@ function App() {
     } = await supabase.auth.getSession();
     if (activeSession?.user.id !== id) return;
     const profile = profileResult.data;
+    if (profileResult.error || !profile?.role) {
+      setUserId(null);
+      setUser(null);
+      setUserEmail(null);
+      setRole(null);
+      return;
+    }
     setUserId(id);
     setUserEmail(email);
     setUser(profile?.full_name || email?.split("@")[0] || "Member");
@@ -267,6 +274,7 @@ function App() {
       }
       window.setTimeout(() => {
         if (session?.user) {
+          setAuthReady(false);
           const providers = Array.isArray(session.user.app_metadata?.providers)
             ? session.user.app_metadata.providers
             : [session.user.app_metadata?.provider].filter(Boolean);
@@ -275,7 +283,7 @@ function App() {
             session.user.email ?? null,
             session.user.user_metadata ?? {},
             providers as string[],
-          );
+          ).finally(() => setAuthReady(true));
         }
         else {
           setUserId(null); setUser(null); setUserEmail(null); setRole(null);
@@ -285,8 +293,8 @@ function App() {
           setCart([]); setSaved([]); setAddresses([]); setOrders([]);
           setCustomerProfiles([]); setSupportTickets([]);
           void refreshProducts();
+          setAuthReady(true);
         }
-        setAuthReady(true);
       }, 0);
     });
     return () => subscription.unsubscribe();
@@ -454,7 +462,9 @@ function App() {
     });
   };
   const clearCart = () => { setCart([]); if (userId) void supabase.from("cart_items").delete().eq("user_id", userId); };
-  const signOut = async () => { await supabase.auth.signOut(); };
+  const signOut = async () => {
+    await supabase.auth.signOut({ scope: "local" });
+  };
 
   const placeOrder = async (addressId: string, paymentMethod: string) => {
     if (paymentMethod !== "cod") {

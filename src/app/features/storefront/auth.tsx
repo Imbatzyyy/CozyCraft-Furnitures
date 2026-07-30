@@ -651,7 +651,7 @@ export function ResetPassword() {
       setError(updateError.message);
       return;
     }
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     setSubmitting(false);
     setStatus("saved");
   };

@@ -218,7 +218,7 @@ export function AdminShell({
       loc.pathname === path ||
       (path !== "/admin" && loc.pathname.startsWith(`${path}/`)),
   );
-  if (!authReady) return <div className="grid min-h-screen place-items-center bg-[#f3f0ea] text-sm text-muted-foreground">Checking secure access…</div>;
+  if (!authReady || (user && !databaseRole)) return <div className="grid min-h-screen place-items-center bg-[#f3f0ea] text-sm text-muted-foreground">Checking secure access…</div>;
   if (!isStaffRole(databaseRole)) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><LockKeyhole className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">Administrator access required.</h1><p className="mt-3 text-sm text-muted-foreground">Sign in with an approved staff or admin account.</p><Link to="/admin/login" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Go to admin sign in</Link></section></main>;
   if (!canAccess) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><ShieldCheck className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">This feature is restricted.</h1><p className="mt-3 text-sm text-muted-foreground">Your {role.toLowerCase()} role does not have permission to open this page.</p><Link to="/admin" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Return to overview</Link></section></main>;
   return (
