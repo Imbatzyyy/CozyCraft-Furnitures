@@ -129,10 +129,17 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
   const [draft, setDraft] = useState<Address | null>(null);
   const update = (key: keyof Address, value: string | boolean) =>
     setDraft((current) => (current ? { ...current, [key]: value } : current));
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!draft) return;
-    saveAddress({ ...draft, id: draft.id || String(Date.now()) });
+    const error = await saveAddress({
+      ...draft,
+      id: draft.id || String(Date.now()),
+    });
+    if (error) {
+      notify(error);
+      return;
+    }
     setDraft(null);
     notify("Delivery address saved.");
   };

@@ -15,6 +15,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useRouteError,
 } from "react-router";
 import {
   Activity,
@@ -107,13 +108,15 @@ import {
   ShopSignInPrompt
 } from "../../core";
 
+import { Account } from "./auth";
+import { AddressManager } from "./profile";
 
 export function Cart() {
   const { cart, remove, qty, products } = useStore();
-  const lines = cart.map((x) => ({
-    item: products.find((p) => p.id === x.id)!,
-    quantity: x.quantity,
-  }));
+  const lines = cart.flatMap((line) => {
+    const item = products.find((product) => product.id === line.id);
+    return item ? [{ item, quantity: line.quantity }] : [];
+  });
   const total = lines.reduce((n, x) => n + x.item.price * x.quantity, 0);
   return (
     <Layout>
@@ -365,7 +368,7 @@ export function CustomerOrders() {
 
 export function Checkout() {
   const { cart, clearCart, user, addresses, products, placeOrder } = useStore();
-  const [address, setAddress] = useState("home");
+  const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
   const [notice, setNotice] = useState("");
   const [placing, setPlacing] = useState(false);
@@ -374,10 +377,21 @@ export function Checkout() {
     orderNumber: string;
     total: number;
   } | null>(null);
-  const lines = cart.map((line) => ({
-    item: products.find((item) => item.id === line.id)!,
-    quantity: line.quantity,
-  }));
+  const lines = cart.flatMap((line) => {
+    const item = products.find((product) => product.id === line.id);
+    return item ? [{ item, quantity: line.quantity }] : [];
+  });
+  useEffect(() => {
+    if (!addresses.length) {
+      setAddress("");
+      return;
+    }
+    if (!addresses.some((item) => item.id === address)) {
+      setAddress(
+        addresses.find((item) => item.primary)?.id ?? addresses[0].id,
+      );
+    }
+  }, [address, addresses]);
   const total = lines.reduce(
     (sum, line) => sum + line.item.price * line.quantity,
     0,
@@ -540,34 +554,49 @@ export function Checkout() {
                 </Link>
               </div>
               <div className="mt-5 grid gap-3">
-                {addresses.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setAddress(item.id)}
-                    className={`relative rounded-2xl border p-4 text-left ${address === item.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border"}`}
-                  >
-                    <span
-                      className={`absolute right-4 top-4 grid h-5 w-5 place-items-center rounded-full border ${address === item.id ? "bg-foreground text-background" : ""}`}
+                {addresses.length ? (
+                  addresses.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setAddress(item.id)}
+                      className={`relative rounded-2xl border p-4 text-left ${address === item.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border"}`}
                     >
-                      {address === item.id && <Check size={12} />}
-                    </span>
-                    <div className="flex gap-2">
-                      <b className="text-sm">{item.label}</b>
-                      {item.primary && (
-                        <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[9px] font-bold text-[#56714f]">
-                          DEFAULT
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-3 text-sm font-semibold">
-                      {item.name} · {item.mobile}
+                      <span
+                        className={`absolute right-4 top-4 grid h-5 w-5 place-items-center rounded-full border ${address === item.id ? "bg-foreground text-background" : ""}`}
+                      >
+                        {address === item.id && <Check size={12} />}
+                      </span>
+                      <div className="flex gap-2">
+                        <b className="text-sm">{item.label}</b>
+                        {item.primary && (
+                          <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[9px] font-bold text-[#56714f]">
+                            DEFAULT
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-3 text-sm font-semibold">
+                        {item.name} · {item.mobile}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {item.line}, {item.barangay}, {item.city},{" "}
+                        {item.province} {item.postal}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border bg-secondary/40 p-5">
+                    <p className="mb-5 text-sm leading-6 text-muted-foreground">
+                      Add a delivery address to continue. It will be stored
+                      securely in your Supabase profile and available for
+                      future orders.
                     </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {item.line}, {item.barangay}, {item.city}, {item.province}{" "}
-                      {item.postal}
-                    </p>
-                  </button>
-                ))}
+                    <AddressManager
+                      notify={(message) => {
+                        setNotice(message);
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </section>
             <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
@@ -577,20 +606,31 @@ export function Checkout() {
               <h2 className="mt-2 text-xl font-semibold">
                 We will keep you updated.
               </h2>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-secondary p-4">
-                  <p className="text-[10px] font-bold tracking-[.1em] text-muted-foreground">
-                    MOBILE
-                  </p>
-                  <p className="mt-2 text-sm font-semibold">{chosen.mobile}</p>
+              {chosen ? (
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl bg-secondary p-4">
+                    <p className="text-[10px] font-bold tracking-[.1em] text-muted-foreground">
+                      MOBILE
+                    </p>
+                    <p className="mt-2 text-sm font-semibold">
+                      {chosen.mobile}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-secondary p-4">
+                    <p className="text-[10px] font-bold tracking-[.1em] text-muted-foreground">
+                      EMAIL RECEIPT
+                    </p>
+                    <p className="mt-2 text-sm font-semibold">
+                      {chosen.email}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl bg-secondary p-4">
-                  <p className="text-[10px] font-bold tracking-[.1em] text-muted-foreground">
-                    EMAIL RECEIPT
-                  </p>
-                  <p className="mt-2 text-sm font-semibold">{chosen.email}</p>
+              ) : (
+                <div className="mt-5 rounded-xl bg-secondary p-4 text-sm text-muted-foreground">
+                  Recipient contact details will appear after you save a
+                  delivery address.
                 </div>
-              </div>
+              )}
             </section>
             <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
@@ -669,9 +709,14 @@ export function Checkout() {
                 </p>
               </div>
               <button
-                disabled={placing}
+                disabled={placing || !chosen}
                 onClick={async () => {
-                  if (!chosen) { setNotice("Add a delivery address before placing your order."); return; }
+                  if (!chosen) {
+                    setNotice(
+                      "Add and save a delivery address before placing your order.",
+                    );
+                    return;
+                  }
                   setPlacing(true);
                   const result = await placeOrder(chosen.id, payment);
                   setPlacing(false);
@@ -694,14 +739,13 @@ export function Checkout() {
               >
                 {placing
                   ? "Placing COD order…"
-                  : `Place COD order · ${money(total)}`}
+                  : !chosen
+                    ? "Save a delivery address to continue"
+                    : `Place COD order · ${money(total)}`}
               </button>
               {notice && (
                 <div className="mt-4 rounded-xl bg-[#e3ecdf] p-3 text-xs font-semibold text-[#56714f]">
                   {notice}
-                  <Link to="/orders" className="mt-1 block underline">
-                    Track order →
-                  </Link>
                 </div>
               )}
               <p className="mt-4 flex gap-2 text-[10px] leading-4 text-muted-foreground">
@@ -712,6 +756,48 @@ export function Checkout() {
             </div>
           </aside>
         </div>
+      </main>
+    </Layout>
+  );
+}
+
+export function CheckoutErrorBoundary() {
+  const error = useRouteError();
+  useEffect(() => {
+    console.error("Checkout route error", error);
+  }, [error]);
+  return (
+    <Layout>
+      <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-[680px] items-center px-5 py-14">
+        <section className="w-full rounded-[2rem] border border-border bg-card p-8 text-center shadow-sm">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary">
+            <ShoppingBag size={21} />
+          </span>
+          <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">
+            CHECKOUT PAUSED
+          </p>
+          <h1 className="mt-2 font-serif text-4xl">
+            Let&apos;s try that again.
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Your bag is safe. Reload checkout, or return to your bag and review
+            your delivery details.
+          </p>
+          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+            <button
+              onClick={() => window.location.reload()}
+              className="rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
+            >
+              Reload checkout
+            </button>
+            <Link
+              to="/cart"
+              className="rounded-xl border border-border px-5 py-3 text-sm font-semibold"
+            >
+              Return to bag
+            </Link>
+          </div>
+        </section>
       </main>
     </Layout>
   );

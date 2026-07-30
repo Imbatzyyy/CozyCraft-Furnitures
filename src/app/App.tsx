@@ -317,13 +317,22 @@ function App() {
   };
 
   const saveAddress = async (address: Address) => {
-    if (!userId) return;
-    if (address.primary) await supabase.from("addresses").update({ is_primary: false }).eq("user_id", userId);
+    if (!userId) return "Please sign in before saving an address.";
+    if (address.primary) {
+      const { error } = await supabase
+        .from("addresses")
+        .update({ is_primary: false })
+        .eq("user_id", userId);
+      if (error) return error.message;
+    }
     const payload = { user_id:userId, label:address.label, recipient_name:address.name, mobile:address.mobile, email:address.email, address_line:address.line, barangay:address.barangay, city:address.city, province:address.province, postal_code:address.postal, delivery_note:address.note, is_primary:address.primary };
     const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(address.id);
-    if (isUuid) await supabase.from("addresses").upsert({ id: address.id, ...payload });
-    else await supabase.from("addresses").insert(payload);
+    const { error } = isUuid
+      ? await supabase.from("addresses").upsert({ id: address.id, ...payload })
+      : await supabase.from("addresses").insert(payload);
+    if (error) return error.message;
     await reloadAddresses();
+    return null;
   };
   const deleteAddress = async (id: string) => { await supabase.from("addresses").delete().eq("id", id); await reloadAddresses(); };
   const setDefaultAddress = async (id: string) => {
@@ -644,7 +653,18 @@ const router = createBrowserRouter([
   { path: "/new-arrivals", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/products/:productId", lazy: () => storefrontCatalogRoute("ProductPage") },
   { path: "/cart", lazy: () => storefrontCommerceRoute("Cart") },
-  { path: "/checkout", lazy: () => storefrontCommerceRoute("Checkout") },
+  {
+    path: "/checkout",
+    lazy: async () => {
+      const { Checkout, CheckoutErrorBoundary } = await import(
+        "./features/storefront/commerce"
+      );
+      return {
+        Component: Checkout,
+        ErrorBoundary: CheckoutErrorBoundary,
+      };
+    },
+  },
   { path: "/wishlist", lazy: () => storefrontCommerceRoute("Wishlist") },
   { path: "/orders", lazy: () => storefrontCommerceRoute("CustomerOrders") },
   {

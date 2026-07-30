@@ -314,7 +314,7 @@ export type Store = {
   orders: DbOrder[];
   customerProfiles: DbCustomerProfile[];
   supportTickets: DbSupportTicket[];
-  saveAddress: (address: Address) => Promise<void>;
+  saveAddress: (address: Address) => Promise<string | null>;
   deleteAddress: (id: string) => Promise<void>;
   setDefaultAddress: (id: string) => Promise<void>;
   add: (id: string, amount?: number) => void;
