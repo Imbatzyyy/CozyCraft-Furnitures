@@ -258,7 +258,17 @@ export function ProductManager() {
       setError("Choose a valid room category and product subcategory.");
       return;
     }
-    const result = { ...editing, id: editing.id || editing.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-") };
+    const result = {
+      ...editing,
+      id:
+        editing.id ||
+        editing.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-"),
+      dimensions: editing.dimensions
+        .split("\n")
+        .map((dimension) => dimension.replace(/^[•\-]\s*/, "").trim())
+        .filter(Boolean)
+        .join("\n"),
+    };
     const saveError = await saveProduct(result);
     if (saveError) { setError(saveError); return; }
     setItems((current) => current.some(i=>i.id===result.id) ? current.map(i=>i.id===result.id?result:i) : [result,...current]);
@@ -528,6 +538,26 @@ export function ProductEditor({
   error: string;
 }) {
   const pick = (index: number) => setProduct({ ...product, main: index });
+  const dimensions = product.dimensions.split("\n");
+  const updateDimension = (index: number, value: string) =>
+    setProduct({
+      ...product,
+      dimensions: dimensions
+        .map((dimension, itemIndex) =>
+          itemIndex === index ? value : dimension,
+        )
+        .join("\n"),
+    });
+  const addDimension = () =>
+    setProduct({
+      ...product,
+      dimensions: [...dimensions, ""].join("\n"),
+    });
+  const removeDimension = (index: number) =>
+    setProduct({
+      ...product,
+      dimensions: dimensions.filter((_, itemIndex) => itemIndex !== index).join("\n"),
+    });
   const remove = (index: number) =>
     setProduct({
       ...product,
@@ -659,17 +689,54 @@ export function ProductEditor({
                 placeholder="Oak veneer · linen blend"
               />
             </label>
-            <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
-              Dimensions
-              <input
-                value={product.dimensions}
-                onChange={(e) =>
-                  setProduct({ ...product, dimensions: e.target.value })
-                }
-                className="h-11 rounded-xl border border-border px-3 font-normal"
-                placeholder="120W × 80D × 75H cm"
-              />
-            </label>
+            <fieldset className="grid gap-3 text-sm font-semibold sm:col-span-2">
+              <div className="flex items-center justify-between">
+                <legend>Dimensions</legend>
+                <button
+                  type="button"
+                  onClick={addDimension}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs"
+                >
+                  <Plus size={13} />
+                  Add dimension
+                </button>
+              </div>
+              <p className="text-[10px] font-normal text-muted-foreground">
+                Add each measurement as a separate bullet. These appear as a
+                list on the customer product page.
+              </p>
+              <ul className="grid gap-2">
+                {dimensions.map((dimension, index) => (
+                  <li
+                    key={index}
+                    className="grid grid-cols-[12px_1fr_36px] items-center gap-2"
+                  >
+                    <span className="text-center text-lg leading-none">•</span>
+                    <input
+                      value={dimension}
+                      onChange={(event) =>
+                        updateDimension(index, event.target.value)
+                      }
+                      className="h-11 rounded-xl border border-border px-3 font-normal"
+                      placeholder={
+                        index === 0
+                          ? "Overall: 120W × 80D × 75H cm"
+                          : "Seat height: 46 cm"
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeDimension(index)}
+                      disabled={dimensions.length === 1}
+                      className="grid h-9 w-9 place-items-center rounded-lg border border-border text-muted-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                      aria-label={`Remove dimension ${index + 1}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
           </div>
           <div className="mt-7">
             <div className="flex items-end justify-between">

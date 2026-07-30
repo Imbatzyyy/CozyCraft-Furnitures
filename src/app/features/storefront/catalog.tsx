@@ -988,6 +988,16 @@ export function ProductPage() {
   const [quantity, setQuantity] = useState(1);
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
+  const dimensionItems = product.dimensions
+    .split(/\n|•/)
+    .map((dimension) => dimension.replace(/^-\s*/, "").trim())
+    .filter(Boolean);
+  const stockLimit =
+    typeof product.stockQuantity === "number"
+      ? Math.max(0, product.stockQuantity)
+      : null;
+  const atStockLimit = stockLimit !== null && quantity >= stockLimit;
+  const outOfStock = stockLimit === 0;
   return (
     <Layout>
       <main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-10 lg:py-10">
@@ -1056,7 +1066,13 @@ export function ProductPage() {
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-muted-foreground">Dimensions</span>
-                <span>{product.dimensions}</span>
+                <ul className="max-w-[60%] space-y-1 text-right">
+                  {dimensionItems.map((dimension) => (
+                    <li key={dimension} className="before:mr-2 before:content-['•']">
+                      {dimension}
+                    </li>
+                  ))}
+                </ul>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-muted-foreground">Availability</span>
@@ -1068,23 +1084,37 @@ export function ProductPage() {
                 <button
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
                   className="grid h-full w-11 place-items-center"
+                  aria-label={`Decrease ${product.name} quantity`}
                 >
                   <Minus size={15} />
                 </button>
                 <span className="w-8 text-center text-sm">{quantity}</span>
                 <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="grid h-full w-11 place-items-center"
+                  onClick={() =>
+                    setQuantity(
+                      stockLimit === null
+                        ? quantity + 1
+                        : Math.min(stockLimit, quantity + 1),
+                    )
+                  }
+                  disabled={atStockLimit}
+                  className="grid h-full w-11 place-items-center disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label={
+                    atStockLimit && stockLimit !== null
+                      ? `Maximum available stock is ${stockLimit}`
+                      : `Increase ${product.name} quantity`
+                  }
                 >
                   <Plus size={15} />
                 </button>
               </div>
               <button
                 onClick={() => add(product.id, quantity)}
-                className="flex h-12 flex-1 items-center justify-center gap-2 bg-foreground text-sm font-semibold text-background"
+                disabled={outOfStock}
+                className="flex h-12 flex-1 items-center justify-center gap-2 bg-foreground text-sm font-semibold text-background disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ShoppingBag size={17} />
-                Add to bag
+                {outOfStock ? "Out of stock" : "Add to bag"}
               </button>
               <button
                 onClick={() => toggle(product.id)}

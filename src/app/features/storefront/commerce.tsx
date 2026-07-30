@@ -137,7 +137,14 @@ export function Cart() {
         ) : (
           <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_330px]">
             <div className="divide-y divide-border border-y border-border">
-              {lines.map(({ item, quantity }) => (
+              {lines.map(({ item, quantity }) => {
+                const stockLimit =
+                  typeof item.stockQuantity === "number"
+                    ? Math.max(0, item.stockQuantity)
+                    : null;
+                const atStockLimit =
+                  stockLimit !== null && quantity >= stockLimit;
+                return (
                 <div className="flex gap-4 py-4" key={item.id}>
                   <ImageWithFallback
                     src={item.images[0]}
@@ -167,7 +174,13 @@ export function Cart() {
                         </span>
                         <button
                           onClick={() => qty(item.id, quantity + 1)}
-                          className="grid h-full w-8 place-items-center"
+                          disabled={atStockLimit}
+                          className="grid h-full w-8 place-items-center disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label={
+                            atStockLimit
+                              ? `Maximum available stock is ${stockLimit}`
+                              : `Increase ${item.name} quantity`
+                          }
                         >
                           <Plus size={13} />
                         </button>
@@ -180,9 +193,23 @@ export function Cart() {
                         Remove
                       </button>
                     </div>
+                    <p
+                      className={`mt-2 text-[10px] ${
+                        atStockLimit
+                          ? "font-semibold text-[#9a6047]"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {atStockLimit
+                        ? `Maximum stock reached · ${stockLimit} available`
+                        : stockLimit === null
+                          ? "Checking live availability"
+                          : `${stockLimit} available`}
+                    </p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <aside className="h-fit bg-secondary p-6">
               <h2 className="font-semibold">Order summary</h2>

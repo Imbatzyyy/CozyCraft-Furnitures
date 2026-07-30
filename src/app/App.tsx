@@ -311,6 +311,50 @@ function App() {
     return () => { window.clearTimeout(timer); void supabase.removeChannel(channel); };
   }, [refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
 
+  useEffect(() => {
+    if (!userId) return;
+    const stockByProduct = new Map(
+      adminProducts.flatMap((product) =>
+        typeof product.stockQuantity === "number"
+          ? [[product.id, Math.max(0, product.stockQuantity)] as const]
+          : [],
+      ),
+    );
+    if (!stockByProduct.size) return;
+    setCart((items) => {
+      const next = items.flatMap((item) => {
+        const limit = stockByProduct.get(item.id);
+        if (limit === undefined) return [item];
+        if (limit === 0) return [];
+        return [{ ...item, quantity: Math.min(item.quantity, limit) }];
+      });
+      const changed =
+        next.length !== items.length ||
+        next.some((item, index) => item.quantity !== items[index]?.quantity);
+      if (!changed) return items;
+      const nextIds = new Set(next.map((item) => item.id));
+      void Promise.all([
+        ...items
+          .filter((item) => !nextIds.has(item.id))
+          .map((item) =>
+            supabase
+              .from("cart_items")
+              .delete()
+              .eq("user_id", userId)
+              .eq("product_id", item.id),
+          ),
+        ...next.map((item) =>
+          supabase.from("cart_items").upsert({
+            user_id: userId,
+            product_id: item.id,
+            quantity: item.quantity,
+          }),
+        ),
+      ]);
+      return next;
+    });
+  }, [adminProducts, userId]);
+
   const reloadAddresses = async () => {
     const { data } = await supabase.from("addresses").select("*").order("is_primary", { ascending: false });
     setAddresses((data ?? []).map((item) => ({ id:item.id, label:item.label, name:item.recipient_name, mobile:item.mobile, email:item.email, line:item.address_line, barangay:item.barangay, city:item.city, province:item.province, postal:item.postal_code, note:item.delivery_note, primary:item.is_primary })));
@@ -342,23 +386,57 @@ function App() {
     await reloadAddresses();
   };
 
+  const stockLimitFor = (id: string) => {
+    const product =
+      adminProducts.find((item) => item.id === id) ??
+      products.find((item) => item.id === id);
+    return typeof product?.stockQuantity === "number"
+      ? Math.max(0, product.stockQuantity)
+      : null;
+  };
+
   const add = (id: string, amount = 1) => {
     if (!userId) {
       setShopPrompt(true);
       return;
     }
     setCart((items) => {
-    const next = items.some((x) => x.id === id) ? items.map((x) => x.id === id ? { ...x, quantity:x.quantity + amount } : x) : [...items, { id, quantity:amount }];
-    const line = next.find((x) => x.id === id)!;
-    void supabase.from("cart_items").upsert({ user_id:userId, product_id:id, quantity:line.quantity });
-    return next;
+      const stockLimit = stockLimitFor(id);
+      if (stockLimit === 0) return items;
+      const current = items.find((item) => item.id === id)?.quantity ?? 0;
+      const requested = current + Math.max(1, Math.floor(amount));
+      const quantity =
+        stockLimit === null ? requested : Math.min(requested, stockLimit);
+      if (quantity === current) return items;
+      const next = current
+        ? items.map((item) =>
+            item.id === id ? { ...item, quantity } : item,
+          )
+        : [...items, { id, quantity }];
+      void supabase
+        .from("cart_items")
+        .upsert({ user_id:userId, product_id:id, quantity });
+      return next;
     });
   };
   const remove = (id: string) => { setCart((items) => items.filter((x) => x.id !== id)); if (userId) void supabase.from("cart_items").delete().eq("user_id", userId).eq("product_id", id); };
   const qty = (id: string, value: number) => {
     if (value < 1) { remove(id); return; }
-    setCart((items) => items.map((x) => x.id === id ? { ...x, quantity:value } : x));
-    if (userId) void supabase.from("cart_items").upsert({ user_id:userId, product_id:id, quantity:value });
+    const stockLimit = stockLimitFor(id);
+    if (stockLimit === 0) { remove(id); return; }
+    const requested = Math.max(1, Math.floor(value));
+    const quantity =
+      stockLimit === null ? requested : Math.min(requested, stockLimit);
+    setCart((items) =>
+      items.map((item) =>
+        item.id === id ? { ...item, quantity } : item,
+      ),
+    );
+    if (userId) {
+      void supabase
+        .from("cart_items")
+        .upsert({ user_id:userId, product_id:id, quantity });
+    }
   };
   const toggle = (id: string) => {
     if (!userId) {
