@@ -114,6 +114,7 @@ export type TeamMember = {
   full_name: string;
   email: string | null;
   role: Exclude<DbRole, "customer">;
+  staff_active: boolean;
   created_at: string;
 };
 
@@ -142,7 +143,7 @@ export function TeamAccessPage() {
   const loadMembers = useCallback(async () => {
     const { data, error: queryError } = await supabase
       .from("profiles")
-      .select("id, full_name, email, role, created_at")
+      .select("id, full_name, email, role, staff_active, created_at")
       .in("role", ["staff", "admin", "superadmin"])
       .order("created_at");
     if (queryError) {
@@ -154,6 +155,26 @@ export function TeamAccessPage() {
 
   useEffect(() => {
     void loadMembers();
+    const channel = supabase
+      .channel("team-access-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        () => void loadMembers(),
+      )
+      .subscribe();
+    const interval = window.setInterval(() => void loadMembers(), 10_000);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") void loadMembers();
+    };
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      void supabase.removeChannel(channel);
+    };
   }, [loadMembers]);
 
   const invite = async (event: FormEvent) => {
@@ -198,6 +219,39 @@ export function TeamAccessPage() {
     );
     if (invokeError || data?.error) {
       setError(data?.error ?? invokeError?.message ?? "Unable to update role.");
+      return;
+    }
+    setNotice(data.message);
+    await loadMembers();
+  };
+
+  const setMemberStatus = async (member: TeamMember) => {
+    const nextActive = !member.staff_active;
+    if (
+      !window.confirm(
+        nextActive
+          ? `Restore administrator access for ${member.full_name || member.email}?`
+          : `Suspend ${member.full_name || member.email}? Their active admin sessions will lose access.`,
+      )
+    ) {
+      return;
+    }
+    setError("");
+    setNotice("");
+    const { data, error: invokeError } = await supabase.functions.invoke(
+      "manage-team-member",
+      {
+        body: {
+          action: "set-status",
+          userId: member.id,
+          active: nextActive,
+        },
+      },
+    );
+    if (invokeError || data?.error) {
+      setError(
+        data?.error ?? invokeError?.message ?? "Unable to update account status.",
+      );
       return;
     }
     setNotice(data.message);
@@ -317,9 +371,20 @@ export function TeamAccessPage() {
                     .toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">
-                    {member.full_name || "Invited team member"}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-semibold">
+                      {member.full_name || "Invited team member"}
+                    </p>
+                    <span
+                      className={`rounded-full px-2 py-1 text-[9px] font-bold tracking-[.12em] ${
+                        member.staff_active
+                          ? "bg-[#e3ecdf] text-[#56714f]"
+                          : "bg-[#f3e5d4] text-[#8b5c46]"
+                      }`}
+                    >
+                      {member.staff_active ? "ACTIVE" : "SUSPENDED"}
+                    </span>
+                  </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">
                     {member.email || "Email unavailable"}
                   </p>
@@ -327,21 +392,31 @@ export function TeamAccessPage() {
                     {teamRoleDescriptions[member.role]}
                   </p>
                 </div>
-                <select
-                  value={member.role}
-                  onChange={(event) =>
-                    void updateRole(
-                      member.id,
-                      event.target.value as TeamMember["role"],
-                    )
-                  }
-                  className="h-10 rounded-xl border border-border bg-[#fcfbf8] px-3 text-xs font-semibold"
-                  aria-label={`Role for ${member.full_name}`}
-                >
-                  <option value="staff">Staff</option>
-                  <option value="admin">Administrator</option>
-                  <option value="superadmin">Super Administrator</option>
-                </select>
+                <div className="flex flex-col gap-2 sm:items-end">
+                  <select
+                    value={member.role}
+                    disabled={!member.staff_active}
+                    onChange={(event) =>
+                      void updateRole(
+                        member.id,
+                        event.target.value as TeamMember["role"],
+                      )
+                    }
+                    className="h-10 rounded-xl border border-border bg-[#fcfbf8] px-3 text-xs font-semibold disabled:opacity-50"
+                    aria-label={`Role for ${member.full_name}`}
+                  >
+                    <option value="staff">Staff</option>
+                    <option value="admin">Administrator</option>
+                    <option value="superadmin">Super Administrator</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void setMemberStatus(member)}
+                    className="text-xs font-semibold underline underline-offset-4"
+                  >
+                    {member.staff_active ? "Suspend access" : "Restore access"}
+                  </button>
+                </div>
               </div>
             ))}
             {members.length === 0 && !error && (

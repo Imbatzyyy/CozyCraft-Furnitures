@@ -288,6 +288,11 @@ function App() {
       setRole(null);
       return;
     }
+    const accountRole = (profile.role as DbRole) ?? "customer";
+    if (isStaffRole(accountRole) && profile.staff_active === false) {
+      await supabase.auth.signOut({ scope: "local" });
+      return;
+    }
     setUserId(id);
     setUserEmail(email);
     setUser(profile?.full_name || email?.split("@")[0] || "Member");
@@ -317,7 +322,6 @@ function App() {
       note: item.delivery_note,
       primary: item.is_primary,
     })));
-    const accountRole = (profile?.role as DbRole) ?? "customer";
     await Promise.all([
       refreshOrders(),
       refreshProducts(),
@@ -381,6 +385,48 @@ function App() {
     });
     return () => subscription.unsubscribe();
   }, [loadAccount, refreshProducts]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const refreshCurrentAccess = async () => {
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
+      if (!currentUser || currentUser.id !== userId) return;
+      const providers = Array.isArray(currentUser.app_metadata?.providers)
+        ? currentUser.app_metadata.providers
+        : [currentUser.app_metadata?.provider].filter(Boolean);
+      await loadAccount(
+        currentUser.id,
+        currentUser.email ?? null,
+        currentUser.user_metadata ?? {},
+        providers as string[],
+      );
+    };
+    const channel = supabase
+      .channel(`current-profile-access-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${userId}`,
+        },
+        () => void refreshCurrentAccess(),
+      )
+      .subscribe();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshCurrentAccess();
+    }, 10_000);
+    const refreshOnFocus = () => void refreshCurrentAccess();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadAccount, userId]);
 
   useEffect(() => {
     setAdminRole(

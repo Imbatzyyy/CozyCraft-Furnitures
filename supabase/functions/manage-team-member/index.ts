@@ -26,6 +26,11 @@ type TeamRequest =
       action: "update-role";
       userId: string;
       role: TeamRole;
+    }
+  | {
+      action: "set-status";
+      userId: string;
+      active: boolean;
     };
 
 Deno.serve(async (request) => {
@@ -82,7 +87,10 @@ Deno.serve(async (request) => {
   }
 
   const allowedRoles: TeamRole[] = ["staff", "admin", "superadmin"];
-  if (!allowedRoles.includes(payload.role)) {
+  if (
+    (payload.action === "invite" || payload.action === "update-role") &&
+    !allowedRoles.includes(payload.role)
+  ) {
     return json({ error: "Invalid team role." }, 400);
   }
 
@@ -122,6 +130,7 @@ Deno.serve(async (request) => {
       email,
       full_name: fullName,
       role: payload.role,
+      staff_active: true,
     });
     if (profileError) return json({ error: profileError.message }, 400);
 
@@ -184,6 +193,62 @@ Deno.serve(async (request) => {
     });
 
     return json({ success: true, message: "Role updated." });
+  }
+
+  if (payload.action === "set-status") {
+    if (!payload.userId) return json({ error: "User ID is required." }, 400);
+    if (payload.userId === user.id) {
+      return json(
+        { error: "You cannot suspend your own superadmin account." },
+        400,
+      );
+    }
+
+    const { data: target } = await adminClient
+      .from("profiles")
+      .select("role, email, staff_active")
+      .eq("id", payload.userId)
+      .single();
+    if (!target || !allowedRoles.includes(target.role as TeamRole)) {
+      return json({ error: "Team member not found." }, 404);
+    }
+
+    if (target.role === "superadmin" && !payload.active) {
+      const { count } = await adminClient
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "superadmin")
+        .eq("staff_active", true);
+      if ((count ?? 0) <= 1) {
+        return json(
+          { error: "At least one active super administrator must remain." },
+          400,
+        );
+      }
+    }
+
+    const { error } = await adminClient
+      .from("profiles")
+      .update({ staff_active: payload.active })
+      .eq("id", payload.userId);
+    if (error) return json({ error: error.message }, 400);
+
+    await adminClient.from("activity_logs").insert({
+      actor_id: user.id,
+      action: payload.active
+        ? "team_member_reactivated"
+        : "team_member_suspended",
+      entity_type: "profile",
+      entity_id: payload.userId,
+      details: { email: target.email, role: target.role },
+    });
+
+    return json({
+      success: true,
+      message: payload.active
+        ? "Team member access restored."
+        : "Team member access suspended.",
+    });
   }
 
   return json({ error: "Unsupported action." }, 400);

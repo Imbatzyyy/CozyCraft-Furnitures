@@ -30,6 +30,7 @@ export type DbProfile = {
   date_of_birth: string | null;
   preferred_payment_method: "cod";
   role: DbRole;
+  staff_active: boolean;
   created_at: string;
 };
 
