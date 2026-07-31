@@ -1304,6 +1304,15 @@ export function Profile() {
                           {item.status.replace(/_/g, " ")}
                         </Status>
                       </div>
+                      <p className="mt-2 font-semibold">
+                        {item.status === "open"
+                          ? "Your concern has been received."
+                          : item.status === "in_progress"
+                            ? "The CozyCraft care team is working on this concern."
+                            : item.status === "resolved"
+                              ? "This concern has been marked as resolved."
+                              : "This support ticket is closed."}
+                      </p>
                       <p className="mt-2 text-muted-foreground">
                         {item.message}
                       </p>

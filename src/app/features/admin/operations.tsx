@@ -1340,9 +1340,17 @@ export function ReviewsPage() {
 }
 
 export function SupportPage() {
-  const { supportTickets, refreshTickets, replyToTicket } = useStore();
+  const {
+    supportTickets,
+    refreshTickets,
+    replyToTicket,
+    updateTicketStatus,
+  } = useStore();
   const [activeId, setActiveId] = useState("");
   const [reply, setReply] = useState("");
+  const [ticketStatus, setTicketStatus] =
+    useState<DbSupportTicket["status"]>("open");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [notice, setNotice] = useState("");
   useEffect(() => {
     void refreshTickets();
@@ -1352,11 +1360,29 @@ export function SupportPage() {
   }, [activeId, supportTickets]);
   const active =
     supportTickets.find((item) => item.id === activeId) ?? supportTickets[0];
+  useEffect(() => {
+    if (active) setTicketStatus(active.status);
+  }, [active?.id, active?.status]);
   const sendReply = async () => {
     if (!active || !reply.trim()) return;
-    const error = await replyToTicket(active.id, reply.trim(), "in_progress");
+    const nextStatus =
+      ticketStatus === "open" ? "in_progress" : ticketStatus;
+    const error = await replyToTicket(active.id, reply.trim(), nextStatus);
     setNotice(error ?? `Reply sent for ${active.ticket_number}.`);
-    if (!error) setReply("");
+    if (!error) {
+      setReply("");
+      setTicketStatus(nextStatus);
+    }
+  };
+  const saveStatus = async () => {
+    if (!active || ticketStatus === active.status || updatingStatus) return;
+    setUpdatingStatus(true);
+    const error = await updateTicketStatus(active.id, ticketStatus);
+    setUpdatingStatus(false);
+    setNotice(
+      error ??
+        `Ticket ${active.ticket_number} marked ${ticketStatus.replace(/_/g, " ")}.`,
+    );
   };
   return (
     <AdminShell title="Support">
@@ -1395,17 +1421,24 @@ export function SupportPage() {
           </aside>
           <section className="flex flex-col p-6">
             <div className="border-b border-border pb-5">
-              <p className="text-xs text-muted-foreground">
-                Ticket #{active.ticket_number} ·{" "}
-                {new Date(active.created_at).toLocaleString("en-PH")}
-              </p>
-              <h3 className="mt-2 text-xl font-semibold">{active.subject}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                From{" "}
-                {active.profiles?.full_name ||
-                  active.profiles?.email ||
-                  "Customer"}
-              </p>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    Ticket #{active.ticket_number} ·{" "}
+                    {new Date(active.created_at).toLocaleString("en-PH")}
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold">
+                    {active.subject}
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    From{" "}
+                    {active.profiles?.full_name ||
+                      active.profiles?.email ||
+                      "Customer"}
+                  </p>
+                </div>
+                <Status>{active.status.replace(/_/g, " ")}</Status>
+              </div>
             </div>
             <div className="flex-1 py-6">
               <div className="max-w-md rounded-2xl bg-secondary p-4 text-sm">
@@ -1417,19 +1450,50 @@ export function SupportPage() {
               </div>
             )}
             </div>
-            <div className="flex gap-3">
-              <input
-                value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                className="h-11 flex-1 rounded-xl border border-border px-3 text-sm"
-                placeholder="Write a helpful reply…"
-              />
-              <button
-                onClick={() => void sendReply()}
-                className="rounded-xl bg-foreground px-4 text-sm font-semibold text-background"
-              >
-                Send
-              </button>
+            <div className="border-t border-border pt-4">
+              <div className="mb-3 flex flex-wrap items-end gap-3 rounded-xl bg-secondary p-3">
+                <label className="grid min-w-[190px] flex-1 gap-1.5 text-xs font-semibold">
+                  Concern status
+                  <select
+                    value={ticketStatus}
+                    onChange={(event) =>
+                      setTicketStatus(
+                        event.target.value as DbSupportTicket["status"],
+                      )
+                    }
+                    className="h-10 rounded-lg border border-border bg-card px-3 text-sm font-normal"
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </label>
+                <button
+                  onClick={() => void saveStatus()}
+                  disabled={
+                    updatingStatus || ticketStatus === active.status
+                  }
+                  className="h-10 rounded-lg border border-border bg-card px-4 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {updatingStatus ? "Saving..." : "Update status"}
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <input
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  className="h-11 flex-1 rounded-xl border border-border px-3 text-sm"
+                  placeholder="Write a helpful reply…"
+                />
+                <button
+                  onClick={() => void sendReply()}
+                  disabled={!reply.trim()}
+                  className="rounded-xl bg-foreground px-4 text-sm font-semibold text-background disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Send
+                </button>
+              </div>
             </div>
           </section>
         </div>

@@ -932,6 +932,19 @@ function App() {
     }
     return error?.message ?? null;
   };
+  const updateTicketStatus = async (
+    id: string,
+    status: DbSupportTicket["status"],
+  ) => {
+    const { error } = await supabase
+      .from("support_tickets")
+      .update({ status })
+      .eq("id", id);
+    if (!error) {
+      await Promise.all([refreshTickets(), refreshCustomers()]);
+    }
+    return error?.message ?? null;
+  };
 
   const saveProfile = async (details: {
     fullName: string;
@@ -1066,6 +1079,7 @@ function App() {
     uploadAvatar,
     submitTicket,
     replyToTicket,
+    updateTicketStatus,
     saveProfile,
     requestEmailChange,
     confirmEmailChange,

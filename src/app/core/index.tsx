@@ -354,6 +354,10 @@ export type Store = {
     reply: string,
     status?: DbSupportTicket["status"],
   ) => Promise<string | null>;
+  updateTicketStatus: (
+    id: string,
+    status: DbSupportTicket["status"],
+  ) => Promise<string | null>;
   saveProfile: (details: {
     fullName: string;
     phone: string;
