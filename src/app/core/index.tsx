@@ -1136,11 +1136,40 @@ export type ManagedProduct = {
 };
 
 export function Toast({ message, close }: { message: string; close: () => void }) {
+  const [isLeaving, setIsLeaving] = useState(false);
+  const closeRef = useRef(close);
+
+  useEffect(() => {
+    closeRef.current = close;
+  }, [close]);
+
+  useEffect(() => {
+    setIsLeaving(false);
+
+    const fadeTimer = window.setTimeout(() => {
+      setIsLeaving(true);
+    }, 7200);
+    const dismissTimer = window.setTimeout(() => {
+      closeRef.current();
+    }, 8000);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(dismissTimer);
+    };
+  }, [message]);
+
   return (
-    <div className="fixed bottom-6 right-6 z-[70] flex items-center gap-3 rounded-xl bg-[#201f1d] px-4 py-3 text-sm text-white shadow-xl">
+    <div
+      role="status"
+      aria-live="polite"
+      className={`fixed bottom-6 right-6 z-[70] flex items-center gap-3 rounded-xl bg-[#201f1d] px-4 py-3 text-sm text-white shadow-xl transition-all duration-700 ease-out ${
+        isLeaving ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
+      }`}
+    >
       <Check size={16} />
       {message}
-      <button onClick={close}>
+      <button aria-label="Dismiss notification" onClick={close}>
         <X size={16} />
       </button>
     </div>
