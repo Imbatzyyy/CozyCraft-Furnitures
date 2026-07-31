@@ -9,6 +9,7 @@ export type PortalSignInResult = {
   reason:
     | "invalid_credentials"
     | "wrong_portal"
+    | "suspended"
     | "profile_unavailable"
     | null;
 };
@@ -39,7 +40,7 @@ export async function signInForPortal(
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role,staff_active")
     .eq("id", data.user.id)
     .single();
 
@@ -55,6 +56,16 @@ export async function signInForPortal(
   }
 
   const role = profile.role as DbRole;
+  if (isStaffRole(role) && profile.staff_active === false) {
+    await supabase.auth.signOut({ scope: "local" });
+    return {
+      ok: false,
+      role,
+      reason: "suspended",
+      error:
+        "This administrator account is suspended. Ask the super administrator to restore access.",
+    };
+  }
   if (!roleCanUsePortal(role, portal)) {
     await supabase.auth.signOut({ scope: "local" });
     return {

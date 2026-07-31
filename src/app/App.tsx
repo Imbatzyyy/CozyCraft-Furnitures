@@ -260,8 +260,21 @@ function App() {
     metadata: Record<string, unknown> = {},
     providers: string[] = [],
   ) => {
-    const [profileResult, cartResult, wishlistResult, addressResult] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", id).single(),
+    let profileResult = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", id)
+      .single();
+    for (const retryDelay of [150, 350]) {
+      if (!profileResult.error && profileResult.data?.role) break;
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
+      profileResult = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", id)
+        .single();
+    }
+    const [cartResult, wishlistResult, addressResult] = await Promise.all([
       supabase
         .from("cart_items")
         .select("product_id, quantity")
@@ -358,9 +371,9 @@ function App() {
         window.location.replace("/reset-password");
         return;
       }
+      if (session?.user) setAuthReady(false);
       window.setTimeout(() => {
         if (session?.user) {
-          setAuthReady(false);
           const providers = Array.isArray(session.user.app_metadata?.providers)
             ? session.user.app_metadata.providers
             : [session.user.app_metadata?.provider].filter(Boolean);
