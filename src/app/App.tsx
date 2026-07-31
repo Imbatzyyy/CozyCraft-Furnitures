@@ -124,6 +124,14 @@ function App() {
   const [shopPrompt, setShopPrompt] = useState(false);
   const [fly, setFly] = useState<FlyState | null>(null);
   const lastPointer = useRef({ x: 0, y: 0 });
+  const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
+
+  const queueAccountWrite = useCallback((request: PromiseLike<unknown>) => {
+    const pending = Promise.resolve(request);
+    pendingAccountWrites.current.add(pending);
+    void pending.finally(() => pendingAccountWrites.current.delete(pending));
+    return pending;
+  }, []);
 
   useEffect(() => {
     const rememberPointer = (event: PointerEvent) => {
@@ -206,9 +214,19 @@ function App() {
   ) => {
     const [profileResult, cartResult, wishlistResult, addressResult] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", id).single(),
-      supabase.from("cart_items").select("product_id, quantity"),
-      supabase.from("wishlist_items").select("product_id"),
-      supabase.from("addresses").select("*").order("is_primary", { ascending: false }),
+      supabase
+        .from("cart_items")
+        .select("product_id, quantity")
+        .eq("user_id", id),
+      supabase
+        .from("wishlist_items")
+        .select("product_id")
+        .eq("user_id", id),
+      supabase
+        .from("addresses")
+        .select("*")
+        .eq("user_id", id)
+        .order("is_primary", { ascending: false }),
     ]);
     const {
       data: { session: activeSession },
@@ -387,27 +405,34 @@ function App() {
         next.some((item, index) => item.quantity !== items[index]?.quantity);
       if (!changed) return items;
       const nextIds = new Set(next.map((item) => item.id));
-      void Promise.all([
-        ...items
-          .filter((item) => !nextIds.has(item.id))
-          .map((item) =>
+      void queueAccountWrite(
+        Promise.all([
+          ...items
+            .filter((item) => !nextIds.has(item.id))
+            .map((item) =>
+              supabase
+                .from("cart_items")
+                .delete()
+                .eq("user_id", userId)
+                .eq("product_id", item.id),
+            ),
+          ...next.map((item) =>
             supabase
               .from("cart_items")
-              .delete()
-              .eq("user_id", userId)
-              .eq("product_id", item.id),
+              .upsert(
+                {
+                  user_id: userId,
+                  product_id: item.id,
+                  quantity: item.quantity,
+                },
+                { onConflict: "user_id,product_id" },
+              ),
           ),
-        ...next.map((item) =>
-          supabase.from("cart_items").upsert({
-            user_id: userId,
-            product_id: item.id,
-            quantity: item.quantity,
-          }),
-        ),
-      ]);
+        ]),
+      );
       return next;
     });
-  }, [adminProducts, userId]);
+  }, [adminProducts, queueAccountWrite, userId]);
 
   const reloadAddresses = async () => {
     const { data } = await supabase.from("addresses").select("*").order("is_primary", { ascending: false });
@@ -473,13 +498,29 @@ function App() {
             item.id === id ? { ...item, quantity } : item,
           )
         : [...items, { id, quantity }];
-      void supabase
-        .from("cart_items")
-        .upsert({ user_id:userId, product_id:id, quantity });
+      void queueAccountWrite(
+        supabase
+          .from("cart_items")
+          .upsert(
+            { user_id: userId, product_id: id, quantity },
+            { onConflict: "user_id,product_id" },
+          ),
+      );
       return next;
     });
   };
-  const remove = (id: string) => { setCart((items) => items.filter((x) => x.id !== id)); if (userId) void supabase.from("cart_items").delete().eq("user_id", userId).eq("product_id", id); };
+  const remove = (id: string) => {
+    setCart((items) => items.filter((x) => x.id !== id));
+    if (userId) {
+      void queueAccountWrite(
+        supabase
+          .from("cart_items")
+          .delete()
+          .eq("user_id", userId)
+          .eq("product_id", id),
+      );
+    }
+  };
   const qty = (id: string, value: number) => {
     if (value < 1) { remove(id); return; }
     const stockLimit = stockLimitFor(id);
@@ -493,9 +534,14 @@ function App() {
       ),
     );
     if (userId) {
-      void supabase
-        .from("cart_items")
-        .upsert({ user_id:userId, product_id:id, quantity });
+      void queueAccountWrite(
+        supabase
+          .from("cart_items")
+          .upsert(
+            { user_id: userId, product_id: id, quantity },
+            { onConflict: "user_id,product_id" },
+          ),
+      );
     }
   };
   const toggle = (id: string) => {
@@ -506,12 +552,60 @@ function App() {
     setSaved((items) => {
     const exists = items.includes(id);
     if (!exists) triggerFly("wishlist");
-    void (exists ? supabase.from("wishlist_items").delete().eq("user_id", userId).eq("product_id", id) : supabase.from("wishlist_items").insert({ user_id:userId, product_id:id }));
+    void queueAccountWrite(
+      exists
+        ? supabase
+            .from("wishlist_items")
+            .delete()
+            .eq("user_id", userId)
+            .eq("product_id", id)
+        : supabase
+            .from("wishlist_items")
+            .upsert(
+              { user_id: userId, product_id: id },
+              { onConflict: "user_id,product_id" },
+            ),
+    );
     return exists ? items.filter((x) => x !== id) : [...items, id];
     });
   };
-  const clearCart = () => { setCart([]); if (userId) void supabase.from("cart_items").delete().eq("user_id", userId); };
+  const clearCart = () => {
+    setCart([]);
+    if (userId) {
+      void queueAccountWrite(
+        supabase.from("cart_items").delete().eq("user_id", userId),
+      );
+    }
+  };
   const signOut = async () => {
+    await Promise.allSettled([...pendingAccountWrites.current]);
+    if (userId) {
+      const reconciliations: PromiseLike<unknown>[] = [];
+      if (cart.length) {
+        reconciliations.push(
+          supabase.from("cart_items").upsert(
+            cart.map((item) => ({
+              user_id: userId,
+              product_id: item.id,
+              quantity: item.quantity,
+            })),
+            { onConflict: "user_id,product_id" },
+          ),
+        );
+      }
+      if (saved.length) {
+        reconciliations.push(
+          supabase.from("wishlist_items").upsert(
+            saved.map((productId) => ({
+              user_id: userId,
+              product_id: productId,
+            })),
+            { onConflict: "user_id,product_id" },
+          ),
+        );
+      }
+      await Promise.allSettled(reconciliations.map((item) => Promise.resolve(item)));
+    }
     await supabase.auth.signOut({ scope: "local" });
   };
 
