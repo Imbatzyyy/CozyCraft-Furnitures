@@ -716,6 +716,160 @@ export function Layout({
           </footer>
         </div>
       </div>
+      <CareChat />
+    </>
+  );
+}
+
+type CareChatMessage = {
+  from: "care" | "you";
+  text: string;
+};
+
+export function CareChat() {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<CareChatMessage[]>([
+    {
+      from: "care",
+      text: "Hello — I’m Cozy, your CozyCraft care assistant. How can I help today?",
+    },
+  ]);
+  const quickHelp = [
+    "Track an order",
+    "Delivery concern",
+    "Payment help",
+    "Start a support ticket",
+  ];
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
+  const reply = (text: string) => {
+    const normalized = text.toLowerCase();
+    const answer =
+      normalized.includes("track") || normalized.includes("order")
+        ? "You can view your latest order progress from My Account → Orders. Direct order lookup inside this chat will be connected next."
+        : normalized.includes("payment")
+          ? "Cash on Delivery is currently available for CozyCraft checkout. Live payment assistance will be connected next."
+          : normalized.includes("ticket") || normalized.includes("concern")
+            ? "Support-ticket creation will be connected in the next step. For now, you can use My Account → Support."
+            : "Thanks for your message. The CozyCraft assistant connection is coming next; this is currently the frontend preview.";
+    setMessages((current) => [
+      ...current,
+      { from: "you", text },
+      { from: "care", text: answer },
+    ]);
+  };
+
+  const send = () => {
+    const message = draft.trim();
+    if (!message) return;
+    setDraft("");
+    reply(message);
+  };
+
+  return (
+    <>
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Open CozyCraft chat"
+          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#292a26] text-[#f7f3eb] shadow-[0_14px_30px_rgba(35,31,27,.28)] transition hover:-translate-y-0.5 hover:bg-[#3d3b36] sm:bottom-7 sm:right-7"
+        >
+          <MessageCircle size={23} />
+          <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-background bg-[#b89b78]" />
+        </button>
+      )}
+      {open && (
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-label="CozyCraft customer care chat"
+          className="fixed bottom-3 right-3 z-50 flex h-[min(620px,calc(100dvh-24px))] w-[calc(100vw-24px)] max-w-[390px] flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-2xl sm:bottom-7 sm:right-7 sm:h-[min(620px,calc(100dvh-56px))] sm:w-[calc(100vw-56px)]"
+        >
+          <header className="flex items-center justify-between bg-[#292a26] px-5 py-4 text-[#f7f3eb]">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#d8c7b0] text-foreground">
+                <MessageCircle size={17} />
+              </span>
+              <div>
+                <p className="text-sm font-semibold">CozyCraft Care</p>
+                <p className="mt-0.5 text-[10px] text-white/60">
+                  Assistant preview
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Close chat"
+              className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10"
+            >
+              <X size={17} />
+            </button>
+          </header>
+          <div className="flex-1 overflow-y-auto bg-[#faf8f4] p-4">
+            <p className="mb-4 text-center text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+              COZYCRAFT CUSTOMER CARE
+            </p>
+            <div className="grid gap-3" aria-live="polite">
+              {messages.map((message, index) => (
+                <div
+                  key={`${message.text}-${index}`}
+                  className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-5 ${
+                    message.from === "you"
+                      ? "ml-auto rounded-br-md bg-foreground text-background"
+                      : "rounded-bl-md bg-card text-foreground shadow-sm"
+                  }`}
+                >
+                  {message.text}
+                </div>
+              ))}
+            </div>
+            <div className="mt-5">
+              <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                QUICK HELP
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {quickHelp.map((item) => (
+                  <button
+                    type="button"
+                    key={item}
+                    onClick={() => reply(item)}
+                    className="rounded-full border border-border bg-card px-3 py-2 text-xs font-semibold transition hover:bg-secondary"
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              send();
+            }}
+            className="flex gap-2 border-t border-border bg-card p-3"
+          >
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              className="h-11 min-w-0 flex-1 rounded-xl bg-secondary px-3 text-sm outline-none focus:ring-2 focus:ring-[#cbb8a1]"
+              placeholder="Type your concern..."
+              aria-label="Chat message"
+            />
+            <button className="h-11 rounded-xl bg-foreground px-4 text-xs font-semibold text-background">
+              Send
+            </button>
+          </form>
+        </section>
+      )}
     </>
   );
 }
