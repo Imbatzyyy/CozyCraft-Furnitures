@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -729,6 +730,9 @@ type CareChatMessage = {
 export function CareChat() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [messages, setMessages] = useState<CareChatMessage[]>([
     {
       from: "care",
@@ -751,29 +755,56 @@ export function CareChat() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open]);
 
-  const reply = (text: string) => {
-    const normalized = text.toLowerCase();
-    const answer =
-      normalized.includes("track") || normalized.includes("order")
-        ? "You can view your latest order progress from My Account → Orders. Direct order lookup inside this chat will be connected next."
-        : normalized.includes("payment")
-          ? "Cash on Delivery is currently available for CozyCraft checkout. Live payment assistance will be connected next."
-          : normalized.includes("ticket") || normalized.includes("concern")
-            ? "Support-ticket creation will be connected in the next step. For now, you can use My Account → Support."
-            : "Thanks for your message. The CozyCraft assistant connection is coming next; this is currently the frontend preview.";
-    setMessages((current) => [
-      ...current,
-      { from: "you", text },
-      { from: "care", text: answer },
-    ]);
+  useEffect(() => {
+    if (!open) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, sending, open]);
+
+  const reply = async (text: string) => {
+    const message = text.trim();
+    if (!message || sending) return;
+
+    const history = messages.slice(-10).map((item) => ({
+      role: item.from === "you" ? "user" : "assistant",
+      content: item.text,
+    }));
+
+    setDraft("");
+    setError("");
+    setSending(true);
+    setMessages((current) => [...current, { from: "you", text: message }]);
+
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke(
+        "cozycraft-assistant",
+        {
+          body: { message, history },
+        },
+      );
+
+      if (invokeError) {
+        throw invokeError;
+      }
+
+      if (!data?.reply || typeof data.reply !== "string") {
+        throw new Error(data?.error || "The assistant returned no response.");
+      }
+
+      setMessages((current) => [
+        ...current,
+        { from: "care", text: data.reply },
+      ]);
+    } catch (requestError) {
+      console.error("CozyCraft assistant error", requestError);
+      setError(
+        "I couldn’t connect just now. Please check your connection and try again.",
+      );
+    } finally {
+      setSending(false);
+    }
   };
 
-  const send = () => {
-    const message = draft.trim();
-    if (!message) return;
-    setDraft("");
-    reply(message);
-  };
+  const send = () => void reply(draft);
 
   return (
     <>
@@ -802,7 +833,7 @@ export function CareChat() {
               <div>
                 <p className="text-sm font-semibold">CozyCraft Care</p>
                 <p className="mt-0.5 text-[10px] text-white/60">
-                  Assistant preview
+                  AI shopping & customer care
                 </p>
               </div>
             </div>
@@ -831,7 +862,25 @@ export function CareChat() {
                   {message.text}
                 </div>
               ))}
+              {sending && (
+                <div className="w-fit rounded-2xl rounded-bl-md bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm">
+                  <span className="inline-flex gap-1" aria-label="Cozy is typing">
+                    <span className="animate-pulse">●</span>
+                    <span className="animate-pulse [animation-delay:150ms]">●</span>
+                    <span className="animate-pulse [animation-delay:300ms]">●</span>
+                  </span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
+            {error && (
+              <div
+                role="alert"
+                className="mt-3 rounded-xl bg-[#f3e3d5] px-3 py-2 text-xs font-semibold text-[#83583f]"
+              >
+                {error}
+              </div>
+            )}
             <div className="mt-5">
               <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
                 QUICK HELP
@@ -841,7 +890,8 @@ export function CareChat() {
                   <button
                     type="button"
                     key={item}
-                    onClick={() => reply(item)}
+                    onClick={() => void reply(item)}
+                    disabled={sending}
                     className="rounded-full border border-border bg-card px-3 py-2 text-xs font-semibold transition hover:bg-secondary"
                   >
                     {item}
@@ -863,9 +913,14 @@ export function CareChat() {
               className="h-11 min-w-0 flex-1 rounded-xl bg-secondary px-3 text-sm outline-none focus:ring-2 focus:ring-[#cbb8a1]"
               placeholder="Type your concern..."
               aria-label="Chat message"
+              maxLength={2000}
+              disabled={sending}
             />
-            <button className="h-11 rounded-xl bg-foreground px-4 text-xs font-semibold text-background">
-              Send
+            <button
+              disabled={sending || !draft.trim()}
+              className="h-11 rounded-xl bg-foreground px-4 text-xs font-semibold text-background disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {sending ? "Sending" : "Send"}
             </button>
           </form>
         </section>
