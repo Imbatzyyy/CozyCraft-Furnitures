@@ -185,6 +185,32 @@ function App() {
     if (!error) setOrders((data ?? []) as DbOrder[]);
   }, []);
 
+  const refreshAccountCollections = useCallback(async (id: string) => {
+    const [cartResult, wishlistResult] = await Promise.all([
+      supabase
+        .from("cart_items")
+        .select("product_id, quantity")
+        .eq("user_id", id),
+      supabase
+        .from("wishlist_items")
+        .select("product_id")
+        .eq("user_id", id),
+    ]);
+    if (!cartResult.error) {
+      setCart(
+        (cartResult.data ?? []).map((item) => ({
+          id: item.product_id,
+          quantity: item.quantity,
+        })),
+      );
+    }
+    if (!wishlistResult.error) {
+      setSaved(
+        (wishlistResult.data ?? []).map((item) => item.product_id),
+      );
+    }
+  }, []);
+
   const refreshCustomers = useCallback(async () => {
     const { data, error } = await supabase
       .from("profiles")
@@ -382,6 +408,53 @@ function App() {
       document.removeEventListener("visibilitychange", syncVisibleOrders);
     };
   }, [refreshOrders, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const syncCollections = () => {
+      void refreshAccountCollections(userId);
+    };
+    const syncVisibleCollections = () => {
+      if (document.visibilityState === "visible") syncCollections();
+    };
+    const channel = supabase
+      .channel(`account-commerce-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "cart_items",
+          filter: `user_id=eq.${userId}`,
+        },
+        syncCollections,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "wishlist_items",
+          filter: `user_id=eq.${userId}`,
+        },
+        syncCollections,
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") syncCollections();
+      });
+    const interval = window.setInterval(syncVisibleCollections, 10_000);
+
+    window.addEventListener("focus", syncCollections);
+    document.addEventListener("visibilitychange", syncVisibleCollections);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", syncCollections);
+      document.removeEventListener("visibilitychange", syncVisibleCollections);
+      void supabase.removeChannel(channel);
+    };
+  }, [refreshAccountCollections, userId]);
 
   useEffect(() => {
     if (!userId) return;
