@@ -109,18 +109,8 @@ import {
 
 import { AdminShell } from "./shell";
 
-export const salesData = [
-  { m: "Jan", v: 82 },
-  { m: "Feb", v: 104 },
-  { m: "Mar", v: 96 },
-  { m: "Apr", v: 126 },
-  { m: "May", v: 147 },
-  { m: "Jun", v: 139 },
-  { m: "Jul", v: 178 },
-];
-
 export function AdminOverview() {
-  const { orders, adminProducts, user } = useStore();
+  const { orders, adminProducts, user, refreshOrders } = useStore();
   const [now, setNow] = useState(() => new Date());
   const firstName = user?.trim().split(/\s+/)[0] || "there";
   const philippineHour = Number(
@@ -149,9 +139,38 @@ export function AdminOverview() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    void refreshOrders();
+  }, [refreshOrders]);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthOrders = orders.filter(
+    (order) => new Date(order.created_at) >= monthStart,
+  );
   const sales = orders.filter(order=>order.status!=="cancelled").reduce((sum,order)=>sum+Number(order.total),0);
   const pending = orders.filter(order=>order.status==="pending").length;
   const lowStock = adminProducts.filter(product=>(product.stockQuantity??0)<=8).length;
+  const salesData = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (6 - index), 1);
+    const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    return {
+      m: date.toLocaleDateString("en-PH", { month: "short" }),
+      v: orders
+        .filter(
+          (order) =>
+            order.status !== "cancelled" &&
+            new Date(order.created_at) >= date &&
+            new Date(order.created_at) < next,
+        )
+        .reduce((sum, order) => sum + Number(order.total), 0),
+    };
+  });
+  const statusRows = [
+    ["Delivered", monthOrders.filter((order) => order.status === "delivered").length, "bg-[#68805f]"],
+    ["Processing", monthOrders.filter((order) => ["processing", "packed", "shipped"].includes(order.status)).length, "bg-[#b8a58d]"],
+    ["Pending", monthOrders.filter((order) => order.status === "pending").length, "bg-[#d39a64]"],
+    ["Cancelled", monthOrders.filter((order) => order.status === "cancelled").length, "bg-[#bbb5ac]"],
+  ] as const;
+  const maxStatus = Math.max(1, ...statusRows.map((row) => row[1]));
   return (
     <AdminShell title="Overview">
       <section className="relative overflow-hidden rounded-3xl bg-[#25221f] px-6 py-7 text-[#f4f2ee] shadow-[0_18px_40px_rgba(33,31,29,.16)] sm:px-8">
@@ -189,11 +208,11 @@ export function AdminOverview() {
         <Metric
           label="Total sales"
           value={money(sales)}
-          note="↗ 12.5% vs last month"
+          note="All non-cancelled orders"
         />
         <Metric
           label="Orders this month"
-          value={String(orders.length)}
+          value={String(monthOrders.length)}
           note="Live storefront orders"
         />
         <Metric label="Pending orders" value={String(pending)} note="Requires attention" />
@@ -247,15 +266,10 @@ export function AdminOverview() {
         <section className="border border-border bg-card p-5">
           <h3 className="font-semibold">Order status</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            126 orders this month
+            {monthOrders.length} orders this month
           </p>
           <div className="mt-7 grid gap-4">
-            {[
-              ["Completed", "78", "bg-[#68805f]"],
-              ["Processing", "20", "bg-[#b8a58d]"],
-              ["Pending", "18", "bg-[#d39a64]"],
-              ["Cancelled", "10", "bg-[#bbb5ac]"],
-            ].map(([label, value, color]) => (
+            {statusRows.map(([label, value, color]) => (
               <div key={label}>
                 <div className="mb-2 flex justify-between text-xs">
                   <span>{label}</span>
@@ -264,7 +278,7 @@ export function AdminOverview() {
                 <div className="h-1.5 bg-secondary">
                   <div
                     className={`h-full ${color}`}
-                    style={{ width: `${(Number(value) / 78) * 100}%` }}
+                    style={{ width: `${(value / maxStatus) * 100}%` }}
                   />
                 </div>
               </div>
@@ -280,7 +294,7 @@ export function AdminOverview() {
           </span>
           <p className="mt-5 text-sm font-semibold">Inventory needs a look.</p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Seven popular pieces are nearing their reorder point.
+            {lowStock} {lowStock === 1 ? "piece is" : "pieces are"} nearing the reorder point.
           </p>
           <Link
             to="/admin/inventory"
@@ -883,13 +897,47 @@ export function OrdersWorkspacePage() {
 }
 
 export function PaymentsPage() {
-  const [paid, setPaid] = useState([true, false, true]);
+  const { orders, refreshOrders } = useStore();
   const [notice, setNotice] = useState("");
-  const invoices = [
-    ["#PAY-10482", "#CC-0814", "Visa · ₱42,700"],
-    ["#PAY-10479", "#CC-0812", "GCash · ₱30,500"],
-    ["#PAY-10475", "#CC-0808", "Mastercard · ₱18,900"],
-  ];
+  useEffect(() => {
+    void refreshOrders();
+  }, [refreshOrders]);
+  const collected = orders
+    .filter((order) => order.payment_status === "paid")
+    .reduce((sum, order) => sum + Number(order.total), 0);
+  const markReceived = async (id: string) => {
+    const { error } = await supabase
+      .from("orders")
+      .update({ payment_status: "paid" })
+      .eq("id", id);
+    setNotice(error?.message ?? "Payment marked as received.");
+    if (!error) await refreshOrders();
+  };
+  const exportPayments = () => {
+    const rows = [
+      ["Order", "Customer", "Method", "Status", "Total", "Created"],
+      ...orders.map((order) => [
+        order.order_number,
+        order.shipping_address.name || "Customer",
+        order.payment_method.toUpperCase(),
+        order.payment_status,
+        String(order.total),
+        order.created_at,
+      ]),
+    ];
+    const csv = rows
+      .map((row) =>
+        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `cozycraft-payments-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice("Payment report downloaded.");
+  };
   return (
     <AdminShell title="Payments">
       <div className="rounded-3xl bg-[#e6d7c4] p-7">
@@ -898,13 +946,13 @@ export function PaymentsPage() {
         </p>
         <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h2 className="font-[Playfair_Display] text-5xl">₱248,500</h2>
+            <h2 className="font-[Playfair_Display] text-5xl">{money(collected)}</h2>
             <p className="mt-2 text-sm text-[#735c48]">
-              Collected this month across 126 transactions.
+              Collected across {orders.filter((order) => order.payment_status === "paid").length} recorded transactions.
             </p>
           </div>
           <button
-            onClick={() => setNotice("Settlement report generated.")}
+            onClick={exportPayments}
             className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
           >
             Generate settlement report
@@ -913,28 +961,25 @@ export function PaymentsPage() {
       </div>
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
         <div className="grid grid-cols-[1fr_auto] border-b border-border px-5 py-4 text-xs font-semibold">
-          <span>Transactions needing review</span>
+          <span>Recorded transactions</span>
           <span>Action</span>
         </div>
-        {invoices.map(([id, order, detail], i) => (
+        {orders.map((order) => (
           <div
-            key={id}
+            key={order.id}
             className="grid grid-cols-[1fr_auto] items-center border-b border-border px-5 py-4"
           >
             <div>
-              <b className="text-sm">{id}</b>
+              <b className="text-sm">#{order.order_number}</b>
               <p className="mt-1 text-xs text-muted-foreground">
-                {order} · {detail}
+                {order.shipping_address.name || "Customer"} · {order.payment_method.toUpperCase()} · {money(Number(order.total))}
               </p>
             </div>
-            {paid[i] ? (
-              <Status>Paid</Status>
+            {order.payment_status === "paid" ? (
+              <Status>{order.payment_status}</Status>
             ) : (
               <button
-                onClick={() => {
-                  setPaid((p) => p.map((v, index) => (index === i ? true : v)));
-                  setNotice("Payment marked as received.");
-                }}
+                onClick={() => void markReceived(order.id)}
                 className="rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
               >
                 Mark received
@@ -942,6 +987,11 @@ export function PaymentsPage() {
             )}
           </div>
         ))}
+        {!orders.length && (
+          <p className="p-8 text-center text-sm text-muted-foreground">
+            No customer payments or orders yet.
+          </p>
+        )}
       </div>
       {notice && <Toast message={notice} close={() => setNotice("")} />}
     </AdminShell>
@@ -1160,30 +1210,60 @@ export function CustomersPage() {
 }
 
 export function ReviewsPage() {
-  const [reviews, setReviews] = useState([
-    {
-      name: "Luna Reyes",
-      product: "Mara Lounge Chair",
-      rating: 5,
-      status: "Pending",
-    },
-    {
-      name: "Jerome Lim",
-      product: "Arco Dining Table",
-      rating: 5,
-      status: "Pending",
-    },
-    {
-      name: "Elena Cruz",
-      product: "Santo Bed Frame",
-      rating: 4,
-      status: "Published",
-    },
-  ]);
-  const update = (i: number, status: string) =>
-    setReviews((r) =>
-      r.map((item, index) => (index === i ? { ...item, status } : item)),
+  type ReviewRow = {
+    id: string;
+    rating: number;
+    title: string;
+    body: string;
+    approved: boolean;
+    created_at: string;
+    profiles: { full_name: string | null; email: string | null } | null;
+    products: { name: string } | null;
+  };
+  const [reviews, setReviews] = useState<ReviewRow[]>([]);
+  const [notice, setNotice] = useState("");
+  const loadReviews = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("reviews")
+      .select(
+        "id,rating,title,body,approved,created_at,profiles!reviews_user_id_fkey(full_name,email),products!reviews_product_id_fkey(name)",
+      )
+      .order("created_at", { ascending: false });
+    if (error) setNotice(error.message);
+    else setReviews((data ?? []) as ReviewRow[]);
+  }, []);
+  useEffect(() => {
+    void loadReviews();
+    const channel = supabase
+      .channel("admin-reviews")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "reviews" },
+        () => void loadReviews(),
+      )
+      .subscribe();
+    const interval = window.setInterval(() => void loadReviews(), 10_000);
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadReviews]);
+  const update = async (id: string, approved: boolean) => {
+    const { error } = await supabase
+      .from("reviews")
+      .update({ approved })
+      .eq("id", id);
+    setNotice(
+      error?.message ??
+        (approved
+          ? "Review published to the product page."
+          : "Review hidden from the customer storefront."),
     );
+    if (!error) await loadReviews();
+  };
+  const average = reviews.length
+    ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+    : 0;
   return (
     <AdminShell title="Reviews">
       <div className="flex justify-between">
@@ -1194,52 +1274,67 @@ export function ReviewsPage() {
           <h2 className="mt-2 text-3xl font-semibold">Reviews</h2>
         </div>
         <div className="rounded-xl bg-secondary px-3 py-2 text-xs">
-          Average rating <b className="ml-2">4.8 / 5</b>
+          Average rating <b className="ml-2">{average.toFixed(1)} / 5</b>
         </div>
       </div>
       <div className="mt-7 grid gap-4">
-        {reviews.map((review, i) => (
+        {reviews.map((review) => (
           <article
-            key={review.name}
+            key={review.id}
             className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center"
           >
             <div>
               <div className="flex items-center gap-2">
-                <b>{review.name}</b>
+                <b>{review.profiles?.full_name || review.profiles?.email || "Customer"}</b>
                 <span className="text-[#b8875c]">
                   {"★".repeat(review.rating)}
                 </span>
               </div>
               <p className="mt-2 text-sm">
-                “Beautifully made and even more comfortable than expected.”
+                {review.title && <b>{review.title}: </b>}
+                “{review.body || "No written feedback provided."}”
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                {review.product} · verified purchase
+                {review.products?.name || "Product"} · customer review
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {review.status === "Pending" ? (
+              {!review.approved ? (
                 <>
                   <button
-                    onClick={() => update(i, "Published")}
+                    onClick={() => void update(review.id, true)}
                     className="rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
                   >
                     Approve
                   </button>
                   <button
-                    onClick={() => update(i, "Hidden")}
+                    onClick={() => void update(review.id, false)}
                     className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
                   >
                     Hide
                   </button>
                 </>
               ) : (
-                <Status>{review.status}</Status>
+                <>
+                  <Status>Published</Status>
+                  <button
+                    onClick={() => void update(review.id, false)}
+                    className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
+                  >
+                    Hide
+                  </button>
+                </>
               )}
             </div>
           </article>
         ))}
+        {!reviews.length && (
+          <p className="rounded-2xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">
+            No customer reviews have been submitted yet.
+          </p>
+        )}
       </div>
+      {notice && <Toast message={notice} close={() => setNotice("")} />}
     </AdminShell>
   );
 }
@@ -1346,16 +1441,50 @@ export function SupportPage() {
 
 export function ActivityLogsPage() {
   const [scope, setScope] = useState("All actions");
-  const rows = [
-    ["Mara Mendoza", "Adjusted inventory", "Mara Lounge Chair", "09:42"],
-    ["Jules Santos", "Approved review", "Noma Dining Chair", "08:15"],
-    [
-      "Mara Mendoza",
-      "Published product update",
-      "Lino Oak Console",
-      "Yesterday",
-    ],
-  ];
+  type ActivityRow = {
+    id: number;
+    action: string;
+    entity_type: string;
+    entity_id: string | null;
+    details: Record<string, unknown>;
+    created_at: string;
+    profiles: { full_name: string | null; email: string | null } | null;
+  };
+  const [rows, setRows] = useState<ActivityRow[]>([]);
+  const loadActivity = useCallback(async () => {
+    const { data } = await supabase
+      .from("activity_logs")
+      .select(
+        "id,action,entity_type,entity_id,details,created_at,profiles!activity_logs_actor_id_fkey(full_name,email)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setRows((data ?? []) as ActivityRow[]);
+  }, []);
+  useEffect(() => {
+    void loadActivity();
+    const channel = supabase
+      .channel("admin-activity")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "activity_logs" },
+        () => void loadActivity(),
+      )
+      .subscribe();
+    const interval = window.setInterval(() => void loadActivity(), 10_000);
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadActivity]);
+  const filteredRows =
+    scope === "All actions"
+      ? rows
+      : rows.filter(
+          (row) =>
+            row.entity_type.toLowerCase() ===
+            scope.toLowerCase().replaceAll(" ", "_"),
+        );
   return (
     <AdminShell title="Activity logs">
       <div className="flex justify-between">
@@ -1372,8 +1501,10 @@ export function ActivityLogsPage() {
         >
           <option>All actions</option>
           <option>Products</option>
-          <option>Inventory</option>
           <option>Orders</option>
+          <option>Reviews</option>
+          <option>Categories</option>
+          <option>Store settings</option>
         </select>
       </div>
       <section className="mt-7 rounded-2xl border border-border bg-card p-6">
@@ -1383,21 +1514,35 @@ export function ActivityLogsPage() {
           </p>
         </div>
         <div className="mt-7 space-y-6">
-          {rows.map(([person, action, record, time], i) => (
-            <div className="relative flex gap-4" key={action}>
+          {filteredRows.map((row, i) => (
+            <div className="relative flex gap-4" key={row.id}>
               <span className="mt-1.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-secondary text-xs font-bold">
                 {i + 1}
               </span>
               <div>
                 <p className="text-sm">
-                  <b>{person}</b> {action}
+                  <b>{row.profiles?.full_name || row.profiles?.email || "System"}</b>{" "}
+                  {row.action.replace(/_/g, " ")}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {record} · {time} · 192.0.2.{16 + i}
+                  {String(
+                    row.details?.name ||
+                      row.details?.order_number ||
+                      row.entity_id ||
+                      row.entity_type,
+                  )} ·{" "}
+                  {new Date(row.created_at).toLocaleString("en-PH", {
+                    timeZone: "Asia/Manila",
+                  })}
                 </p>
               </div>
             </div>
           ))}
+          {!filteredRows.length && (
+            <p className="text-center text-sm text-muted-foreground">
+              No recorded activity for this filter yet.
+            </p>
+          )}
         </div>
       </section>
     </AdminShell>
@@ -1405,11 +1550,91 @@ export function ActivityLogsPage() {
 }
 
 export function ReportsPage() {
+  const { orders, adminProducts, customerProfiles, refreshOrders, refreshCustomers } = useStore();
   const [range, setRange] = useState("This month");
-  const [format, setFormat] = useState("PDF");
+  const [format, setFormat] = useState("CSV");
   const [notice, setNotice] = useState("");
   const [scheduled, setScheduled] = useState(false);
-  const bars = [46, 58, 51, 69, 63, 82, 75, 92, 84, 96, 88, 100];
+  useEffect(() => {
+    void refreshOrders();
+    void refreshCustomers();
+    void supabase
+      .from("store_settings")
+      .select("weekly_report_enabled")
+      .eq("id", true)
+      .single()
+      .then(({ data }) =>
+        setScheduled(Boolean(data?.weekly_report_enabled)),
+      );
+  }, [refreshCustomers, refreshOrders]);
+  const rangeDays = range === "This week" ? 7 : range === "Quarter" ? 90 : 31;
+  const rangeStart = new Date(Date.now() - rangeDays * 86_400_000);
+  const rangeOrders = orders.filter(
+    (order) => new Date(order.created_at) >= rangeStart,
+  );
+  const validOrders = rangeOrders.filter((order) => order.status !== "cancelled");
+  const grossSales = validOrders.reduce(
+    (sum, order) => sum + Number(order.total),
+    0,
+  );
+  const fulfilled = validOrders.filter(
+    (order) => order.status === "delivered",
+  ).length;
+  const averageOrderValue = validOrders.length
+    ? grossSales / validOrders.length
+    : 0;
+  const bars = Array.from({ length: 12 }, (_, index) => {
+    const bucketStart = new Date(
+      rangeStart.getTime() + (index * rangeDays * 86_400_000) / 12,
+    );
+    const bucketEnd = new Date(
+      rangeStart.getTime() + ((index + 1) * rangeDays * 86_400_000) / 12,
+    );
+    return validOrders
+      .filter((order) => {
+        const created = new Date(order.created_at);
+        return created >= bucketStart && created < bucketEnd;
+      })
+      .reduce((sum, order) => sum + Number(order.total), 0);
+  });
+  const maxBar = Math.max(1, ...bars);
+  const categoryRevenue = validOrders
+    .flatMap((order) => order.order_items)
+    .reduce<Record<string, number>>((totals, item) => {
+      const category =
+        adminProducts.find((product) => product.id === item.product_id)
+          ?.category ?? "Uncategorized";
+      totals[category] =
+        (totals[category] ?? 0) + Number(item.unit_price) * item.quantity;
+      return totals;
+    }, {});
+  const leadingCategory =
+    Object.entries(categoryRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+    "No sales yet";
+  const exportReport = () => {
+    const rows = [
+      ["Order", "Status", "Payment", "Total", "Created"],
+      ...rangeOrders.map((order) => [
+        order.order_number,
+        order.status,
+        order.payment_status,
+        String(order.total),
+        order.created_at,
+      ]),
+    ];
+    const csv = rows
+      .map((row) =>
+        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `cozycraft-${range.toLowerCase().replace(/\s/g, "-")}-report.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice("Live report downloaded as CSV.");
+  };
   const reports = [
     {
       name: "Sales performance",
@@ -1456,21 +1681,21 @@ export function ReportsPage() {
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
           <div className="border-l border-[#b99a76] pl-4">
             <p className="text-xs text-[#c8bcae]">Gross sales</p>
-            <p className="mt-1 font-serif text-3xl">₱384,250</p>
-            <p className="mt-1 text-xs text-[#acc59f]">↑ 18.4% vs. previous</p>
+            <p className="mt-1 font-serif text-3xl">{money(grossSales)}</p>
+            <p className="mt-1 text-xs text-[#acc59f]">{validOrders.length} valid orders</p>
           </div>
           <div className="border-l border-white/20 pl-4">
             <p className="text-xs text-[#c8bcae]">Orders fulfilled</p>
-            <p className="mt-1 font-serif text-3xl">126</p>
+            <p className="mt-1 font-serif text-3xl">{fulfilled}</p>
             <p className="mt-1 text-xs text-[#acc59f]">
-              ↑ 12 orders this period
+              {rangeOrders.length} total orders this period
             </p>
           </div>
           <div className="border-l border-white/20 pl-4">
             <p className="text-xs text-[#c8bcae]">Average order value</p>
-            <p className="mt-1 font-serif text-3xl">₱24,680</p>
+            <p className="mt-1 font-serif text-3xl">{money(averageOrderValue)}</p>
             <p className="mt-1 text-xs text-[#c8bcae]">
-              Living room leads demand
+              {leadingCategory} leads demand
             </p>
           </div>
         </div>
@@ -1487,7 +1712,7 @@ export function ReportsPage() {
               </h3>
             </div>
             <span className="rounded-full bg-[#e3ecdf] px-3 py-1.5 text-xs font-semibold text-[#56714f]">
-              +18.4% growth
+              Live Supabase data
             </span>
           </div>
           <div className="mt-7 flex h-52 items-end gap-2 border-b border-border pb-1">
@@ -1497,11 +1722,11 @@ export function ReportsPage() {
                 className="group relative flex flex-1 justify-center"
               >
                 <span className="absolute -top-7 hidden rounded bg-foreground px-2 py-1 text-[10px] text-background group-hover:block">
-                  ₱{(height * 3.84).toFixed(1)}k
+                  {money(height)}
                 </span>
                 <div
                   className={`w-full rounded-t-md transition-all ${index === bars.length - 1 ? "bg-[#b99a76]" : "bg-[#ded7cd] group-hover:bg-[#c5b19a]"}`}
-                  style={{ height: `${height}%` }}
+                  style={{ height: `${Math.max(3, (height / maxBar) * 100)}%` }}
                 />
               </div>
             ))}
@@ -1517,13 +1742,13 @@ export function ReportsPage() {
             <div>
               <p className="text-xs font-semibold">Best-selling category</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Living room · 46% of revenue
+                {leadingCategory} · {money(categoryRevenue[leadingCategory] ?? 0)}
               </p>
             </div>
             <div>
               <p className="text-xs font-semibold">Strongest channel</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Direct storefront · ₱251,400
+                Direct storefront · {money(grossSales)}
               </p>
             </div>
           </div>
@@ -1533,11 +1758,10 @@ export function ReportsPage() {
             ANALYST NOTE
           </p>
           <h3 className="mt-4 font-serif text-2xl leading-tight">
-            Dining chairs are moving 1.7× faster this month.
+            {leadingCategory} currently leads recorded demand.
           </h3>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            Consider surfacing the Noma collection on the homepage and reorder
-            12 units before the next delivery window.
+            {adminProducts.filter((product) => (product.stockQuantity ?? 0) <= 8).length} products are at or below the reorder point, across {customerProfiles.length} registered customers.
           </p>
           <button
             onClick={() => setNotice("Priority inventory report created.")}
@@ -1591,7 +1815,7 @@ export function ReportsPage() {
           </p>
           <h3 className="mt-1 text-lg font-semibold">Export or schedule</h3>
           <div className="mt-5 flex gap-2">
-            {["PDF", "CSV", "XLSX"].map((type) => (
+            {["CSV"].map((type) => (
               <button
                 key={type}
                 onClick={() => setFormat(type)}
@@ -1603,7 +1827,7 @@ export function ReportsPage() {
           </div>
           <button
             onClick={() =>
-              setNotice(`${format} report is being prepared for download.`)
+              exportReport()
             }
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background"
           >
@@ -1619,12 +1843,20 @@ export function ReportsPage() {
             </div>
             <button
               onClick={() => {
-                setScheduled(!scheduled);
-                setNotice(
-                  scheduled
-                    ? "Weekly delivery paused."
-                    : "Weekly briefing scheduled.",
-                );
+                const next = !scheduled;
+                void supabase
+                  .from("store_settings")
+                  .update({ weekly_report_enabled: next })
+                  .eq("id", true)
+                  .then(({ error }) => {
+                    if (!error) setScheduled(next);
+                    setNotice(
+                      error?.message ??
+                        (next
+                          ? "Weekly briefing scheduled."
+                          : "Weekly delivery paused."),
+                    );
+                  });
               }}
               className={`rounded-full px-3 py-1.5 text-[10px] font-bold ${scheduled ? "bg-[#e3ecdf] text-[#56714f]" : "bg-card text-muted-foreground"}`}
             >

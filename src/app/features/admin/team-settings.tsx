@@ -374,17 +374,50 @@ export function TeamAccessPage() {
 
 export function StoreSettingsPage() {
   const [section, setSection] = useState("Store");
-  const [saved, setSaved] = useState(false);
-  const fields =
-    section === "Store"
-      ? ["Store name", "Contact email", "Business address"]
-      : section === "Delivery"
-        ? [
-            "Default delivery zone",
-            "Processing time",
-            "White-glove availability",
-          ]
-        : ["Low-stock threshold", "Inventory alerts", "Weekly report delivery"];
+  const [notice, setNotice] = useState("");
+  const [settings, setSettings] = useState({
+    store_name: "CozyCraft Furnitures",
+    contact_email: "",
+    delivery_area: "Metro Manila",
+    low_stock_threshold: 8,
+    inventory_alerts: true,
+    weekly_report_enabled: false,
+  });
+  const loadSettings = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("store_settings")
+      .select(
+        "store_name,contact_email,delivery_area,low_stock_threshold,inventory_alerts,weekly_report_enabled",
+      )
+      .eq("id", true)
+      .single();
+    if (error) setNotice(error.message);
+    else if (data) setSettings(data);
+  }, []);
+  useEffect(() => {
+    void loadSettings();
+    const channel = supabase
+      .channel("admin-store-settings")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "store_settings" },
+        () => void loadSettings(),
+      )
+      .subscribe();
+    const interval = window.setInterval(() => void loadSettings(), 10_000);
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadSettings]);
+  const save = async () => {
+    const { error } = await supabase
+      .from("store_settings")
+      .update(settings)
+      .eq("id", true);
+    setNotice(error?.message ?? "Store settings saved to Supabase.");
+    if (!error) await loadSettings();
+  };
   return (
     <AdminShell title="Settings">
       <div>
@@ -399,7 +432,7 @@ export function StoreSettingsPage() {
             <button
               onClick={() => {
                 setSection(item);
-                setSaved(false);
+                setNotice("");
               }}
               className={`w-full rounded-xl px-3 py-3 text-left text-sm ${section === item ? "bg-secondary font-semibold" : "hover:bg-secondary"}`}
               key={item}
@@ -414,37 +447,51 @@ export function StoreSettingsPage() {
           </p>
           <h3 className="mt-2 text-2xl font-semibold">{section} preferences</h3>
           <div className="mt-7 grid gap-5">
-            {fields.map((field, i) => (
-              <label className="grid gap-2 text-sm font-semibold" key={field}>
-                {field}
-                {i === 2 && section === "Delivery" ? (
-                  <select className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal">
-                    <option>Available</option>
-                    <option>Unavailable</option>
-                  </select>
-                ) : (
-                  <input
-                    className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"
-                    defaultValue={
-                      i === 0 && section === "Store"
-                        ? "CozyCraft Furnitures"
-                        : ""
-                    }
-                  />
-                )}
+            {section === "Store" && (
+              <>
+                <label className="grid gap-2 text-sm font-semibold">
+                  Store name
+                  <input value={settings.store_name} onChange={(event) => setSettings((value) => ({ ...value, store_name: event.target.value }))} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal" />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold">
+                  Contact email
+                  <input type="email" value={settings.contact_email} onChange={(event) => setSettings((value) => ({ ...value, contact_email: event.target.value }))} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal" />
+                </label>
+              </>
+            )}
+            {section === "Delivery" && (
+              <label className="grid gap-2 text-sm font-semibold">
+                Default delivery area
+                <input value={settings.delivery_area} onChange={(event) => setSettings((value) => ({ ...value, delivery_area: event.target.value }))} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal" />
               </label>
-            ))}
+            )}
+            {section === "Notifications" && (
+              <>
+                <label className="grid gap-2 text-sm font-semibold">
+                  Low-stock threshold
+                  <input type="number" min="0" value={settings.low_stock_threshold} onChange={(event) => setSettings((value) => ({ ...value, low_stock_threshold: Math.max(0, Number(event.target.value)) }))} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal" />
+                </label>
+                <label className="flex items-center justify-between rounded-xl border border-border p-4 text-sm font-semibold">
+                  Inventory alerts
+                  <input type="checkbox" checked={settings.inventory_alerts} onChange={(event) => setSettings((value) => ({ ...value, inventory_alerts: event.target.checked }))} className="h-5 w-5" />
+                </label>
+                <label className="flex items-center justify-between rounded-xl border border-border p-4 text-sm font-semibold">
+                  Weekly report delivery
+                  <input type="checkbox" checked={settings.weekly_report_enabled} onChange={(event) => setSettings((value) => ({ ...value, weekly_report_enabled: event.target.checked }))} className="h-5 w-5" />
+                </label>
+              </>
+            )}
           </div>
           <button
-            onClick={() => setSaved(true)}
+            onClick={() => void save()}
             className="mt-7 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
           >
             Save {section.toLowerCase()} preferences
           </button>
-          {saved && (
+          {notice && (
             <p className="mt-4 flex gap-2 text-sm text-[#5b744f]">
               <Check size={16} />
-              Preferences saved.
+              {notice}
             </p>
           )}
         </section>

@@ -982,7 +982,7 @@ export function CollectionPage() {
 
 export function ProductPage() {
   const { productId } = useParams();
-  const { add, toggle, saved, products } = useStore();
+  const { add, toggle, saved, products, userId, orders } = useStore();
   const product = products.find((p) => p.id === productId) ?? products[0];
   const [photo, setPhoto] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -997,6 +997,10 @@ export function ProductPage() {
       profiles: { full_name: string | null } | null;
     }[]
   >([]);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewBody, setReviewBody] = useState("");
+  const [reviewNotice, setReviewNotice] = useState("");
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
   const dimensionItems = product.dimensions
@@ -1011,25 +1015,73 @@ export function ProductPage() {
   const outOfStock = stockLimit === 0;
   useEffect(() => {
     let active = true;
-    void supabase
-      .from("reviews")
-      .select(
-        "id,rating,title,body,created_at,profiles!reviews_user_id_fkey(full_name)",
+    const loadReviews = () => {
+      void supabase
+        .from("reviews")
+        .select(
+          "id,rating,title,body,created_at,profiles!reviews_user_id_fkey(full_name)",
+        )
+        .eq("product_id", product.id)
+        .eq("approved", true)
+        .order("created_at", { ascending: false })
+        .then(({ data }) => {
+          if (active) setReviews((data ?? []) as typeof reviews);
+        });
+    };
+    loadReviews();
+    const channel = supabase
+      .channel(`product-reviews-${product.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "reviews",
+          filter: `product_id=eq.${product.id}`,
+        },
+        loadReviews,
       )
-      .eq("product_id", product.id)
-      .eq("approved", true)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (active) setReviews((data ?? []) as typeof reviews);
-      });
+      .subscribe();
+    const interval = window.setInterval(loadReviews, 10_000);
     return () => {
       active = false;
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
     };
   }, [product.id]);
   const visibleReviews =
     reviewFilter === "All"
       ? reviews
       : reviews.filter((review) => review.rating === Number(reviewFilter));
+  const hasPurchased = orders.some(
+    (order) =>
+      order.status === "delivered" &&
+      order.order_items.some((item) => item.product_id === product.id),
+  );
+  const submitReview = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!userId || !hasPurchased || !reviewBody.trim()) return;
+    const { error } = await supabase.from("reviews").upsert(
+      {
+        user_id: userId,
+        product_id: product.id,
+        rating: reviewRating,
+        title: reviewTitle.trim(),
+        body: reviewBody.trim(),
+        approved: false,
+      },
+      { onConflict: "user_id,product_id" },
+    );
+    setReviewNotice(
+      error?.message ??
+        "Your review was submitted and is awaiting administrator approval.",
+    );
+    if (!error) {
+      setReviewTitle("");
+      setReviewBody("");
+      setReviewRating(5);
+    }
+  };
   return (
     <Layout>
       <main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-10 lg:py-10">
@@ -1205,6 +1257,52 @@ export function ProductPage() {
               ))}
             </div>
           </div>
+          {userId && hasPurchased ? (
+            <form
+              onSubmit={submitReview}
+              className="mt-7 rounded-2xl border border-border bg-[#f4f0e9] p-5"
+            >
+              <p className="text-sm font-semibold">Review your purchase</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-[130px_1fr]">
+                <select
+                  value={reviewRating}
+                  onChange={(event) => setReviewRating(Number(event.target.value))}
+                  className="h-11 rounded-xl border border-border bg-card px-3 text-sm"
+                >
+                  {[5, 4, 3, 2, 1].map((rating) => (
+                    <option value={rating} key={rating}>
+                      {rating} stars
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={reviewTitle}
+                  onChange={(event) => setReviewTitle(event.target.value)}
+                  placeholder="Review title"
+                  className="h-11 rounded-xl border border-border bg-card px-3 text-sm"
+                />
+              </div>
+              <textarea
+                value={reviewBody}
+                onChange={(event) => setReviewBody(event.target.value)}
+                required
+                placeholder="Tell other customers about this piece"
+                className="mt-3 min-h-24 w-full rounded-xl border border-border bg-card p-3 text-sm"
+              />
+              <button className="mt-3 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background">
+                Submit review
+              </button>
+              {reviewNotice && (
+                <p className="mt-3 text-xs font-semibold text-[#56714f]">
+                  {reviewNotice}
+                </p>
+              )}
+            </form>
+          ) : userId ? (
+            <p className="mt-7 rounded-2xl bg-secondary p-4 text-sm text-muted-foreground">
+              Review submission becomes available after this product is delivered.
+            </p>
+          ) : null}
           <div className="mt-7 grid gap-3 lg:grid-cols-2">
             {visibleReviews.map((review) => (
               <article

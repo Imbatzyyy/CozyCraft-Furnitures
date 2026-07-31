@@ -145,7 +145,7 @@ function App() {
     setFly({ kind, ...lastPointer.current, id: Date.now() });
   };
 
-  const mapProduct = useCallback((row: DbProduct): Product => ({
+  const mapProduct = useCallback((row: DbProduct, lowStockThreshold = 8): Product => ({
     id: row.id,
     name: row.name,
     category: row.category,
@@ -153,7 +153,7 @@ function App() {
     price: Number(row.price),
     rating: Number(row.rating).toFixed(1),
     reviews: row.review_count,
-    stock: row.stock_quantity === 0 ? "Out of stock" : row.stock_quantity <= 8 ? "Low stock" : "In stock",
+    stock: row.stock_quantity === 0 ? "Out of stock" : row.stock_quantity <= lowStockThreshold ? "Low stock" : "In stock",
     stockQuantity: row.stock_quantity,
     status: row.status,
     color: row.color,
@@ -165,14 +165,36 @@ function App() {
   }), []);
 
   const refreshProducts = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error || !data) return;
-    const mapped = (data as DbProduct[]).map(mapProduct);
+    const [productResult, categoryResult, settingResult] = await Promise.all([
+      supabase
+        .from("products")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase.from("categories").select("name,active"),
+      supabase
+        .from("store_settings")
+        .select("low_stock_threshold")
+        .eq("id", true)
+        .single(),
+    ]);
+    if (productResult.error || !productResult.data) return;
+    const threshold = settingResult.data?.low_stock_threshold ?? 8;
+    const mapped = (productResult.data as DbProduct[]).map((row) =>
+      mapProduct(row, threshold),
+    );
+    const activeCategories = new Set(
+      (categoryResult.data ?? [])
+        .filter((category) => category.active)
+        .map((category) => category.name),
+    );
     setAdminProducts(mapped);
-    setProducts(mapped.filter((item) => item.status === "active"));
+    setProducts(
+      mapped.filter(
+        (item) =>
+          item.status === "active" &&
+          (!activeCategories.size || activeCategories.has(item.category)),
+      ),
+    );
   }, [mapProduct]);
 
   const refreshOrders = useCallback(async () => {
@@ -375,6 +397,8 @@ function App() {
     const channel = supabase
       .channel("cozycraft-live-commerce")
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => void refreshProducts())
+      .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, () => void refreshProducts())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, () => void refreshProducts())
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, (payload) => {
         if (payload.eventType === "DELETE" && typeof payload.old?.id === "string") {
           setOrders((current) => current.filter((order) => order.id !== payload.old.id));

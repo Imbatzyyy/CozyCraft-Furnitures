@@ -839,9 +839,12 @@ export function InventoryPage() {
 }
 
 export function CategoriesPage() {
-  const { products } = useStore();
+  const { adminProducts: products } = useStore();
   const [categories, setCategories] = useState([
     {
+      id: 1,
+      slug: "living-room",
+      sortOrder: 1,
       name: "Living room",
       code: "01",
       description:
@@ -857,6 +860,9 @@ export function CategoriesPage() {
       ],
     },
     {
+      id: 2,
+      slug: "bedroom",
+      sortOrder: 2,
       name: "Bedroom",
       code: "02",
       description:
@@ -872,6 +878,9 @@ export function CategoriesPage() {
       ],
     },
     {
+      id: 3,
+      slug: "dining-room",
+      sortOrder: 3,
       name: "Dining room",
       code: "03",
       description:
@@ -890,6 +899,72 @@ export function CategoriesPage() {
   const [active, setActive] = useState("Living room");
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState("");
+  const loadCategories = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id,name,slug,sort_order,active")
+      .order("sort_order");
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+    const rows = data ?? [];
+    setCategories(
+      rows.map((row, index) => {
+        const categoryProducts = products.filter(
+          (product) => product.category === row.name,
+        );
+        const subcategoryNames = Array.from(
+          new Set(
+            categoryProducts
+              .map((product) => product.subcategory)
+              .filter(Boolean),
+          ),
+        );
+        return {
+          id: row.id,
+          slug: row.slug,
+          sortOrder: row.sort_order,
+          name: row.name,
+          code: String(index + 1).padStart(2, "0"),
+          description: `${row.name} products available in the customer storefront.`,
+          image:
+            categoryProducts[0]?.images[0] ??
+            products[0]?.images[0] ??
+            "",
+          count: categoryProducts.length,
+          featured: row.active,
+          live: row.active,
+          subs: subcategoryNames.map((name) => ({
+            name,
+            count: categoryProducts.filter(
+              (product) => product.subcategory === name,
+            ).length,
+            live: categoryProducts.some(
+              (product) =>
+                product.subcategory === name && product.status === "active",
+            ),
+          })),
+        };
+      }),
+    );
+  }, [products]);
+  useEffect(() => {
+    void loadCategories();
+    const channel = supabase
+      .channel("admin-categories")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "categories" },
+        () => void loadCategories(),
+      )
+      .subscribe();
+    const interval = window.setInterval(() => void loadCategories(), 10_000);
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadCategories]);
   const selected =
     categories.find((category) => category.name === active) ?? categories[0];
   const mutate = (fn: (category: any) => any) =>
@@ -898,21 +973,31 @@ export function CategoriesPage() {
         category.name === active ? fn(category) : category,
       ),
     );
-  const toggleSub = (name: string) =>
+  const toggleSub = async (name: string) => {
+    const sub = selected.subs.find((item) => item.name === name);
+    const { error } = await supabase
+      .from("products")
+      .update({ status: sub?.live ? "inactive" : "active" })
+      .eq("category", selected.name)
+      .eq("subcategory", name);
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
     mutate((category) => ({
       ...category,
       subs: category.subs.map((sub: any) =>
         sub.name === name ? { ...sub, live: !sub.live } : sub,
       ),
     }));
+    setNotice(`${name} visibility updated in the customer storefront.`);
+  };
   const addSub = (e: FormEvent) => {
     e.preventDefault();
     if (!draft.trim()) return;
-    mutate((category) => ({
-      ...category,
-      subs: [...category.subs, { name: draft.trim(), count: 0, live: true }],
-    }));
-    setNotice(`${draft.trim()} added to ${active}.`);
+    setNotice(
+      `Create or edit a product with “${draft.trim()}” as its subcategory and it will appear here automatically.`,
+    );
     setDraft("");
   };
   return (
@@ -929,7 +1014,19 @@ export function CategoriesPage() {
           </p>
         </div>
         <button
-          onClick={() => setNotice("New category draft created.")}
+          onClick={async () => {
+            const name = window.prompt("New category name");
+            if (!name?.trim()) return;
+            const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+            const { error } = await supabase.from("categories").insert({
+              name: name.trim(),
+              slug,
+              sort_order: categories.length + 1,
+              active: true,
+            });
+            setNotice(error?.message ?? `${name.trim()} saved to Supabase.`);
+            if (!error) await loadCategories();
+          }}
           className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
         >
           + New category
@@ -1007,20 +1104,24 @@ export function CategoriesPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    mutate((category) => ({
-                      ...category,
-                      featured: !category.featured,
-                    }));
-                    setNotice(
-                      `${selected.name} ${selected.featured ? "removed from" : "added to"} featured collections.`,
-                    );
+                    void supabase
+                      .from("categories")
+                      .update({ active: !selected.live })
+                      .eq("id", selected.id)
+                      .then(async ({ error }) => {
+                        setNotice(
+                          error?.message ??
+                            `${selected.name} is now ${selected.live ? "hidden from" : "visible in"} the storefront.`,
+                        );
+                        if (!error) await loadCategories();
+                      });
                   }}
                   className={`rounded-xl px-3 py-2 text-xs font-semibold ${selected.featured ? "bg-[#e9dfd1] text-foreground" : "border border-border"}`}
                 >
-                  {selected.featured ? "★ Featured" : "☆ Feature on home"}
+                  {selected.live ? "● Storefront live" : "○ Hidden"}
                 </button>
                 <button
-                  onClick={() => setNotice(`${selected.name} editor opened.`)}
+                  onClick={() => setNotice("Rename categories by creating the corrected category and reassigning its products.")}
                   className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
                 >
                   Edit category
