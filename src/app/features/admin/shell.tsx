@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -176,6 +177,238 @@ export const adminNav = [
   [Settings, "Settings", "/admin/settings"],
 ] as const;
 
+function WorkspaceSearch({
+  visibleNav,
+}: {
+  visibleNav: typeof adminNav[number][];
+}) {
+  const nav = useNavigate();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const {
+    adminProducts,
+    orders,
+    customerProfiles,
+    supportTickets,
+  } = useStore();
+
+  const results = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase();
+    const matches = (value: unknown) =>
+      String(value ?? "").toLocaleLowerCase().includes(term);
+
+    const sections = visibleNav.map(([Icon, label, route]) => ({
+      key: `section-${route}`,
+      title: label,
+      detail: "Admin section",
+      route,
+      Icon,
+    }));
+    const records = term
+      ? [
+          ...adminProducts
+            .filter((product) =>
+              [product.name, product.category, product.subcategory, product.id].some(matches),
+            )
+            .map((product) => ({
+              key: `product-${product.id}`,
+              title: product.name,
+              detail: `${product.category} product`,
+              route: "/admin/products",
+              Icon: Package,
+            })),
+          ...orders
+            .filter((order) =>
+              [
+                order.order_number,
+                order.status,
+                order.shipping_address.name,
+                order.shipping_address.email,
+              ].some(matches),
+            )
+            .map((order) => ({
+              key: `order-${order.id}`,
+              title: `Order #${order.order_number}`,
+              detail: `${order.shipping_address.name || "Customer"} · ${order.status}`,
+              route: "/admin/orders",
+              Icon: ClipboardList,
+            })),
+          ...customerProfiles
+            .filter((customer) =>
+              [customer.full_name, customer.username, customer.email, customer.phone].some(matches),
+            )
+            .map((customer) => ({
+              key: `customer-${customer.id}`,
+              title: customer.full_name || customer.username || "Customer",
+              detail: customer.email || "Customer account",
+              route: "/admin/customers",
+              Icon: Users,
+            })),
+          ...supportTickets
+            .filter((ticket) =>
+              [
+                ticket.ticket_number,
+                ticket.subject,
+                ticket.message,
+                ticket.status,
+                ticket.profiles?.full_name,
+                ticket.profiles?.email,
+              ].some(matches),
+            )
+            .map((ticket) => ({
+              key: `ticket-${ticket.id}`,
+              title: `Ticket ${ticket.ticket_number}`,
+              detail: `${ticket.subject} · ${ticket.status.replace("_", " ")}`,
+              route: "/admin/support",
+              Icon: MessageCircle,
+            })),
+        ]
+      : [];
+
+    return [
+      ...sections.filter((item) => !term || [item.title, item.detail].some(matches)),
+      ...records,
+    ].slice(0, 12);
+  }, [adminProducts, customerProfiles, orders, query, supportTickets, visibleNav]);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+    setActiveIndex(0);
+  }, []);
+  const choose = useCallback(
+    (route: string) => {
+      close();
+      nav(route);
+    },
+    [close, nav],
+  );
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [open]);
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-xs text-muted-foreground shadow-sm transition hover:bg-secondary md:flex"
+        aria-label="Search workspace"
+      >
+        <Search size={15} />
+        Search workspace
+        <kbd className="ml-4 rounded-md bg-secondary px-1.5 py-0.5 text-[10px]">
+          {navigator.platform.toLowerCase().includes("mac") ? "⌘ K" : "Ctrl K"}
+        </kbd>
+      </button>
+      {open && (
+        <div
+          className="fixed inset-0 z-[80] flex items-start justify-center bg-black/35 px-4 pt-[12vh] backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) close();
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Search workspace"
+            className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+          >
+            <label className="flex h-16 items-center gap-3 border-b border-border px-5">
+              <Search size={20} className="text-muted-foreground" />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") close();
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setActiveIndex((index) => Math.min(index + 1, results.length - 1));
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActiveIndex((index) => Math.max(index - 1, 0));
+                  }
+                  if (event.key === "Enter" && results[activeIndex]) {
+                    choose(results[activeIndex].route);
+                  }
+                }}
+                placeholder="Search products, orders, customers, tickets…"
+                className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+              />
+              <button
+                type="button"
+                onClick={close}
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                aria-label="Close search"
+              >
+                <X size={17} />
+              </button>
+            </label>
+            <div className="max-h-[55vh] overflow-y-auto p-2">
+              {results.length ? (
+                results.map((result, index) => (
+                  <button
+                    type="button"
+                    key={result.key}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => choose(result.route)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                      activeIndex === index ? "bg-secondary" : "hover:bg-secondary/60"
+                    }`}
+                  >
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border bg-card">
+                      <result.Icon size={16} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <b className="block truncate text-sm">{result.title}</b>
+                      <span className="mt-0.5 block truncate text-xs capitalize text-muted-foreground">
+                        {result.detail}
+                      </span>
+                    </span>
+                    <ArrowRight size={15} className="text-muted-foreground" />
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-12 text-center">
+                  <Search className="mx-auto text-muted-foreground" size={22} />
+                  <p className="mt-3 text-sm font-semibold">No workspace results</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Try a product, order number, customer, or ticket.
+                  </p>
+                </div>
+              )}
+            </div>
+            <footer className="flex items-center gap-4 border-t border-border bg-secondary/45 px-4 py-2.5 text-[10px] text-muted-foreground">
+              <span>↑↓ Navigate</span>
+              <span>Enter Open</span>
+              <span>Esc Close</span>
+            </footer>
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function AdminShell({
   children,
   title,
@@ -303,13 +536,7 @@ export function AdminShell({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-xs text-muted-foreground shadow-sm md:flex">
-              <Search size={15} />
-              Search workspace{" "}
-              <kbd className="ml-4 rounded-md bg-secondary px-1.5 py-0.5 text-[10px]">
-                ⌘ K
-              </kbd>
-            </button>
+            <WorkspaceSearch visibleNav={visibleNav} />
             <NotificationCenter />
             <div className="relative">
               <button
