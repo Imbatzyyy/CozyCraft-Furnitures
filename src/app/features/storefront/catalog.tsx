@@ -1001,6 +1001,8 @@ export function ProductPage() {
   const [reviewTitle, setReviewTitle] = useState("");
   const [reviewBody, setReviewBody] = useState("");
   const [reviewNotice, setReviewNotice] = useState("");
+  const [existingReview, setExistingReview] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
   const dimensionItems = product.dimensions
@@ -1041,6 +1043,16 @@ export function ProductPage() {
         },
         loadReviews,
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "products",
+          filter: `id=eq.${product.id}`,
+        },
+        loadReviews,
+      )
       .subscribe();
     const interval = window.setInterval(loadReviews, 10_000);
     return () => {
@@ -1049,6 +1061,29 @@ export function ProductPage() {
       void supabase.removeChannel(channel);
     };
   }, [product.id]);
+  useEffect(() => {
+    if (!userId) {
+      setExistingReview(false);
+      return;
+    }
+    let active = true;
+    void supabase
+      .from("reviews")
+      .select("rating,title,body")
+      .eq("user_id", userId)
+      .eq("product_id", product.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active || !data) return;
+        setExistingReview(true);
+        setReviewRating(data.rating);
+        setReviewTitle(data.title ?? "");
+        setReviewBody(data.body ?? "");
+      });
+    return () => {
+      active = false;
+    };
+  }, [product.id, userId]);
   const visibleReviews =
     reviewFilter === "All"
       ? reviews
@@ -1060,26 +1095,43 @@ export function ProductPage() {
   );
   const submitReview = async (event: FormEvent) => {
     event.preventDefault();
-    if (!userId || !hasPurchased || !reviewBody.trim()) return;
-    const { error } = await supabase.from("reviews").upsert(
-      {
-        user_id: userId,
-        product_id: product.id,
-        rating: reviewRating,
-        title: reviewTitle.trim(),
-        body: reviewBody.trim(),
-        approved: false,
-      },
-      { onConflict: "user_id,product_id" },
-    );
+    if (
+      !userId ||
+      !hasPurchased ||
+      reviewBody.trim().length < 5 ||
+      submittingReview
+    )
+      return;
+    setSubmittingReview(true);
+    const { data, error } = await supabase.rpc("submit_product_review", {
+      p_product_id: product.id,
+      p_rating: reviewRating,
+      p_title: reviewTitle.trim(),
+      p_body: reviewBody.trim(),
+    });
+    setSubmittingReview(false);
+    const published = Array.isArray(data) ? data[0]?.approved : true;
     setReviewNotice(
       error?.message ??
-        "Your review was submitted and is awaiting administrator approval.",
+        (published
+          ? existingReview
+            ? "Your verified review was updated."
+            : "Your verified review is now published."
+          : "Your review was updated and remains hidden by moderation."),
     );
     if (!error) {
-      setReviewTitle("");
-      setReviewBody("");
-      setReviewRating(5);
+      setExistingReview(true);
+      const { data: refreshedReviews } = await supabase
+        .from("reviews")
+        .select(
+          "id,rating,title,body,created_at,profiles!reviews_user_id_fkey(full_name)",
+        )
+        .eq("product_id", product.id)
+        .eq("approved", true)
+        .order("created_at", { ascending: false });
+      if (refreshedReviews) {
+        setReviews(refreshedReviews as typeof reviews);
+      }
     }
   };
   return (
@@ -1226,7 +1278,10 @@ export function ProductPage() {
             </div>
           </section>
         </div>
-        <section className="mt-16 border-t border-border pt-10">
+        <section
+          id="reviews"
+          className="mt-16 scroll-mt-24 border-t border-border pt-10"
+        >
           <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
             <div>
               <p className="text-[10px] font-bold tracking-[.17em] text-muted-foreground">
@@ -1262,7 +1317,11 @@ export function ProductPage() {
               onSubmit={submitReview}
               className="mt-7 rounded-2xl border border-border bg-[#f4f0e9] p-5"
             >
-              <p className="text-sm font-semibold">Review your purchase</p>
+              <p className="text-sm font-semibold">
+                {existingReview
+                  ? "Update your verified review"
+                  : "Review your delivered purchase"}
+              </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-[130px_1fr]">
                 <select
                   value={reviewRating}
@@ -1286,11 +1345,20 @@ export function ProductPage() {
                 value={reviewBody}
                 onChange={(event) => setReviewBody(event.target.value)}
                 required
+                minLength={5}
+                maxLength={2000}
                 placeholder="Tell other customers about this piece"
                 className="mt-3 min-h-24 w-full rounded-xl border border-border bg-card p-3 text-sm"
               />
-              <button className="mt-3 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background">
-                Submit review
+              <button
+                disabled={submittingReview}
+                className="mt-3 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submittingReview
+                  ? "Saving review..."
+                  : existingReview
+                    ? "Update review"
+                    : "Publish review"}
               </button>
               {reviewNotice && (
                 <p className="mt-3 text-xs font-semibold text-[#56714f]">
