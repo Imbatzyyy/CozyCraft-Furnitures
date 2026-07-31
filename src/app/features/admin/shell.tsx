@@ -352,36 +352,154 @@ export function AdminShell({
 
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState([
-    {
-      id: 1,
-      title: "Low-stock alert",
-      text: "Mara Lounge Chair has reached its reorder point.",
-      new: true,
-    },
-    {
-      id: 2,
-      title: "Order awaiting review",
-      text: "Order #CC-2026-0814 is ready for fulfillment.",
-      new: true,
-    },
-    {
-      id: 3,
-      title: "New customer review",
-      text: "Luna Reyes left a 5-star review for Noma Dining Chair.",
-      new: false,
-    },
-  ]);
-  const unread = items.filter((i) => i.new).length;
+  const nav = useNavigate();
+  const { userId } = useStore();
+  type NotificationItem = {
+    id: number;
+    kind: "order" | "review" | "support" | "inventory";
+    title: string;
+    message: string;
+    route: string;
+    created_at: string;
+    unread: boolean;
+  };
+  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [error, setError] = useState("");
+
+  const loadNotifications = useCallback(async () => {
+    if (!userId) {
+      setItems([]);
+      return;
+    }
+    const [notificationResult, readResult] = await Promise.all([
+      supabase
+        .from("admin_notifications")
+        .select("id,kind,title,message,route,created_at")
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("admin_notification_reads")
+        .select("notification_id,read_at,dismissed_at")
+        .eq("user_id", userId),
+    ]);
+    if (notificationResult.error || readResult.error) {
+      setError(
+        notificationResult.error?.message ??
+          readResult.error?.message ??
+          "Unable to load notifications.",
+      );
+      return;
+    }
+    const reads = new Map(
+      (readResult.data ?? []).map((row) => [row.notification_id, row]),
+    );
+    setItems(
+      (notificationResult.data ?? [])
+        .filter((row) => !reads.get(row.id)?.dismissed_at)
+        .map((row) => ({
+          ...row,
+          unread: !reads.get(row.id)?.read_at,
+        })) as NotificationItem[],
+    );
+    setError("");
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void loadNotifications();
+    const channel = supabase
+      .channel(`admin-notifications-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "admin_notifications" },
+        () => void loadNotifications(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "admin_notification_reads",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => void loadNotifications(),
+      )
+      .subscribe();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadNotifications();
+    }, 10_000);
+    const refreshOnFocus = () => void loadNotifications();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadNotifications, userId]);
+
+  const saveReadState = async (
+    notificationIds: number[],
+    dismissed = false,
+  ) => {
+    if (!userId || !notificationIds.length) return;
+    const now = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from("admin_notification_reads")
+      .upsert(
+        notificationIds.map((notificationId) => ({
+          notification_id: notificationId,
+          user_id: userId,
+          read_at: now,
+          dismissed_at: dismissed ? now : null,
+        })),
+        { onConflict: "notification_id,user_id" },
+      );
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setItems((current) =>
+      dismissed
+        ? current.filter((item) => !notificationIds.includes(item.id))
+        : current.map((item) =>
+            notificationIds.includes(item.id)
+              ? { ...item, unread: false }
+              : item,
+          ),
+    );
+  };
+
+  const openNotification = async (item: NotificationItem) => {
+    if (item.unread) await saveReadState([item.id]);
+    setOpen(false);
+    nav(item.route);
+  };
+
+  const unread = items.filter((item) => item.unread).length;
+  const relativeTime = (date: string) => {
+    const minutes = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(date).getTime()) / 60_000),
+    );
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
   return (
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
+        aria-label={`Notifications, ${unread} unread`}
         className="relative grid h-10 w-10 place-items-center rounded-xl border border-border bg-card shadow-sm"
       >
         <Bell size={18} />
         {unread > 0 && (
-          <i className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-[#9a6047]" />
+          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-[#9a6047] px-1 text-[9px] font-bold text-white">
+            {unread > 99 ? "99+" : unread}
+          </span>
         )}
       </button>
       {open && (
@@ -394,9 +512,10 @@ export function NotificationCenter() {
               </p>
             </div>
             <button
+              disabled={unread === 0}
               onClick={() =>
-                setItems((current) =>
-                  current.map((i) => ({ ...i, new: false })),
+                void saveReadState(
+                  items.filter((item) => item.unread).map((item) => item.id),
                 )
               }
               className="text-xs font-semibold underline underline-offset-4"
@@ -405,32 +524,49 @@ export function NotificationCenter() {
             </button>
           </div>
           <div className="max-h-80 overflow-y-auto">
+            {error && (
+              <p className="bg-[#f3e5d4] px-4 py-3 text-xs font-semibold text-[#8b5c46]">
+                {error}
+              </p>
+            )}
             {items.map((item) => (
               <button
-                onClick={() =>
-                  setItems((current) =>
-                    current.map((i) =>
-                      i.id === item.id ? { ...i, new: false } : i,
-                    ),
-                  )
-                }
+                onClick={() => void openNotification(item)}
                 className="flex w-full gap-3 border-b border-border px-4 py-3 text-left hover:bg-secondary"
                 key={item.id}
               >
                 <span
-                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.new ? "bg-[#b8875c]" : "bg-border"}`}
+                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.unread ? "bg-[#b8875c]" : "bg-border"}`}
                 />
-                <span>
+                <span className="min-w-0 flex-1">
                   <b className="block text-xs">{item.title}</b>
                   <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                    {item.text}
+                    {item.message}
+                  </span>
+                  <span className="mt-1 block text-[10px] font-semibold text-muted-foreground">
+                    {relativeTime(item.created_at)}
                   </span>
                 </span>
               </button>
             ))}
+            {!items.length && !error && (
+              <div className="px-5 py-10 text-center">
+                <Bell className="mx-auto text-muted-foreground" size={20} />
+                <p className="mt-3 text-sm font-semibold">You’re all caught up.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  New customer activity will appear here.
+                </p>
+              </div>
+            )}
           </div>
           <button
-            onClick={() => setItems([])}
+            disabled={items.length === 0}
+            onClick={() =>
+              void saveReadState(
+                items.map((item) => item.id),
+                true,
+              )
+            }
             className="w-full py-3 text-xs font-semibold text-muted-foreground hover:bg-secondary"
           >
             Clear notifications
