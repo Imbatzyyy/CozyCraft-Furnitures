@@ -1504,7 +1504,11 @@ export function SupportPage() {
 }
 
 export function ActivityLogsPage() {
-  const [scope, setScope] = useState("All actions");
+  const [scope, setScope] = useState("all");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   type ActivityRow = {
     id: number;
     action: string;
@@ -1516,14 +1520,25 @@ export function ActivityLogsPage() {
   };
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const loadActivity = useCallback(async () => {
-    const { data } = await supabase
+    setError("");
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+    const { data, error: loadError } = await supabase
       .from("activity_logs")
       .select(
         "id,action,entity_type,entity_id,details,created_at,profiles!activity_logs_actor_id_fkey(full_name,email)",
       )
+      .gte("created_at", since.toISOString())
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(500);
+    if (loadError) {
+      setError(loadError.message);
+      setLoading(false);
+      return;
+    }
     setRows((data ?? []) as ActivityRow[]);
+    setLastUpdated(new Date());
+    setLoading(false);
   }, []);
   useEffect(() => {
     void loadActivity();
@@ -1531,53 +1546,125 @@ export function ActivityLogsPage() {
       .channel("admin-activity")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "activity_logs" },
+        { event: "*", schema: "public", table: "activity_logs" },
         () => void loadActivity(),
       )
       .subscribe();
-    const interval = window.setInterval(() => void loadActivity(), 10_000);
+    const interval = window.setInterval(() => void loadActivity(), 30_000);
     return () => {
       window.clearInterval(interval);
       void supabase.removeChannel(channel);
     };
   }, [loadActivity]);
-  const filteredRows =
-    scope === "All actions"
-      ? rows
-      : rows.filter(
-          (row) =>
-            row.entity_type.toLowerCase() ===
-            scope.toLowerCase().replaceAll(" ", "_"),
-        );
+  const scopes = [
+    ["all", "All actions"],
+    ["products", "Products"],
+    ["orders", "Orders & payments"],
+    ["reviews", "Reviews"],
+    ["categories", "Categories"],
+    ["store_settings", "Store settings"],
+    ["customers", "Customers & team"],
+    ["support", "Support"],
+    ["cart", "Shopping carts"],
+    ["wishlist", "Wishlists"],
+    ["addresses", "Delivery addresses"],
+  ] as const;
+  const belongsToScope = (row: ActivityRow) => {
+    const entity = row.entity_type.toLowerCase();
+    const action = row.action.toLowerCase();
+    if (scope === "all") return true;
+    if (scope === "orders") return ["order", "orders"].includes(entity);
+    if (scope === "customers")
+      return entity === "profiles" || action.startsWith("team_member_");
+    if (scope === "support") return ["support_ticket", "support_tickets"].includes(entity);
+    if (scope === "cart") return ["cart_item", "cart_items"].includes(entity);
+    if (scope === "wishlist") return ["wishlist_item", "wishlist_items"].includes(entity);
+    if (scope === "addresses") return ["address", "addresses"].includes(entity);
+    return entity === scope || entity === scope.replace(/s$/, "");
+  };
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredRows = rows.filter((row) => {
+    if (!belongsToScope(row)) return false;
+    if (!normalizedQuery) return true;
+    return [
+      row.action,
+      row.entity_type,
+      row.entity_id,
+      row.profiles?.full_name,
+      row.profiles?.email,
+      JSON.stringify(row.details),
+    ].some((value) => String(value ?? "").toLowerCase().includes(normalizedQuery));
+  });
+  const humanizeAction = (action: string) =>
+    action
+      .replace(/^insert_/, "created ")
+      .replace(/^update_/, "updated ")
+      .replace(/^delete_/, "deleted ")
+      .replace(/_/g, " ");
+  const scopeLabel = scopes.find(([value]) => value === scope)?.[1] ?? "All actions";
   return (
     <AdminShell title="Activity logs">
-      <div className="flex justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
             AUDIT TRAIL
           </p>
           <h2 className="mt-2 text-3xl font-semibold">Activity logs</h2>
+          <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-[#68805f]" />
+            Live database audit trail
+            {lastUpdated && ` · Updated ${lastUpdated.toLocaleTimeString("en-PH", {
+              timeZone: "Asia/Manila",
+              hour: "numeric",
+              minute: "2-digit",
+            })}`}
+          </p>
         </div>
-        <select
-          value={scope}
-          onChange={(e) => setScope(e.target.value)}
-          className="h-10 rounded-xl border border-border bg-card px-3 text-xs"
-        >
-          <option>All actions</option>
-          <option>Products</option>
-          <option>Orders</option>
-          <option>Reviews</option>
-          <option>Categories</option>
-          <option>Store settings</option>
-        </select>
+        <div className="flex flex-wrap gap-2">
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3">
+            <Search size={15} className="text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search activity"
+              className="w-36 bg-transparent text-xs outline-none"
+            />
+          </label>
+          <select
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            className="h-10 rounded-xl border border-border bg-card px-3 text-xs"
+          >
+            {scopes.map(([value, label]) => (
+              <option value={value} key={value}>{label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => void loadActivity()}
+            className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-semibold transition hover:bg-secondary"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       <section className="mt-7 rounded-2xl border border-border bg-card p-6">
         <div className="border-l-2 border-[#b8a58d] pl-4">
           <p className="text-xs text-muted-foreground">
-            Showing {scope.toLowerCase()} · Last 7 days
+            Showing {scopeLabel.toLowerCase()} · {filteredRows.length} events · Last 7 days
           </p>
         </div>
+        {error && (
+          <div className="mt-5 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">
+            Activity could not be refreshed: {error}
+          </div>
+        )}
         <div className="mt-7 space-y-6">
+          {loading && (
+            <p className="text-center text-sm text-muted-foreground">
+              Loading live activity…
+            </p>
+          )}
           {filteredRows.map((row, i) => (
             <div className="relative flex gap-4" key={row.id}>
               <span className="mt-1.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-secondary text-xs font-bold">
@@ -1586,7 +1673,7 @@ export function ActivityLogsPage() {
               <div>
                 <p className="text-sm">
                   <b>{row.profiles?.full_name || row.profiles?.email || "System"}</b>{" "}
-                  {row.action.replace(/_/g, " ")}
+                  {humanizeAction(row.action)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {String(
@@ -1602,7 +1689,7 @@ export function ActivityLogsPage() {
               </div>
             </div>
           ))}
-          {!filteredRows.length && (
+          {!loading && !filteredRows.length && (
             <p className="text-center text-sm text-muted-foreground">
               No recorded activity for this filter yet.
             </p>
