@@ -481,7 +481,7 @@ export function Wishlist() {
 }
 
 export function CustomerOrders() {
-  const { user, orders } = useStore();
+  const { user, orders, products } = useStore();
   const [active, setActive] = useState("");
   useEffect(() => {
     if (!active && orders[0]) setActive(orders[0].id);
@@ -604,11 +604,18 @@ export function CustomerOrders() {
                   on its product page.
                 </p>
                 <div className="mt-4 grid gap-2">
-                  {order.order_items.map((item) =>
-                    item.product_id ? (
+                  {order.order_items.map((item) => {
+                    const reviewProductId =
+                      item.product_id ??
+                      products.find(
+                        (product) =>
+                          product.name.trim().toLowerCase() ===
+                          item.product_name.trim().toLowerCase(),
+                      )?.id;
+                    return reviewProductId ? (
                       <Link
                         key={item.id}
-                        to={`/products/${item.product_id}#reviews`}
+                        to={`/products/${reviewProductId}#reviews`}
                         className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold transition hover:bg-secondary"
                       >
                         <span>{item.product_name}</span>
@@ -617,8 +624,8 @@ export function CustomerOrders() {
                           Review product
                         </span>
                       </Link>
-                    ) : null,
-                  )}
+                    ) : null;
+                  })}
                 </div>
               </div>
             )}

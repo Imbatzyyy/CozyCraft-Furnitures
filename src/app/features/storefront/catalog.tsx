@@ -1091,7 +1091,12 @@ export function ProductPage() {
   const hasPurchased = orders.some(
     (order) =>
       order.status === "delivered" &&
-      order.order_items.some((item) => item.product_id === product.id),
+      order.order_items.some(
+        (item) =>
+          item.product_id === product.id ||
+          item.product_name.trim().toLowerCase() ===
+            product.name.trim().toLowerCase(),
+      ),
   );
   const submitReview = async (event: FormEvent) => {
     event.preventDefault();

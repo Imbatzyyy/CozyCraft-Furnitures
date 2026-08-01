@@ -150,6 +150,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     setDefaultAddress,
     user,
     userEmail,
+    products,
   } = useStore();
   const blank: Address = {
     id: "",
@@ -1358,11 +1359,27 @@ export function Profile() {
                               <p className="truncate text-sm font-semibold">{item.product_name}</p>
                               <p className="mt-1 text-xs text-muted-foreground">Qty {item.quantity} · {money(Number(item.unit_price))}</p>
                             </div>
-                            {selectedOrder.status === "delivered" && item.product_id && (
-                              <Link to={`/products/${item.product_id}#reviews`} className="rounded-lg border border-border px-3 py-2 text-[10px] font-semibold hover:bg-secondary">
-                                Review
-                              </Link>
-                            )}
+                            {selectedOrder.status === "delivered" && (() => {
+                              const reviewProductId =
+                                item.product_id ??
+                                products.find(
+                                  (product) =>
+                                    product.name.trim().toLowerCase() ===
+                                    item.product_name.trim().toLowerCase(),
+                                )?.id;
+                              return reviewProductId ? (
+                                <Link
+                                  to={`/products/${reviewProductId}#reviews`}
+                                  className="flex items-center gap-1.5 rounded-lg border border-foreground bg-foreground px-3 py-2 text-[10px] font-semibold text-background transition hover:opacity-85"
+                                >
+                                  <Star size={12} /> Review product
+                                </Link>
+                              ) : (
+                                <span className="rounded-lg bg-secondary px-3 py-2 text-[10px] text-muted-foreground">
+                                  Product unavailable
+                                </span>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>
