@@ -572,6 +572,7 @@ export function Profile() {
     orders,
     addresses,
     supportTickets,
+    add,
     submitTicket,
     saveProfile,
     requestEmailChange,
@@ -590,6 +591,8 @@ export function Profile() {
   const [profileEditing, setProfileEditing] = useState(false);
   const [confirmProfileSave, setConfirmProfileSave] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [orderFilter, setOrderFilter] = useState("all");
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [securityView, setSecurityView] = useState<"home" | "setup" | "change">(
     "home",
   );
@@ -669,6 +672,35 @@ export function Profile() {
       nav("/login?reason=invalid-login", { replace: true });
     });
   }, [authReady, nav, role, signOut, user]);
+  const orderFilters = [
+    ["all", "All"],
+    ["pending", "To process"],
+    ["processing", "Processing"],
+    ["packed", "Packed"],
+    ["shipped", "To receive"],
+    ["delivered", "Completed"],
+    ["cancelled", "Cancelled"],
+  ] as const;
+  const visibleOrders = useMemo(
+    () =>
+      orderFilter === "all"
+        ? orders
+        : orders.filter((order) => order.status === orderFilter),
+    [orderFilter, orders],
+  );
+  useEffect(() => {
+    if (!visibleOrders.length) {
+      setSelectedOrderId("");
+      return;
+    }
+    if (!visibleOrders.some((order) => order.id === selectedOrderId)) {
+      setSelectedOrderId(visibleOrders[0].id);
+    }
+  }, [selectedOrderId, visibleOrders]);
+  const selectedOrder =
+    visibleOrders.find((order) => order.id === selectedOrderId) ??
+    visibleOrders[0] ??
+    null;
   if (!user) return <Account mode="login" />;
   if (role && role !== "customer") {
     return (
@@ -1191,50 +1223,193 @@ export function Profile() {
             )}
             {tab === "Orders" && (
               <>
-                <div className="flex justify-between">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
                       PURCHASE HISTORY
                     </p>
-                    <h2 className="mt-2 font-serif text-3xl">Your orders.</h2>
+                    <h2 className="mt-2 font-serif text-3xl">Your order center.</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Follow every furniture order from confirmation to delivery.
+                    </p>
                   </div>
                   <Link
                     to="/orders"
-                    className="text-xs font-semibold underline underline-offset-4"
+                    className="rounded-xl border border-border px-4 py-2.5 text-xs font-semibold transition hover:bg-secondary"
                   >
-                    Track all orders
+                    Open full tracking
                   </Link>
                 </div>
-                <div className="mt-6 grid gap-3">
-                  {orders.map((order) => (
-                    <Link
-                      to="/orders"
-                      key={order.id}
-                      className="rounded-2xl border border-border p-4 hover:bg-secondary"
-                    >
-                      <div className="flex justify-between gap-3">
-                        <b className="text-sm">Order #{order.order_number}</b>
-                        <Status>
-                          {order.status.replace(/_/g, " ").replace(/^./, (character) => character.toUpperCase())}
-                        </Status>
-                      </div>
-                      <p className="mt-2 text-sm">
-                        {order.order_items
-                          .map((item) => `${item.product_name}${item.quantity > 1 ? ` × ${item.quantity}` : ""}`)
-                          .join(" · ")}
-                      </p>
-                      <p className="mt-2 flex justify-between text-xs text-muted-foreground">
-                        <span>{new Date(order.created_at).toLocaleDateString("en-PH")}</span>
-                        <span>{money(Number(order.total))}</span>
-                      </p>
-                    </Link>
-                  ))}
-                  {!orders.length && (
-                    <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                      Your confirmed orders will appear here.
-                    </div>
-                  )}
+                <div className="mt-6 flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {orderFilters.map(([value, label]) => {
+                    const count = value === "all"
+                      ? orders.length
+                      : orders.filter((order) => order.status === value).length;
+                    return (
+                      <button
+                        type="button"
+                        key={value}
+                        onClick={() => setOrderFilter(value)}
+                        className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${
+                          orderFilter === value
+                            ? "bg-foreground text-background"
+                            : "border border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        }`}
+                      >
+                        {label} <span className="ml-1 opacity-70">{count}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                {!selectedOrder ? (
+                  <div className="mt-5 rounded-2xl border border-dashed border-border p-8 text-center">
+                    <Package className="mx-auto text-muted-foreground" size={23} />
+                    <p className="mt-3 text-sm font-semibold">No orders in this status.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Orders will move here automatically as CozyCraft updates fulfillment.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-5 grid gap-4 xl:grid-cols-[.72fr_1.28fr]">
+                    <div className="max-h-[630px] space-y-2 overflow-y-auto pr-1">
+                      {visibleOrders.map((order) => (
+                        <button
+                          type="button"
+                          key={order.id}
+                          onClick={() => setSelectedOrderId(order.id)}
+                          className={`w-full rounded-2xl border p-4 text-left transition ${
+                            selectedOrder.id === order.id
+                              ? "border-foreground bg-secondary shadow-sm"
+                              : "border-border hover:bg-secondary/60"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <span>
+                              <b className="block text-sm">#{order.order_number}</b>
+                              <span className="mt-1 block text-[11px] text-muted-foreground">
+                                {new Date(order.created_at).toLocaleDateString("en-PH", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                              </span>
+                            </span>
+                            <Status>{order.status.replace(/_/g, " ")}</Status>
+                          </div>
+                          <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">
+                            {order.order_items.map((item) => item.product_name).join(" · ")}
+                          </p>
+                          <b className="mt-3 block text-sm">{money(Number(order.total))}</b>
+                        </button>
+                      ))}
+                    </div>
+                    <article className="overflow-hidden rounded-2xl border border-border bg-[#fcfbf8]">
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-5">
+                        <div>
+                          <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">ORDER DETAILS</p>
+                          <h3 className="mt-2 font-serif text-2xl">#{selectedOrder.order_number}</h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Placed {new Date(selectedOrder.created_at).toLocaleString("en-PH", {
+                              timeZone: "Asia/Manila",
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}
+                          </p>
+                        </div>
+                        <Status>{selectedOrder.status.replace(/_/g, " ")}</Status>
+                      </div>
+                      {selectedOrder.status === "cancelled" ? (
+                        <div className="border-b border-border bg-[#f3e5d4] p-4 text-xs text-[#8b5c46]">
+                          This order was cancelled. It will not proceed to fulfillment.
+                        </div>
+                      ) : (
+                        <div className="border-b border-border p-5">
+                          <p className="text-xs font-semibold">Delivery progress</p>
+                          <div className="mt-4 flex items-start">
+                            {["pending", "processing", "packed", "shipped", "delivered"].map((step, index, steps) => {
+                              const current = steps.indexOf(selectedOrder.status);
+                              const complete = index <= current;
+                              return (
+                                <div key={step} className="flex min-w-0 flex-1 items-start last:flex-none">
+                                  <div className="min-w-0 text-center">
+                                    <span className={`mx-auto grid h-7 w-7 place-items-center rounded-full ${complete ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>
+                                      {complete ? <Check size={13} /> : index + 1}
+                                    </span>
+                                    <span className="mt-2 hidden text-[9px] capitalize text-muted-foreground sm:block">{step}</span>
+                                  </div>
+                                  {index < steps.length - 1 && (
+                                    <span className={`mt-3.5 h-px flex-1 ${index < current ? "bg-foreground" : "bg-border"}`} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      <div className="divide-y divide-border px-5">
+                        {selectedOrder.order_items.map((item) => (
+                          <div key={item.id} className="flex items-center gap-3 py-4">
+                            {item.image_url ? (
+                              <ImageWithFallback src={item.image_url} alt={item.product_name} className="h-16 w-16 rounded-xl object-cover" />
+                            ) : (
+                              <span className="grid h-16 w-16 place-items-center rounded-xl bg-secondary"><Package size={18} /></span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold">{item.product_name}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">Qty {item.quantity} · {money(Number(item.unit_price))}</p>
+                            </div>
+                            {selectedOrder.status === "delivered" && item.product_id && (
+                              <Link to={`/products/${item.product_id}#reviews`} className="rounded-lg border border-border px-3 py-2 text-[10px] font-semibold hover:bg-secondary">
+                                Review
+                              </Link>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid gap-4 border-t border-border bg-secondary/45 p-5 sm:grid-cols-2">
+                        <div>
+                          <p className="text-[10px] font-bold tracking-[.12em] text-muted-foreground">DELIVER TO</p>
+                          <p className="mt-2 text-xs leading-5">
+                            {[selectedOrder.shipping_address.name, selectedOrder.shipping_address.line, selectedOrder.shipping_address.barangay, selectedOrder.shipping_address.city, selectedOrder.shipping_address.province, selectedOrder.shipping_address.postal].filter(Boolean).join(", ")}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold tracking-[.12em] text-muted-foreground">PAYMENT</p>
+                          <p className="mt-2 text-xs capitalize">{selectedOrder.payment_method.replace(/_/g, " ")} · {selectedOrder.payment_status}</p>
+                          <p className="mt-2 text-lg font-semibold">{money(Number(selectedOrder.total))}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 border-t border-border p-5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            selectedOrder.order_items.forEach((item) => {
+                              if (item.product_id) add(item.product_id, item.quantity);
+                            });
+                            setNotice("Available pieces from this order were added to your bag.");
+                            nav("/cart");
+                          }}
+                          className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background"
+                        >
+                          <ShoppingBag size={14} /> Buy again
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTicket(`Concern about order #${selectedOrder.order_number}: `);
+                            setTab("Support");
+                          }}
+                          className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary"
+                        >
+                          <MessageCircle size={14} /> Contact support
+                        </button>
+                        <Link to="/orders" className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary">
+                          <ArrowRight size={14} /> Full tracking
+                        </Link>
+                      </div>
+                    </article>
+                  </div>
+                )}
               </>
             )}
             {tab === "Addresses" && <AddressManager notify={setNotice} />}
