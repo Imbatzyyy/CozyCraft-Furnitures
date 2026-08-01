@@ -77,6 +77,10 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import {
+  parseDimensionSpecs,
+  parseMaterialSpecs,
+} from "@/lib/product-specs";
 
 import {
   Product,
@@ -1005,10 +1009,10 @@ export function ProductPage() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
-  const dimensionItems = product.dimensions
-    .split(/\n|•/)
-    .map((dimension) => dimension.replace(/^-\s*/, "").trim())
-    .filter(Boolean);
+  const materialItems = parseMaterialSpecs(
+    product.material || materialFor(product.id),
+  );
+  const dimensionItems = parseDimensionSpecs(product.dimensions);
   const stockLimit =
     typeof product.stockQuantity === "number"
       ? Math.max(0, product.stockQuantity)
@@ -1199,18 +1203,30 @@ export function ProductPage() {
               {product.description}
             </p>
             <div className="mt-8 border-y border-border py-5 text-sm">
-              <div className="flex justify-between py-2">
-                <span className="text-muted-foreground">Finish / Material</span>
-                <span className="max-w-[55%] text-right">
-                  {product.color} · {materialFor(product.id)}
-                </span>
+              <div className="flex items-start justify-between gap-5 py-2">
+                <span className="shrink-0 text-muted-foreground">Finish / Material</span>
+                <ul className="w-full max-w-[65%] space-y-2">
+                  {materialItems.map((material, index) => (
+                    <li key={`${material.type}-${index}`} className="grid grid-cols-[10px_minmax(0,.8fr)_minmax(0,1.2fr)] gap-2">
+                      <span aria-hidden="true">•</span>
+                      <strong>{material.type || "Material"}</strong>
+                      <span className="text-right text-muted-foreground">
+                        {material.description || (index === 0 ? product.color : "")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div className="flex justify-between py-2">
-                <span className="text-muted-foreground">Dimensions</span>
-                <ul className="max-w-[60%] space-y-1 text-right">
-                  {dimensionItems.map((dimension) => (
-                    <li key={dimension} className="before:mr-2 before:content-['•']">
-                      {dimension}
+              <div className="flex items-start justify-between gap-5 py-2">
+                <span className="shrink-0 text-muted-foreground">Dimensions</span>
+                <ul className="w-full max-w-[65%] space-y-2">
+                  {dimensionItems.map((dimension, index) => (
+                    <li key={`${dimension.label}-${index}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto] gap-2">
+                      <span aria-hidden="true">•</span>
+                      <strong>{dimension.label || "Measurement"}</strong>
+                      <span className="text-right text-muted-foreground">
+                        {dimension.value}{dimension.unit ? ` ${dimension.unit}` : ""}
+                      </span>
                     </li>
                   ))}
                 </ul>

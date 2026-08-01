@@ -77,6 +77,14 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import {
+  parseDimensionSpecs,
+  parseMaterialSpecs,
+  serializeDimensionSpecs,
+  serializeMaterialSpecs,
+  type DimensionSpec,
+  type MaterialSpec,
+} from "@/lib/product-specs";
 
 import {
   Product,
@@ -263,11 +271,8 @@ export function ProductManager() {
       id:
         editing.id ||
         editing.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-"),
-      dimensions: editing.dimensions
-        .split("\n")
-        .map((dimension) => dimension.replace(/^[•\-]\s*/, "").trim())
-        .filter(Boolean)
-        .join("\n"),
+      material: serializeMaterialSpecs(parseMaterialSpecs(editing.material)),
+      dimensions: serializeDimensionSpecs(parseDimensionSpecs(editing.dimensions)),
     };
     const saveError = await saveProduct(result);
     if (saveError) { setError(saveError); return; }
@@ -538,25 +543,55 @@ export function ProductEditor({
   error: string;
 }) {
   const pick = (index: number) => setProduct({ ...product, main: index });
-  const dimensions = product.dimensions.split("\n");
-  const updateDimension = (index: number, value: string) =>
+  const materials = parseMaterialSpecs(product.material);
+  const dimensions = parseDimensionSpecs(product.dimensions);
+  const updateMaterial = (index: number, patch: Partial<MaterialSpec>) =>
     setProduct({
       ...product,
-      dimensions: dimensions
-        .map((dimension, itemIndex) =>
-          itemIndex === index ? value : dimension,
-        )
-        .join("\n"),
+      material: serializeMaterialSpecs(
+        materials.map((material, itemIndex) =>
+          itemIndex === index ? { ...material, ...patch } : material,
+        ),
+      ),
+    });
+  const addMaterial = () =>
+    setProduct({
+      ...product,
+      material: serializeMaterialSpecs([
+        ...materials,
+        { type: "", description: "" },
+      ]),
+    });
+  const removeMaterial = (index: number) =>
+    setProduct({
+      ...product,
+      material: serializeMaterialSpecs(
+        materials.filter((_, itemIndex) => itemIndex !== index),
+      ),
+    });
+  const updateDimension = (index: number, patch: Partial<DimensionSpec>) =>
+    setProduct({
+      ...product,
+      dimensions: serializeDimensionSpecs(
+        dimensions.map((dimension, itemIndex) =>
+          itemIndex === index ? { ...dimension, ...patch } : dimension,
+        ),
+      ),
     });
   const addDimension = () =>
     setProduct({
       ...product,
-      dimensions: [...dimensions, ""].join("\n"),
+      dimensions: serializeDimensionSpecs([
+        ...dimensions,
+        { label: "", value: "", unit: "cm" },
+      ]),
     });
   const removeDimension = (index: number) =>
     setProduct({
       ...product,
-      dimensions: dimensions.filter((_, itemIndex) => itemIndex !== index).join("\n"),
+      dimensions: serializeDimensionSpecs(
+        dimensions.filter((_, itemIndex) => itemIndex !== index),
+      ),
     });
   const remove = (index: number) =>
     setProduct({
@@ -678,17 +713,55 @@ export function ProductEditor({
                 collection immediately.
               </span>
             </label>
-            <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
-              Finish / Material
-              <input
-                value={product.material}
-                onChange={(e) =>
-                  setProduct({ ...product, material: e.target.value })
-                }
-                className="h-11 rounded-xl border border-border px-3 font-normal"
-                placeholder="Oak veneer · linen blend"
-              />
-            </label>
+            <fieldset className="grid gap-3 text-sm font-semibold sm:col-span-2">
+              <div className="flex items-center justify-between">
+                <legend>Finish / Materials</legend>
+                <button
+                  type="button"
+                  onClick={addMaterial}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs"
+                >
+                  <Plus size={13} />
+                  Add material
+                </button>
+              </div>
+              <p className="text-[10px] font-normal text-muted-foreground">
+                Add one material per bullet. Its type appears in bold beside its description.
+              </p>
+              <ul className="grid gap-2">
+                {materials.map((material, index) => (
+                  <li
+                    key={index}
+                    className="grid grid-cols-[12px_minmax(0,.75fr)_minmax(0,1.25fr)_36px] items-center gap-2"
+                  >
+                    <span className="text-center text-lg leading-none">•</span>
+                    <input
+                      value={material.type}
+                      onChange={(event) => updateMaterial(index, { type: event.target.value })}
+                      className="h-11 min-w-0 rounded-xl border border-border px-3 font-semibold"
+                      placeholder="Material type"
+                      aria-label={`Material type ${index + 1}`}
+                    />
+                    <input
+                      value={material.description}
+                      onChange={(event) => updateMaterial(index, { description: event.target.value })}
+                      className="h-11 min-w-0 rounded-xl border border-border px-3 font-normal"
+                      placeholder="e.g. Solid oak frame"
+                      aria-label={`Material description ${index + 1}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeMaterial(index)}
+                      disabled={materials.length === 1}
+                      className="grid h-9 w-9 place-items-center rounded-lg border border-border text-muted-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                      aria-label={`Remove material ${index + 1}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
             <fieldset className="grid gap-3 text-sm font-semibold sm:col-span-2">
               <div className="flex items-center justify-between">
                 <legend>Dimensions</legend>
@@ -709,21 +782,37 @@ export function ProductEditor({
                 {dimensions.map((dimension, index) => (
                   <li
                     key={index}
-                    className="grid grid-cols-[12px_1fr_36px] items-center gap-2"
+                    className="grid grid-cols-[12px_minmax(0,1fr)_minmax(90px,.65fr)_90px_36px] items-center gap-2"
                   >
                     <span className="text-center text-lg leading-none">•</span>
                     <input
-                      value={dimension}
-                      onChange={(event) =>
-                        updateDimension(index, event.target.value)
-                      }
-                      className="h-11 rounded-xl border border-border px-3 font-normal"
-                      placeholder={
-                        index === 0
-                          ? "Overall: 120W × 80D × 75H cm"
-                          : "Seat height: 46 cm"
-                      }
+                      value={dimension.label}
+                      onChange={(event) => updateDimension(index, { label: event.target.value })}
+                      className="h-11 min-w-0 rounded-xl border border-border px-3 font-semibold"
+                      placeholder={index === 0 ? "Width" : "Seat height"}
+                      aria-label={`Measurement name ${index + 1}`}
                     />
+                    <input
+                      value={dimension.value}
+                      onChange={(event) => updateDimension(index, { value: event.target.value })}
+                      className="h-11 min-w-0 rounded-xl border border-border px-3 font-normal"
+                      placeholder="120"
+                      inputMode="decimal"
+                      aria-label={`Measurement value ${index + 1}`}
+                    />
+                    <select
+                      value={dimension.unit}
+                      onChange={(event) => updateDimension(index, { unit: event.target.value })}
+                      className="h-11 rounded-xl border border-border bg-card px-2 font-normal"
+                      aria-label={`Measurement unit ${index + 1}`}
+                    >
+                      <option value="">Unit</option>
+                      <option value="mm">mm</option>
+                      <option value="cm">cm</option>
+                      <option value="m">m</option>
+                      <option value="in">in</option>
+                      <option value="ft">ft</option>
+                    </select>
                     <button
                       type="button"
                       onClick={() => removeDimension(index)}
