@@ -770,13 +770,6 @@ function App() {
     paymentMethod: string,
     productIds?: string[],
   ) => {
-    if (paymentMethod !== "cod") {
-      return {
-        id: null,
-        orderNumber: null,
-        error: "Cash on delivery is the only payment method available for this demo.",
-      };
-    }
     const selectedIds = productIds?.length ? new Set(productIds) : null;
     const orderCart = selectedIds
       ? cart.filter((item) => selectedIds.has(item.id))
@@ -784,8 +777,52 @@ function App() {
     const remainingCart = selectedIds
       ? cart.filter((item) => !selectedIds.has(item.id))
       : [];
+    if (["card", "gcash"].includes(paymentMethod)) {
+      const { data, error } = await supabase.functions.invoke(
+        "create-paymongo-checkout",
+        {
+          body: {
+            addressId,
+            paymentMethod,
+            items: orderCart.map((item) => ({
+              product_id: item.id,
+              quantity: item.quantity,
+            })),
+          },
+        },
+      );
+      if (error || data?.error) {
+        return {
+          id: null,
+          orderNumber: null,
+          checkoutUrl: null,
+          error: data?.error ?? error?.message ?? "Unable to start secure payment.",
+        };
+      }
+      if (userId && remainingCart.length) {
+        await supabase.from("cart_items").upsert(
+          remainingCart.map((item) => ({
+            user_id: userId,
+            product_id: item.id,
+            quantity: item.quantity,
+          })),
+          { onConflict: "user_id,product_id" },
+        );
+      }
+      setCart(remainingCart);
+      await Promise.all([refreshOrders(), refreshProducts()]);
+      return {
+        id: data.orderId ?? null,
+        orderNumber: data.orderNumber ?? null,
+        checkoutUrl: data.checkoutUrl ?? null,
+        error: null,
+      };
+    }
+    if (paymentMethod !== "cod") {
+      return { id: null, orderNumber: null, checkoutUrl: null, error: "Unsupported payment method." };
+    }
     const { data, error } = await supabase.rpc("place_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })) });
-    if (error) return { id:null, orderNumber:null, error:error.message };
+    if (error) return { id:null, orderNumber:null, checkoutUrl:null, error:error.message };
     const orderId = data as string;
     const { data: createdOrder } = await supabase
       .from("orders")
@@ -806,12 +843,16 @@ function App() {
     return {
       id: orderId,
       orderNumber: createdOrder?.order_number ?? null,
+      checkoutUrl: null,
       error: null,
     };
   };
   const updateOrderStatus = async (id: string, status: DbOrder["status"]) => {
     const payload: Record<string, string> = { status };
-    if (status === "delivered") payload.payment_status = "paid";
+    const order = orders.find((item) => item.id === id);
+    if (status === "delivered" && order?.payment_method === "cod") {
+      payload.payment_status = "paid";
+    }
     const { error } = await supabase.from("orders").update(payload).eq("id", id);
     if (!error) await refreshOrders();
     return error?.message ?? null;

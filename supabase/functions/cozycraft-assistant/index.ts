@@ -65,7 +65,8 @@ FOUNDING TEAM — VISION VENTURES
 
 STORE RULES
 - Prices are Philippine pesos.
-- Cash on Delivery is the currently supported checkout payment method.
+- Checkout supports Cash on Delivery, card, and GCash. Card and GCash use
+  PayMongo's secure hosted checkout and are confirmed through verified payment events.
 - Product availability must be based only on the supplied live catalog data.
 - Never promise a delivery date, discount, refund, warranty outcome, or restock date
   unless it is explicitly present in the supplied context.

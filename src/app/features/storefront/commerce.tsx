@@ -487,6 +487,27 @@ export function CustomerOrders() {
     if (!active && orders[0]) setActive(orders[0].id);
   }, [active, orders]);
   if (!user) return <Account mode="login" />;
+  if (paymentReturn === "cancelled" && returnOrderId)
+    return (
+      <Layout>
+        <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-[680px] items-center px-5 py-14">
+          <section className="w-full rounded-[2rem] border border-border bg-card p-8 text-center shadow-sm">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary">
+              <X size={21} />
+            </span>
+            <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">PAYMENT CANCELLED</p>
+            <h1 className="mt-2 font-serif text-4xl">No charge was made.</h1>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Your reserved order is being cancelled and its inventory is returning to the shop.
+            </p>
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link to="/cart" className="rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Return to bag</Link>
+              <Link to="/home" className="rounded-xl border border-border px-5 py-3 text-sm font-semibold">Continue browsing</Link>
+            </div>
+          </section>
+        </main>
+      </Layout>
+    );
   if (!orders.length)
     return (
       <Layout>
@@ -637,7 +658,7 @@ export function CustomerOrders() {
 }
 
 export function Checkout() {
-  const { cart, user, addresses, products, placeOrder } = useStore();
+  const { cart, user, addresses, products, placeOrder, orders, refreshOrders } = useStore();
   const location = useLocation();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
@@ -648,7 +669,10 @@ export function Checkout() {
     orderNumber: string;
     total: number;
   } | null>(null);
-  const requestedIds = new URLSearchParams(location.search)
+  const searchParams = new URLSearchParams(location.search);
+  const paymentReturn = searchParams.get("payment");
+  const returnOrderId = searchParams.get("order");
+  const requestedIds = searchParams
     .get("items")
     ?.split(",")
     .filter(Boolean);
@@ -670,6 +694,27 @@ export function Checkout() {
       );
     }
   }, [address, addresses]);
+  useEffect(() => {
+    if (!returnOrderId || !paymentReturn) return;
+    if (paymentReturn === "cancelled") {
+      void supabase.functions
+        .invoke("cancel-paymongo-checkout", { body: { orderId: returnOrderId } })
+        .then(() => refreshOrders());
+      setNotice("Payment was cancelled. No charge was made.");
+      return;
+    }
+    void refreshOrders();
+  }, [paymentReturn, refreshOrders, returnOrderId]);
+  useEffect(() => {
+    if (paymentReturn !== "success" || !returnOrderId) return;
+    const returnedOrder = orders.find((order) => order.id === returnOrderId);
+    if (!returnedOrder) return;
+    setCompleted({
+      id: returnedOrder.id,
+      orderNumber: returnedOrder.order_number,
+      total: Number(returnedOrder.total),
+    });
+  }, [orders, paymentReturn, returnOrderId]);
   const total = lines.reduce(
     (sum, line) => sum + line.item.price * line.quantity,
     0,
@@ -783,16 +828,16 @@ export function Checkout() {
     {
       id: "card",
       name: "Debit or credit card",
-      detail: "Coming soon",
+      detail: "Secure PayMongo test checkout",
       icon: "••••",
-      available: false,
+      available: true,
     },
     {
       id: "gcash",
       name: "GCash",
-      detail: "Coming soon",
+      detail: "Secure PayMongo test checkout",
       icon: "G",
-      available: false,
+      available: true,
     },
   ];
   return (
@@ -1006,6 +1051,10 @@ export function Checkout() {
                     setNotice(result.error);
                     return;
                   }
+                  if (result.checkoutUrl) {
+                    window.location.assign(result.checkoutUrl);
+                    return;
+                  }
                   setCompleted({
                     id: result.id ?? crypto.randomUUID(),
                     orderNumber:
@@ -1019,10 +1068,12 @@ export function Checkout() {
                 className="mt-6 h-12 w-full rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-60"
               >
                 {placing
-                  ? "Placing COD order…"
+                  ? payment === "cod" ? "Placing COD order…" : "Opening secure PayMongo checkout…"
                   : !chosen
                     ? "Save a delivery address to continue"
-                    : `Place COD order · ${money(total)}`}
+                    : payment === "cod"
+                      ? `Place COD order · ${money(total)}`
+                      : `Pay securely · ${money(total)}`}
               </button>
               {notice && (
                 <div className="mt-4 rounded-xl bg-[#e3ecdf] p-3 text-xs font-semibold text-[#56714f]">
@@ -1031,8 +1082,8 @@ export function Checkout() {
               )}
               <p className="mt-4 flex gap-2 text-[10px] leading-4 text-muted-foreground">
                 <ShieldCheck size={14} />
-                Your COD order is securely recorded in Supabase and sent to the
-                admin fulfillment workspace immediately.
+                Your order is securely recorded in Supabase. Online payments
+                are completed on PayMongo and synchronized to the admin workspace.
               </p>
             </div>
           </aside>

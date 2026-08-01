@@ -977,13 +977,18 @@ export function PaymentsPage() {
             </div>
             {order.payment_status === "paid" ? (
               <Status>{order.payment_status}</Status>
-            ) : (
+            ) : order.payment_method === "cod" ? (
               <button
                 onClick={() => void markReceived(order.id)}
                 className="rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
               >
                 Mark received
               </button>
+            ) : (
+              <div className="text-right">
+                <Status>{order.payment_status}</Status>
+                <p className="mt-1 text-[9px] text-muted-foreground">Managed by PayMongo</p>
+              </div>
             )}
           </div>
         ))}

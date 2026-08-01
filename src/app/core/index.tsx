@@ -335,6 +335,7 @@ export type Store = {
   ) => Promise<{
     id: string | null;
     orderNumber: string | null;
+    checkoutUrl: string | null;
     error: string | null;
   }>;
   updateOrderStatus: (
