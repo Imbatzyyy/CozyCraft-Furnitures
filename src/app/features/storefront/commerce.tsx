@@ -112,39 +112,36 @@ import { Account } from "./auth";
 import { AddressManager } from "./profile";
 
 export function Cart() {
-  const { cart, remove, qty, products } = useStore();
-  const [selected, setSelected] = useState<string[]>(() =>
-    cart.map((line) => line.id),
-  );
+  const {
+    cart,
+    remove,
+    qty,
+    products,
+    setCartSelection,
+    setAllCartSelection,
+  } = useStore();
   const lines = cart.flatMap((line) => {
     const item = products.find((product) => product.id === line.id);
-    return item ? [{ item, quantity: line.quantity }] : [];
+    return item
+      ? [{
+          item,
+          quantity: line.quantity,
+          selectedForCheckout: line.selectedForCheckout,
+        }]
+      : [];
   });
-  useEffect(() => {
-    setSelected((current) => {
-      const available = new Set(lines.map((line) => line.item.id));
-      const retained = current.filter((id) => available.has(id));
-      const additions = lines
-        .map((line) => line.item.id)
-        .filter((id) => !current.includes(id));
-      return [...retained, ...additions];
-    });
-  }, [cart.length]);
-  const selectedLines = lines.filter((line) =>
-    selected.includes(line.item.id),
-  );
+  const selectedLines = lines.filter((line) => line.selectedForCheckout);
+  const selected = selectedLines.map((line) => line.item.id);
   const total = selectedLines.reduce(
     (n, x) => n + x.item.price * x.quantity,
     0,
   );
   const allSelected =
     lines.length > 0 && selectedLines.length === lines.length;
-  const toggleSelected = (id: string) =>
-    setSelected((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
-    );
+  const toggleSelected = (id: string) => {
+    const line = cart.find((item) => item.id === id);
+    if (line) setCartSelection(id, !line.selectedForCheckout);
+  };
   return (
     <Layout>
       <main className="mx-auto max-w-[1160px] px-5 py-10 lg:py-16">
@@ -159,16 +156,15 @@ export function Cart() {
             </p>
           </div>
           {lines.length > 0 && (
-            <button
-              onClick={() =>
-                setSelected(
-                  allSelected ? [] : lines.map((line) => line.item.id),
-                )
-              }
-              className="rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold"
-            >
-              {allSelected ? "Clear selection" : "Select all"}
-            </button>
+            <label className="flex cursor-pointer items-center gap-3 rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(event) => setAllCartSelection(event.target.checked)}
+                className="h-4 w-4 accent-[#292622]"
+              />
+              {allSelected ? "Unselect all orders" : "Select all orders"}
+            </label>
           )}
         </div>
         {!lines.length ? (
@@ -190,8 +186,8 @@ export function Cart() {
                 </span>
               </div>
               <div className="divide-y divide-border">
-              {lines.map(({ item, quantity }) => {
-                const isSelected = selected.includes(item.id);
+              {lines.map(({ item, quantity, selectedForCheckout }) => {
+                const isSelected = selectedForCheckout;
                 const stockLimit =
                   typeof item.stockQuantity === "number"
                     ? Math.max(0, item.stockQuantity)
@@ -258,9 +254,6 @@ export function Cart() {
                       <button
                         onClick={() => {
                           remove(item.id);
-                          setSelected((current) =>
-                            current.filter((id) => id !== item.id),
-                          );
                         }}
                         className="flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-4"
                       >

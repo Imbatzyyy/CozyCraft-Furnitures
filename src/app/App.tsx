@@ -228,7 +228,7 @@ function App() {
     const [cartResult, wishlistResult] = await Promise.all([
       supabase
         .from("cart_items")
-        .select("product_id, quantity")
+        .select("product_id, quantity, selected_for_checkout")
         .eq("user_id", id),
       supabase
         .from("wishlist_items")
@@ -240,6 +240,7 @@ function App() {
         (cartResult.data ?? []).map((item) => ({
           id: item.product_id,
           quantity: item.quantity,
+          selectedForCheckout: item.selected_for_checkout,
         })),
       );
     }
@@ -294,7 +295,7 @@ function App() {
     const [cartResult, wishlistResult, addressResult] = await Promise.all([
       supabase
         .from("cart_items")
-        .select("product_id, quantity")
+        .select("product_id, quantity, selected_for_checkout")
         .eq("user_id", id),
       supabase
         .from("wishlist_items")
@@ -336,7 +337,11 @@ function App() {
     );
     setProfilePaymentMethod(profile?.preferred_payment_method ?? "cod");
     setHasPassword(providers.includes("email"));
-    setCart((cartResult.data ?? []).map((item) => ({ id: item.product_id, quantity: item.quantity })));
+    setCart((cartResult.data ?? []).map((item) => ({
+      id: item.product_id,
+      quantity: item.quantity,
+      selectedForCheckout: item.selected_for_checkout,
+    })));
     setSaved((wishlistResult.data ?? []).map((item) => item.product_id));
     setAddresses((addressResult.data ?? []).map((item) => ({
       id: item.id,
@@ -597,6 +602,7 @@ function App() {
                   user_id: userId,
                   product_id: item.id,
                   quantity: item.quantity,
+                  selected_for_checkout: item.selectedForCheckout,
                 },
                 { onConflict: "user_id,product_id" },
               ),
@@ -660,8 +666,9 @@ function App() {
     }
     triggerFly("cart");
     setCart((items) => {
-      const currentQuantity =
-        items.find((item) => item.id === id)?.quantity ?? 0;
+      const currentLine = items.find((item) => item.id === id);
+      const currentQuantity = currentLine?.quantity ?? 0;
+      const selectedForCheckout = currentLine?.selectedForCheckout ?? true;
       const requested = currentQuantity + Math.max(1, Math.floor(amount));
       const quantity =
         stockLimit === null ? requested : Math.min(requested, stockLimit);
@@ -670,12 +677,17 @@ function App() {
         ? items.map((item) =>
             item.id === id ? { ...item, quantity } : item,
           )
-        : [...items, { id, quantity }];
+        : [...items, { id, quantity, selectedForCheckout }];
       void queueAccountWrite(
         supabase
           .from("cart_items")
           .upsert(
-            { user_id: userId, product_id: id, quantity },
+            {
+              user_id: userId,
+              product_id: id,
+              quantity,
+              selected_for_checkout: selectedForCheckout,
+            },
             { onConflict: "user_id,product_id" },
           ),
       );
@@ -701,6 +713,8 @@ function App() {
     const requested = Math.max(1, Math.floor(value));
     const quantity =
       stockLimit === null ? requested : Math.min(requested, stockLimit);
+    const selectedForCheckout =
+      cart.find((item) => item.id === id)?.selectedForCheckout ?? true;
     setCart((items) =>
       items.map((item) =>
         item.id === id ? { ...item, quantity } : item,
@@ -711,9 +725,43 @@ function App() {
         supabase
           .from("cart_items")
           .upsert(
-            { user_id: userId, product_id: id, quantity },
+            {
+              user_id: userId,
+              product_id: id,
+              quantity,
+              selected_for_checkout: selectedForCheckout,
+            },
             { onConflict: "user_id,product_id" },
           ),
+      );
+    }
+  };
+  const setCartSelection = (id: string, selected: boolean) => {
+    setCart((items) =>
+      items.map((item) =>
+        item.id === id ? { ...item, selectedForCheckout: selected } : item,
+      ),
+    );
+    if (userId) {
+      void queueAccountWrite(
+        supabase
+          .from("cart_items")
+          .update({ selected_for_checkout: selected })
+          .eq("user_id", userId)
+          .eq("product_id", id),
+      );
+    }
+  };
+  const setAllCartSelection = (selected: boolean) => {
+    setCart((items) =>
+      items.map((item) => ({ ...item, selectedForCheckout: selected })),
+    );
+    if (userId) {
+      void queueAccountWrite(
+        supabase
+          .from("cart_items")
+          .update({ selected_for_checkout: selected })
+          .eq("user_id", userId),
       );
     }
   };
@@ -761,6 +809,7 @@ function App() {
               user_id: userId,
               product_id: item.id,
               quantity: item.quantity,
+              selected_for_checkout: item.selectedForCheckout,
             })),
             { onConflict: "user_id,product_id" },
           ),
@@ -822,6 +871,7 @@ function App() {
             user_id: userId,
             product_id: item.id,
             quantity: item.quantity,
+            selected_for_checkout: item.selectedForCheckout,
           })),
           { onConflict: "user_id,product_id" },
         );
@@ -852,6 +902,7 @@ function App() {
           user_id: userId,
           product_id: item.id,
           quantity: item.quantity,
+          selected_for_checkout: item.selectedForCheckout,
         })),
       );
     }
@@ -1122,6 +1173,8 @@ function App() {
     add,
     remove,
     qty,
+    setCartSelection,
+    setAllCartSelection,
     toggle,
     signOut,
     setAvatar,

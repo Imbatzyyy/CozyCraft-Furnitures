@@ -277,7 +277,11 @@ export const fallbackProducts: Product[] = [
   },
 ];
 
-export type CartLine = { id: string; quantity: number };
+export type CartLine = {
+  id: string;
+  quantity: number;
+  selectedForCheckout: boolean;
+};
 
 export type Address = {
   id: string;
@@ -321,6 +325,8 @@ export type Store = {
   add: (id: string, amount?: number) => void;
   remove: (id: string) => void;
   qty: (id: string, value: number) => void;
+  setCartSelection: (id: string, selected: boolean) => void;
+  setAllCartSelection: (selected: boolean) => void;
   toggle: (id: string) => void;
   signOut: () => Promise<void>;
   setAvatar: (value: string | null) => void;
