@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -483,6 +484,10 @@ export function StoreSettingsPage() {
     [],
   );
   const dirty = savedSnapshot !== "" && snapshot(settings, security) !== savedSnapshot;
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
   const loadSettings = useCallback(async () => {
     const [storeResult, securityResult] = await Promise.all([
       supabase.from("store_settings").select("*").eq("id", true).single(),
@@ -520,21 +525,21 @@ export function StoreSettingsPage() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "store_settings" },
         () => {
-          if (!dirty) void loadSettings();
+          if (!dirtyRef.current) void loadSettings();
         },
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "admin_security_settings" },
         () => {
-          if (!dirty) void loadSettings();
+          if (!dirtyRef.current) void loadSettings();
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [dirty, loadSettings]);
+  }, [loadSettings]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (!dirty) return;
