@@ -108,9 +108,6 @@ import {
 } from "../../core";
 
 import { Account } from "./auth";
-import regions from "@jobuntux/psgc/data/2025-2Q/regions.json";
-import provinces from "@jobuntux/psgc/data/2025-2Q/provinces.json";
-import municipalities from "@jobuntux/psgc/data/2025-2Q/muncities.json";
 import { isReturnWindowOpen } from "@/lib/return-workflow";
 
 type PsgcRegion = {
@@ -172,25 +169,29 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
   const [provinceCode, setProvinceCode] = useState("");
   const [municipalityCode, setMunicipalityCode] = useState("");
   const [barangays, setBarangays] = useState<PsgcBarangay[]>([]);
+  const [regions, setRegions] = useState<PsgcRegion[]>([]);
+  const [provinces, setProvinces] = useState<PsgcProvince[]>([]);
+  const [municipalities, setMunicipalities] = useState<PsgcMunicipality[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(true);
   const [barangaysLoading, setBarangaysLoading] = useState(false);
   const regionOptions = useMemo(
     () =>
-      [...(regions as PsgcRegion[])].sort((a, b) =>
+      [...regions].sort((a, b) =>
         a.regionName.localeCompare(b.regionName),
       ),
-    [],
+    [regions],
   );
   const provinceOptions = useMemo(
     () =>
-      (provinces as PsgcProvince[])
+      provinces
         .filter((item) => !item.cityClass)
         .sort((a, b) => a.provName.localeCompare(b.provName)),
-    [],
+    [provinces],
   );
   const municipalityOptions = useMemo(
     () => {
       const [kind, code] = provinceCode.split(":");
-      return (municipalities as PsgcMunicipality[])
+      return municipalities
         .filter((item) =>
           kind === "region"
             ? item.regCode === code
@@ -200,7 +201,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
         )
         .sort((a, b) => a.munCityName.localeCompare(b.munCityName));
     },
-    [provinceCode],
+    [municipalities, provinceCode],
   );
   const barangayOptions = useMemo(
     () =>
@@ -209,6 +210,27 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
         .sort((a, b) => a.brgyName.localeCompare(b.brgyName)),
     [barangays, municipalityCode],
   );
+  useEffect(() => {
+    let active = true;
+    setLocationsLoading(true);
+    void supabase.functions.invoke("philippine-barangays", { body: { scope: "locations" } })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error || data?.error) {
+          notify(data?.error ?? error?.message ?? "Unable to load Philippine locations.");
+          return;
+        }
+        setRegions((data?.regions ?? []) as PsgcRegion[]);
+        setProvinces((data?.provinces ?? []) as PsgcProvince[]);
+        setMunicipalities((data?.municipalities ?? []) as PsgcMunicipality[]);
+      })
+      .finally(() => {
+        if (active) setLocationsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     if (!municipalityCode) {
       setBarangays([]);
@@ -242,7 +264,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
         item.regionName === address.province ||
         regionDisplayName(item) === address.province,
     );
-    const cityMatch = (municipalities as PsgcMunicipality[]).find(
+    const cityMatch = municipalities.find(
       (item) =>
         item.munCityName.trim() === address.city.trim() &&
         (!matchedProvince || item.provCode === matchedProvince.provCode) &&
@@ -454,7 +476,9 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
               required
               className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
             >
-              <option value="">Select province / region</option>
+              <option value="">
+                {locationsLoading ? "Loading locations…" : "Select province / region"}
+              </option>
               <optgroup label="Regions">
                 {regionOptions.map((item) => (
                   <option
