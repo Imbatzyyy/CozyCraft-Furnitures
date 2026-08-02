@@ -345,9 +345,9 @@ function App() {
     setProfilePhone(profile?.phone ?? "");
     setProfileUsername(profile?.username ?? String(metadata.username ?? ""));
     setProfileGender(profile?.gender ?? String(metadata.gender ?? ""));
-    setProfileBirth(
-      profile?.date_of_birth ?? String(metadata.date_of_birth ?? ""),
-    );
+    // The profile row is the source of truth for birthdays. Auth metadata can
+    // outlive an earlier signup-flow mistake, so never use it as a fallback.
+    setProfileBirth(profile?.date_of_birth ?? "");
     setProfilePaymentMethod(profile?.preferred_payment_method ?? "cod");
     setHasPassword(providers.includes("email"));
     setCart((cartResult.data ?? []).map((item) => ({

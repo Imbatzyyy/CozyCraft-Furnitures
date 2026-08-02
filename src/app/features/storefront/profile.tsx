@@ -879,12 +879,22 @@ export function Profile() {
   };
   const requestProfileSave = () => {
     const fullName = `${first.trim()} ${last.trim()}`.trim();
+    const todayInPhilippines = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
     if (!username.trim()) {
       setNotice("Username is required.");
       return;
     }
     if (!fullName) {
       setNotice("Please enter your name.");
+      return;
+    }
+    if (birth && birth >= todayInPhilippines) {
+      setNotice("Please choose your actual date of birth in the past.");
       return;
     }
     setNotice("");
@@ -1184,6 +1194,13 @@ export function Profile() {
                       value={birth}
                       onChange={(event) => setBirth(event.target.value)}
                       type="date"
+                      min="1900-01-01"
+                      max={new Intl.DateTimeFormat("en-CA", {
+                        timeZone: "Asia/Manila",
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      }).format(new Date())}
                       className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                     />
                   </label>
