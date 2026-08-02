@@ -608,6 +608,8 @@ export function OrdersPage() {
 
 export function OrdersWorkspacePage() {
   const { orders, updateOrderStatus, cancelOrder, refreshOrders } = useStore();
+  const { role: workspaceRole } = useAdminSession();
+  const canManageFinancials = workspaceRole === "Administrator" || workspaceRole === "Super Administrator";
   const [selectedId, setSelectedId] = useState("");
   const [notice, setNotice] = useState("");
   const [showCancellation, setShowCancellation] = useState(false);
@@ -666,6 +668,10 @@ export function OrdersWorkspacePage() {
   const updateReturn = async (status:string) => {
     if (!selectedReturn) return;
     if (status === "refunded") {
+      if (!canManageFinancials) {
+        setNotice("An administrator must process financial refunds.");
+        return;
+      }
       if (!['item_received', 'refund_processing'].includes(selectedReturn.status)) {
         setNotice("Mark the returned item as received before processing its refund.");
         return;
@@ -694,6 +700,10 @@ export function OrdersWorkspacePage() {
   const update = async (status: DbOrder["status"]) => {
     if (!selected) return;
     if (status === "cancelled") {
+      if (!canManageFinancials) {
+        setNotice("An administrator must approve order cancellations and refunds.");
+        return;
+      }
       setCancellationReason("");
       setShowCancellation(true);
       return;
@@ -725,6 +735,10 @@ export function OrdersWorkspacePage() {
   };
   const sendRefundEmail = async () => {
     if (!selected) return;
+    if (!canManageFinancials) {
+      setNotice("An administrator must send financial notifications.");
+      return;
+    }
     setSendingRefundEmail(true);
     const { data, error } = await supabase.functions.invoke("send-refund-email", {
       body: { orderId: selected.id },
@@ -909,7 +923,7 @@ export function OrdersWorkspacePage() {
                     }
                     className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-semibold"
                   >
-                    {allowedFulfillmentStatuses(selected.status).map(status=><option key={status} value={status}>{status === "cancelled" ? "Cancel order…" : status[0].toUpperCase()+status.slice(1)}</option>)}
+                    {allowedFulfillmentStatuses(selected.status).filter(status => canManageFinancials || status !== "cancelled").map(status=><option key={status} value={status}>{status === "cancelled" ? "Cancel order…" : status[0].toUpperCase()+status.slice(1)}</option>)}
                   </select>
                 </div>
                 {selected.refund_status && (
@@ -921,7 +935,7 @@ export function OrdersWorkspacePage() {
                       </time>
                     )}
                     {selected.cancellation_reason && <span className="mt-1 block">Reason: {selected.cancellation_reason}</span>}
-                    {selected.payment_status === "refunded" && (
+                    {canManageFinancials && selected.payment_status === "refunded" && (
                       <button type="button" onClick={() => void sendRefundEmail()} disabled={sendingRefundEmail} className="mt-3 rounded-lg border border-current px-3 py-1.5 font-semibold disabled:opacity-50">
                         {sendingRefundEmail ? "Sending…" : selected.refund_email_sent_at ? "Resend refund email" : "Send refund email"}
                       </button>
@@ -1037,14 +1051,14 @@ export function OrdersWorkspacePage() {
                 <p className="font-bold tracking-[.12em] text-[#d7c9b8]">RETURN {selectedReturn.return_number}</p>
                 <p className="mt-2 font-semibold">{selectedReturn.reason}</p><p className="mt-1 leading-5 text-[#c9c0b3]">{selectedReturn.details}</p>
                 {selectedReturn.evidence_paths?.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{selectedReturn.evidence_paths.map((path,index)=><button key={path} type="button" onClick={()=>void openReturnEvidence(path)} className="rounded-lg border border-white/20 px-2.5 py-1.5 font-semibold text-[#f7f3ec]">View evidence {index+1}</button>)}</div>}
-                <select value={selectedReturn.status} disabled={processingReturnRefund || selectedReturn.status === "closed"} onChange={(event)=>void updateReturn(event.target.value)} className="mt-3 h-10 w-full rounded-lg bg-[#f7f3ec] px-2 text-xs font-semibold text-[#252723] disabled:opacity-60">{selectedReturn.status==="refund_processing"&&<option value="refund_processing">Refund processing</option>}{allowedReturnStatuses(selectedReturn.status as ReturnStatus).filter(status=>status!=="refund_processing"&&status!=="refunded").map(status=><option key={status} value={status}>{status.replace(/_/g," ").replace(/^./,letter=>letter.toUpperCase())}</option>)}{["item_received","refund_processing"].includes(selectedReturn.status)&&<option value="refunded">Process protected refund…</option>}</select>
+                <select value={selectedReturn.status} disabled={processingReturnRefund || selectedReturn.status === "closed"} onChange={(event)=>void updateReturn(event.target.value)} className="mt-3 h-10 w-full rounded-lg bg-[#f7f3ec] px-2 text-xs font-semibold text-[#252723] disabled:opacity-60">{selectedReturn.status==="refund_processing"&&<option value="refund_processing">Refund processing</option>}{allowedReturnStatuses(selectedReturn.status as ReturnStatus).filter(status=>status!=="refund_processing"&&status!=="refunded").map(status=><option key={status} value={status}>{status.replace(/_/g," ").replace(/^./,letter=>letter.toUpperCase())}</option>)}{canManageFinancials&&["item_received","refund_processing"].includes(selectedReturn.status)&&<option value="refunded">Process protected refund…</option>}</select>
                 <textarea value={returnNote} onChange={(event)=>setReturnNote(event.target.value)} placeholder="Admin note for customer…" rows={3} className="mt-2 w-full resize-none rounded-lg bg-[#f7f3ec] p-2 text-[#252723]"/>
               </div>
             )}
           </aside>
         </div>
       )}
-      {showCancellation && selected && (
+      {canManageFinancials && showCancellation && selected && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-order-title">
           <section className="w-full max-w-lg rounded-[1.75rem] border border-border bg-card p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">

@@ -41,7 +41,7 @@ Deno.serve(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired." }, 401);
   const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["staff", "admin", "superadmin"].includes(profile.role)) {
+  if (!profile || !["admin", "superadmin"].includes(profile.role)) {
     return json(request, { error: "Administrator access is required." }, 403);
   }
 

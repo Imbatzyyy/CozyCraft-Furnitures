@@ -18,7 +18,7 @@ Deno.serve(async(request)=>{
   const {data:{user}}=await client.auth.getUser();
   if(!user)return json(request,{error:"Session expired."},401);
   const {data:profile}=await admin.from("profiles").select("role").eq("id",user.id).single();
-  if(!profile||!["staff","admin","superadmin"].includes(profile.role))return json(request,{error:"Administrator access required."},403);
+  if(!profile||!["admin","superadmin"].includes(profile.role))return json(request,{error:"Administrator access required."},403);
   const body=await request.json().catch(()=>({}));
   const returnId=typeof body.returnId==="string"?body.returnId:"";
   const {data:returnRequest,error:returnError}=await admin.from("return_requests").select("*,orders!inner(id,order_number,total,payment_method,payment_status,user_id,payment_transactions(id,provider_payment_id,status,livemode))").eq("id",returnId).single();
