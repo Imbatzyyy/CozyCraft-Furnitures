@@ -966,7 +966,7 @@ export function Profile() {
   };
   return (
     <Layout>
-      <main className="mx-auto max-w-[1320px] px-4 py-5 sm:px-5 sm:py-8 lg:py-12">
+      <main className="mx-auto max-w-[1320px] px-4 pb-12 pt-5 sm:px-5 sm:py-8 lg:py-12">
         <section className="relative overflow-hidden rounded-[1.5rem] border border-border bg-[#f0ece4] px-5 py-6 text-foreground shadow-[0_14px_38px_rgba(35,31,27,.05)] sm:rounded-[2rem] sm:px-9 sm:py-8">
           <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_75%_45%,rgba(185,151,112,.22),transparent_55%)]" />
           <div className="relative flex flex-wrap items-end justify-between gap-6">
@@ -1434,7 +1434,7 @@ export function Profile() {
                         </button>
                       ))}
                     </div>
-                    <article className="overflow-hidden rounded-2xl border border-border bg-[#fcfbf8]">
+                    <article className="relative z-[1] mb-6 overflow-hidden rounded-2xl border border-border bg-[#fcfbf8] xl:mb-0">
                       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-5">
                         <div>
                           <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">ORDER DETAILS</p>
@@ -1567,7 +1567,7 @@ export function Profile() {
                           <p className="mt-2 text-lg font-semibold">{money(Number(selectedOrder.total))}</p>
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2 border-t border-border p-5">
+                      <div className="grid grid-cols-1 gap-2 border-t border-border p-5 min-[390px]:grid-cols-2 sm:flex sm:flex-wrap">
                         <button
                           type="button"
                           onClick={() => {
@@ -1577,7 +1577,7 @@ export function Profile() {
                             setNotice("Available pieces from this order were added to your bag.");
                             nav("/cart");
                           }}
-                          className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background"
+                          className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background"
                         >
                           <ShoppingBag size={14} /> Buy again
                         </button>
@@ -1587,15 +1587,15 @@ export function Profile() {
                             setTicket(`Concern about order #${selectedOrder.order_number}: `);
                             setTab("Support");
                           }}
-                          className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary"
+                          className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary"
                         >
                           <MessageCircle size={14} /> Contact support
                         </button>
-                        <Link to="/orders" className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary">
+                        <Link to="/orders" className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary min-[390px]:col-span-2 sm:col-auto">
                           <ArrowRight size={14} /> Full tracking
                         </Link>
                         {selectedOrder.status === "delivered" && isReturnWindowOpen(selectedOrder.order_status_history?.find((entry)=>entry.status==="delivered")?.changed_at) && !returnRequests.some((request) => request.order_id === selectedOrder.id) && (
-                          <button type="button" onClick={() => setReturnOrderId(selectedOrder.id)} className="flex items-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4]">
+                          <button type="button" onClick={() => setReturnOrderId(selectedOrder.id)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4] min-[390px]:col-span-2 sm:col-auto">
                             <Archive size={14} /> Request return
                           </button>
                         )}
