@@ -16,7 +16,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
-} from "react-router";
+} from "react-router-dom";
 import {
   Activity,
   ArrowLeft,

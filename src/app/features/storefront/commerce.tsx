@@ -16,7 +16,7 @@ import {
   useNavigate,
   useParams,
   useRouteError,
-} from "react-router";
+} from "react-router-dom";
 import {
   Activity,
   ArrowLeft,

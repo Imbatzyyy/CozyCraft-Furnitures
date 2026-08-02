@@ -17,7 +17,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
-} from "react-router";
+} from "react-router-dom";
 import {
   Activity,
   ArrowLeft,
@@ -94,6 +94,7 @@ import {
   StoreContext,
   fallbackProducts,
 } from "./core";
+import { checkoutSignature, selectCheckoutLines } from "../lib/checkout";
 
 function App() {
   const [splash, setSplash] = useState(true);
@@ -837,15 +838,9 @@ function App() {
     paymentMethod: string,
     productIds?: string[],
   ) => {
-    const selectedIds = productIds?.length ? new Set(productIds) : null;
-    const orderCart = selectedIds
-      ? cart.filter((item) => selectedIds.has(item.id))
-      : cart;
-    const remainingCart = selectedIds
-      ? cart.filter((item) => !selectedIds.has(item.id))
-      : [];
-    const checkoutSignature = orderCart.map((item) => `${item.id}:${item.quantity}`).sort().join("|");
-    const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${checkoutSignature}`;
+    const { selected: orderCart, remaining: remainingCart } = selectCheckoutLines(cart, productIds);
+    const signature = checkoutSignature(orderCart);
+    const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${signature}`;
     let checkoutKey = window.sessionStorage.getItem(checkoutStorageKey);
     if (!checkoutKey) {
       checkoutKey = crypto.randomUUID();
