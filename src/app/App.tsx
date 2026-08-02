@@ -623,13 +623,6 @@ function App() {
   const saveAddress = async (address: Address) => {
     if (!userId) return "Please sign in before saving an address.";
     if (!userEmail) return "Your account email is unavailable.";
-    if (address.primary) {
-      const { error } = await supabase
-        .from("addresses")
-        .update({ is_primary: false })
-        .eq("user_id", userId);
-      if (error) return error.message;
-    }
     const payload = { user_id:userId, label:address.label, recipient_name:address.name, mobile:address.mobile, email:userEmail, address_line:address.line, barangay:address.barangay, city:address.city, province:address.province, postal_code:address.postal, delivery_note:address.note, is_primary:address.primary };
     const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(address.id);
     const { error } = isUuid
