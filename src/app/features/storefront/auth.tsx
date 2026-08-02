@@ -118,6 +118,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   >("auth");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -161,6 +162,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
     setVerificationNotice("");
     if (mode === "signup" && password !== confirm) { setError("Passwords do not match. Please try again."); return; }
     if (mode === "signup" && score < 2) { setError("Choose a stronger password before creating your account."); return; }
+    if (mode === "signup" && !/^[A-Za-z0-9._-]{3,24}$/.test(username.trim())) { setError("Username must be 3–24 characters using letters, numbers, dots, underscores, or hyphens."); return; }
     setSubmitting(true);
     if (mode === "login") {
       const result = await signInForPortal(email, password, "customer");
@@ -179,7 +181,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       email: email.trim().toLowerCase(),
       password,
       options: {
-        data: { full_name: (first + " " + last).trim() },
+        data: { full_name: (first + " " + last).trim(), username: username.trim() },
         emailRedirectTo: window.location.origin + "/profile",
       },
     });
@@ -449,6 +451,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                   </label>
                 </div>
               )}
+              {mode === "signup" && <label className="grid gap-2 text-sm font-semibold">Username<input value={username} onChange={event=>setUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g,"").slice(0,24))} required minLength={3} maxLength={24} autoComplete="username" className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none focus:border-foreground" placeholder="cozyhome"/><span className="text-[10px] font-normal text-muted-foreground">Shown in your account menu. You can change it later.</span></label>}
               <label className="grid gap-2 text-sm font-semibold">
                 Email address
                 <input

@@ -1231,6 +1231,7 @@ function App() {
         value={{ role: adminRole, setRole: setAdminRole }}
       >
         {splash ? <Splash /> : <RouterProvider router={router} />}
+        {!splash && <UsernameSetupGate />}
         {shopPrompt && (
           <ShopSignInPrompt close={() => setShopPrompt(false)} />
         )}
@@ -1238,6 +1239,24 @@ function App() {
       </AdminSessionContext.Provider>
     </StoreContext.Provider>
   );
+}
+
+function UsernameSetupGate() {
+  const { authReady, userId, user, role, profileUsername, profilePhone, profileGender, profileBirth, saveProfile } = useStore();
+  const [username, setUsername] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  if (!authReady || !userId || role !== "customer" || profileUsername.trim()) return null;
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const normalized=username.trim();
+    if(!/^[A-Za-z0-9._-]{3,24}$/.test(normalized)){setError("Use 3–24 letters, numbers, dots, underscores, or hyphens.");return;}
+    setSaving(true); setError("");
+    const issue=await saveProfile({fullName:user??"Member",phone:profilePhone,username:normalized,gender:profileGender,birth:profileBirth});
+    setSaving(false);
+    if(issue)setError(issue.includes("duplicate")||issue.includes("unique")?"That username is already taken. Try another.":issue);
+  };
+  return <div className="fixed inset-0 z-[120] grid place-items-center bg-[#25221f]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="username-setup-title"><form onSubmit={submit} className="w-full max-w-md rounded-[2rem] border border-border bg-card p-7 shadow-2xl"><span className="grid h-11 w-11 place-items-center rounded-full bg-secondary"><UserRound size={19}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">COMPLETE YOUR ACCOUNT</p><h2 id="username-setup-title" className="mt-2 font-serif text-4xl">Choose your username.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">This is the name shown in CozyCraft’s account menu. Your Google name remains saved as your personal name.</p><label className="mt-6 grid gap-2 text-sm font-semibold">Username<input autoFocus value={username} onChange={event=>setUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g,"").slice(0,24))} minLength={3} maxLength={24} autoComplete="username" placeholder="cozyhome" className="h-12 rounded-xl border border-border bg-background px-4 font-normal"/></label>{error&&<p className="mt-3 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">{error}</p>}<button disabled={saving||username.trim().length<3} className="mt-5 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background disabled:opacity-50">{saving?"Saving username…":"Continue to CozyCraft"}</button><p className="mt-3 text-center text-[10px] leading-4 text-muted-foreground">Usernames are unique and may be changed later from your profile.</p></form></div>;
 }
 
 type FlyState = {
