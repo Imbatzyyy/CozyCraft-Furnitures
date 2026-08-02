@@ -97,8 +97,12 @@ import {
 } from "./core";
 import { checkoutSignature, selectCheckoutLines } from "../lib/checkout";
 
+const splashSessionKey = "cozycraft-welcome-seen";
+
 function App() {
-  const [splash, setSplash] = useState(true);
+  const [splash, setSplash] = useState(
+    () => window.sessionStorage.getItem(splashSessionKey) !== "1",
+  );
   const [products, setProducts] = useState<Product[]>(fallbackProducts);
   const [adminProducts, setAdminProducts] = useState<Product[]>(fallbackProducts);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -476,7 +480,12 @@ function App() {
   }, [role]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setSplash(false), 1500);
+    const timer = splash
+      ? window.setTimeout(() => {
+          window.sessionStorage.setItem(splashSessionKey, "1");
+          setSplash(false);
+        }, 1500)
+      : undefined;
     const channel = supabase
       .channel("cozycraft-live-commerce")
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => void refreshProducts())
@@ -495,7 +504,10 @@ function App() {
       .on("postgres_changes", { event: "*", schema: "public", table: "addresses" }, () => void refreshCustomers())
       .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, () => { void refreshTickets(); void refreshCustomers(); })
       .subscribe();
-    return () => { window.clearTimeout(timer); void supabase.removeChannel(channel); };
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
   }, [refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
 
   useEffect(() => {

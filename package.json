@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
+    "smoke:prod": "node scripts/smoke-production.mjs",
     "verify": "npm run typecheck && npm run test && npm run build",
     "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
