@@ -611,6 +611,7 @@ export function OrdersWorkspacePage() {
   const [showCancellation, setShowCancellation] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [sendingRefundEmail, setSendingRefundEmail] = useState(false);
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
     "processing",
@@ -663,6 +664,18 @@ export function OrdersWorkspacePage() {
       selected.payment_status === "paid" && selected.payment_method !== "cod"
         ? `Order ${selected.order_number} was safely cancelled and its ${selected.payment_method.toUpperCase()} refund was recorded.`
         : `Order ${selected.order_number} was cancelled and its inventory was restored.`,
+    );
+  };
+  const resendRefundEmail = async () => {
+    if (!selected) return;
+    setSendingRefundEmail(true);
+    const { data, error } = await supabase.functions.invoke("send-refund-email", {
+      body: { orderId: selected.id },
+    });
+    setSendingRefundEmail(false);
+    setNotice(
+      data?.error ?? error?.message ??
+        `Refund confirmation sent to ${data?.recipient ?? "the customer"}.`,
     );
   };
   const nextStatus = selected
@@ -830,6 +843,11 @@ export function OrdersWorkspacePage() {
                   <div className={`mt-4 rounded-xl border p-3 text-xs ${selected.refund_status === "failed" ? "border-[#bd8068] bg-[#f4e3dc] text-[#854b36]" : "border-[#afbea8] bg-[#e8efe5] text-[#486242]"}`}>
                     <b className="block">Refund {selected.refund_status.replace(/_/g, " ")}</b>
                     {selected.cancellation_reason && <span className="mt-1 block">Reason: {selected.cancellation_reason}</span>}
+                    {selected.payment_status === "refunded" && (
+                      <button type="button" onClick={() => void resendRefundEmail()} disabled={sendingRefundEmail} className="mt-3 rounded-lg border border-current px-3 py-1.5 font-semibold disabled:opacity-50">
+                        {sendingRefundEmail ? "Sending…" : "Resend refund email"}
+                      </button>
+                    )}
                   </div>
                 )}
                 <ol className="mt-5 grid gap-4">
