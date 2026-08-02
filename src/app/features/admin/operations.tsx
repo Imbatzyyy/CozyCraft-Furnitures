@@ -1939,17 +1939,21 @@ export function ReportsPage() {
   const rangeOrders = orders.filter(
     (order) => new Date(order.created_at) >= rangeStart,
   );
-  const validOrders = rangeOrders.filter((order) => order.status !== "cancelled");
-  const grossSales = validOrders.reduce(
+  const paidOrders = rangeOrders.filter((order) => order.payment_status === "paid");
+  const refundedOrders = rangeOrders.filter((order) => order.payment_status === "refunded");
+  const grossSales = paidOrders.reduce(
     (sum, order) => sum + Number(order.total),
     0,
   );
-  const fulfilled = validOrders.filter(
+  const refundedValue = refundedOrders.reduce((sum,order)=>sum+Number(order.total),0);
+  const fulfilled = rangeOrders.filter(
     (order) => order.status === "delivered",
   ).length;
-  const averageOrderValue = validOrders.length
-    ? grossSales / validOrders.length
+  const averageOrderValue = paidOrders.length
+    ? grossSales / paidOrders.length
     : 0;
+  const paidOrdersByCustomer = orders.filter(order=>order.payment_status === "paid").reduce<Record<string,number>>((counts,order)=>{counts[order.user_id]=(counts[order.user_id]??0)+1;return counts;},{});
+  const repeatCustomers = Object.values(paidOrdersByCustomer).filter(count=>count>1).length;
   const bars = Array.from({ length: 12 }, (_, index) => {
     const bucketStart = new Date(
       rangeStart.getTime() + (index * rangeDays * 86_400_000) / 12,
@@ -1957,7 +1961,7 @@ export function ReportsPage() {
     const bucketEnd = new Date(
       rangeStart.getTime() + ((index + 1) * rangeDays * 86_400_000) / 12,
     );
-    return validOrders
+    return paidOrders
       .filter((order) => {
         const created = new Date(order.created_at);
         return created >= bucketStart && created < bucketEnd;
@@ -1965,7 +1969,7 @@ export function ReportsPage() {
       .reduce((sum, order) => sum + Number(order.total), 0);
   });
   const maxBar = Math.max(1, ...bars);
-  const categoryRevenue = validOrders
+  const categoryRevenue = paidOrders
     .flatMap((order) => order.order_items)
     .reduce<Record<string, number>>((totals, item) => {
       const category =
@@ -1978,8 +1982,19 @@ export function ReportsPage() {
   const leadingCategory =
     Object.entries(categoryRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] ??
     "No sales yet";
-  const exportReport = () => {
-    const rows = [
+  const downloadCsv = (name:string, rows:Array<Array<string|number>>) => {
+    const csv = rows.map((row)=>row.map((value)=>`"${String(value).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    const link=document.createElement("a"); link.href=url; link.download=name; link.click(); URL.revokeObjectURL(url);
+  };
+  const exportReport = (reportName = "Sales performance") => {
+    const rows:Array<Array<string|number>> = reportName === "Inventory velocity" ? [
+      ["Product","Category","Stock","Status","Units sold in range"],
+      ...adminProducts.map(product=>[product.name,product.category,product.stockQuantity??0,product.status,rangeOrders.flatMap(order=>order.order_items).filter(item=>item.product_id===product.id).reduce((sum,item)=>sum+item.quantity,0)]),
+    ] : reportName === "Customer retention" ? [
+      ["Customer","Email","Paid orders","Repeat customer"],
+      ...customerProfiles.map(profile=>[profile.full_name||profile.username||"Customer",profile.email,paidOrdersByCustomer[profile.id]??0,(paidOrdersByCustomer[profile.id]??0)>1?"Yes":"No"]),
+    ] : [
       ["Order", "Status", "Payment", "Total", "Created"],
       ...rangeOrders.map((order) => [
         order.order_number,
@@ -1989,18 +2004,8 @@ export function ReportsPage() {
         order.created_at,
       ]),
     ];
-    const csv = rows
-      .map((row) =>
-        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
-      )
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `cozycraft-${range.toLowerCase().replace(/\s/g, "-")}-report.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setNotice("Live report downloaded as CSV.");
+    downloadCsv(`cozycraft-${reportName.toLowerCase().replace(/\s/g,"-")}-${range.toLowerCase().replace(/\s/g,"-")}.csv`,rows);
+    setNotice(`${reportName} downloaded from live data.`);
   };
   const reports = [
     {
@@ -2049,7 +2054,7 @@ export function ReportsPage() {
           <div className="border-l border-[#b99a76] pl-4">
             <p className="text-xs text-[#c8bcae]">Gross sales</p>
             <p className="mt-1 font-serif text-3xl">{money(grossSales)}</p>
-            <p className="mt-1 text-xs text-[#acc59f]">{validOrders.length} valid orders</p>
+            <p className="mt-1 text-xs text-[#acc59f]">{paidOrders.length} settled orders</p>
           </div>
           <div className="border-l border-white/20 pl-4">
             <p className="text-xs text-[#c8bcae]">Orders fulfilled</p>
@@ -2066,6 +2071,7 @@ export function ReportsPage() {
             </p>
           </div>
         </div>
+        <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 text-xs sm:grid-cols-3"><p><span className="text-[#c8bcae]">Refunded</span><b className="ml-2">{money(refundedValue)}</b></p><p><span className="text-[#c8bcae]">Repeat customers</span><b className="ml-2">{repeatCustomers}</b></p><p><span className="text-[#c8bcae]">Cancellation rate</span><b className="ml-2">{rangeOrders.length?((rangeOrders.filter(order=>order.status==="cancelled").length/rangeOrders.length)*100).toFixed(1):"0.0"}%</b></p></div>
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.45fr_.75fr]">
         <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -2099,11 +2105,9 @@ export function ReportsPage() {
             ))}
           </div>
           <div className="mt-3 flex justify-between font-mono text-[10px] text-muted-foreground">
-            <span>01 AUG</span>
-            <span>08 AUG</span>
-            <span>16 AUG</span>
-            <span>24 AUG</span>
-            <span>31 AUG</span>
+            <span>{rangeStart.toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
+            <span>{new Date(rangeStart.getTime()+rangeDays*86_400_000/2).toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
+            <span>{new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
           </div>
           <div className="mt-6 grid gap-3 border-t border-border pt-5 sm:grid-cols-2">
             <div>
@@ -2167,10 +2171,10 @@ export function ReportsPage() {
                   </span>
                 </div>
                 <button
-                  onClick={() => setNotice(`${report.name} opened.`)}
+                  onClick={() => exportReport(report.name)}
                   className="rounded-lg border border-border px-3 py-2 text-xs font-semibold"
                 >
-                  Open
+                  Download
                 </button>
               </div>
             ))}
@@ -2205,7 +2209,7 @@ export function ReportsPage() {
             <div>
               <p className="text-xs font-semibold">Monday briefing</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Email sales digest every Monday, 8:00 AM
+                Workspace briefing every Monday, 8:00 AM Philippine time
               </p>
             </div>
             <button
