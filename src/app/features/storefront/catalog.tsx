@@ -984,6 +984,22 @@ export function CollectionPage() {
   );
 }
 
+type ProductReview = {
+  id: string;
+  rating: number;
+  title: string;
+  body: string;
+  created_at: string;
+  profiles: { full_name: string | null } | null;
+};
+
+const normalizeProductReviews = (
+  rows: Array<Omit<ProductReview, "profiles"> & { profiles: ProductReview["profiles"] | Array<NonNullable<ProductReview["profiles"]>> }>,
+): ProductReview[] => rows.map((row) => ({
+  ...row,
+  profiles: Array.isArray(row.profiles) ? row.profiles[0] ?? null : row.profiles,
+}));
+
 export function ProductPage() {
   const { productId } = useParams();
   const { add, toggle, saved, products, userId, orders } = useStore();
@@ -991,16 +1007,7 @@ export function ProductPage() {
   const [photo, setPhoto] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [reviewFilter, setReviewFilter] = useState("All");
-  const [reviews, setReviews] = useState<
-    {
-      id: string;
-      rating: number;
-      title: string;
-      body: string;
-      created_at: string;
-      profiles: { full_name: string | null } | null;
-    }[]
-  >([]);
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewTitle, setReviewTitle] = useState("");
   const [reviewBody, setReviewBody] = useState("");
@@ -1052,7 +1059,7 @@ export function ProductPage() {
         .eq("approved", true)
         .order("created_at", { ascending: false })
         .then(({ data }) => {
-          if (active) setReviews((data ?? []) as typeof reviews);
+          if (active) setReviews(normalizeProductReviews(data ?? []));
         });
     };
     loadReviews();
@@ -1160,7 +1167,7 @@ export function ProductPage() {
         .eq("approved", true)
         .order("created_at", { ascending: false });
       if (refreshedReviews) {
-        setReviews(refreshedReviews as typeof reviews);
+        setReviews(normalizeProductReviews(refreshedReviews));
       }
     }
   };

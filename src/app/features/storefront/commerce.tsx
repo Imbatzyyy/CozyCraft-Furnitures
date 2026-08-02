@@ -480,27 +480,6 @@ export function CustomerOrders() {
     if (!active && orders[0]) setActive(orders[0].id);
   }, [active, orders]);
   if (!user) return <Account mode="login" />;
-  if (paymentReturn === "cancelled" && returnOrderId)
-    return (
-      <Layout>
-        <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-[680px] items-center px-5 py-14">
-          <section className="w-full rounded-[2rem] border border-border bg-card p-8 text-center shadow-sm">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary">
-              <X size={21} />
-            </span>
-            <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">PAYMENT CANCELLED</p>
-            <h1 className="mt-2 font-serif text-4xl">No charge was made.</h1>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Your reserved order is being cancelled and its inventory is returning to the shop.
-            </p>
-            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-              <Link to="/cart" className="rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Return to bag</Link>
-              <Link to="/home" className="rounded-xl border border-border px-5 py-3 text-sm font-semibold">Continue browsing</Link>
-            </div>
-          </section>
-        </main>
-      </Layout>
-    );
   if (!orders.length)
     return (
       <Layout>

@@ -92,6 +92,7 @@ import {
   Splash,
   type Store,
   StoreContext,
+  useStore,
   fallbackProducts,
 } from "./core";
 import { checkoutSignature, selectCheckoutLines } from "../lib/checkout";

@@ -1417,7 +1417,11 @@ export function ReviewsPage() {
       )
       .order("created_at", { ascending: false });
     if (error) setNotice(error.message);
-    else setReviews((data ?? []) as ReviewRow[]);
+    else setReviews((data ?? []).map((row) => ({
+      ...row,
+      profiles: Array.isArray(row.profiles) ? row.profiles[0] ?? null : row.profiles,
+      products: Array.isArray(row.products) ? row.products[0] ?? null : row.products,
+    })) as ReviewRow[]);
   }, []);
   useEffect(() => {
     void loadReviews();
@@ -1745,7 +1749,11 @@ export function ActivityLogsPage() {
       created_at:event.created_at,
       profiles:event.profiles,
     }));
-    setRows([...(activityResult.data as ActivityRow[] ?? []),...clientErrors].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()));
+    const activityRows: ActivityRow[] = (activityResult.data ?? []).map((event) => ({
+      ...event,
+      profiles: Array.isArray(event.profiles) ? event.profiles[0] ?? null : event.profiles,
+    })) as ActivityRow[];
+    setRows([...activityRows,...clientErrors].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()));
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
@@ -1985,10 +1993,10 @@ export function ReportsPage() {
   const exportReport = (reportName = "Sales performance") => {
     const rows:Array<Array<string|number>> = reportName === "Inventory velocity" ? [
       ["Product","Category","Stock","Status","Units sold in range"],
-      ...adminProducts.map(product=>[product.name,product.category,product.stockQuantity??0,product.status,rangeOrders.flatMap(order=>order.order_items).filter(item=>item.product_id===product.id).reduce((sum,item)=>sum+item.quantity,0)]),
+      ...adminProducts.map(product=>[product.name,product.category,product.stockQuantity??0,product.status??"unknown",rangeOrders.flatMap(order=>order.order_items).filter(item=>item.product_id===product.id).reduce((sum,item)=>sum+item.quantity,0)]),
     ] : reportName === "Customer retention" ? [
       ["Customer","Email","Paid orders","Repeat customer"],
-      ...customerProfiles.map(profile=>[profile.full_name||profile.username||"Customer",profile.email,paidOrdersByCustomer[profile.id]??0,(paidOrdersByCustomer[profile.id]??0)>1?"Yes":"No"]),
+      ...customerProfiles.map(profile=>[profile.full_name||profile.username||"Customer",profile.email??"",paidOrdersByCustomer[profile.id]??0,(paidOrdersByCustomer[profile.id]??0)>1?"Yes":"No"]),
     ] : [
       ["Order", "Status", "Payment", "Total", "Created"],
       ...rangeOrders.map((order) => [

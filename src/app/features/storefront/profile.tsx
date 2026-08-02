@@ -590,6 +590,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
 
 export function Profile() {
   const {
+    userId,
     user,
     role,
     authReady,
@@ -606,6 +607,7 @@ export function Profile() {
     saved,
     cart,
     orders,
+    products,
     addresses,
     supportTickets,
     add,

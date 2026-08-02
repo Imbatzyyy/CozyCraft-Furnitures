@@ -1012,7 +1012,7 @@ export function CategoriesPage() {
           new Set(
             categoryProducts
               .map((product) => product.subcategory)
-              .filter(Boolean),
+              .filter((name): name is string => Boolean(name)),
           ),
         );
         return {
