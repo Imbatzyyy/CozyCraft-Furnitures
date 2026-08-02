@@ -478,6 +478,18 @@ export function AdminShell({
   const visibleNav = adminNav.filter(([, , path]) =>
     allowedPaths.includes(path),
   );
+  useEffect(() => {
+    setOpen(false);
+    setProfileOpen(false);
+  }, [loc.pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
   const canAccess = canAccessAdminPath(role, loc.pathname, allAdminPaths);
   if (!authReady || (user && !databaseRole)) return <div className="grid min-h-screen place-items-center bg-[#f3f0ea] text-sm text-muted-foreground">Checking secure access…</div>;
   if (!isStaffRole(databaseRole)) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><LockKeyhole className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">Administrator access required.</h1><p className="mt-3 text-sm text-muted-foreground">Sign in with an approved staff or admin account.</p><Link to="/admin/login" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Go to admin sign in</Link></section></main>;
@@ -488,7 +500,7 @@ export function AdminShell({
     <div data-admin-shell className="min-h-screen overflow-x-clip bg-[#f3f0ea]">
       <a href="#admin-main" className="skip-link">Skip to admin content</a>
       <aside
-        className={`fixed inset-y-0 left-0 z-[70] flex w-72 flex-col border-r border-white/10 bg-[#201f1d] p-5 text-white transition-transform lg:pointer-events-auto lg:translate-x-0 ${open ? "pointer-events-auto translate-x-0" : "pointer-events-none -translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-[70] w-72 flex-col border-r border-white/10 bg-[#201f1d] p-5 text-white lg:flex ${open ? "flex" : "hidden"}`}
       >
         <button
           className="absolute right-4 top-4 lg:hidden"
