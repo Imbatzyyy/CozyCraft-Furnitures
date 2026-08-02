@@ -58,6 +58,10 @@ export type DbSupportTicket = {
   subject: string;
   message: string;
   status: "open" | "in_progress" | "resolved" | "closed";
+  category: "order" | "delivery" | "payment" | "product" | "return" | "account" | "general";
+  priority: "low" | "normal" | "high" | "urgent";
+  assigned_to: string | null;
+  attachment_paths: string[];
   admin_reply: string | null;
   created_at: string;
   updated_at: string;

@@ -1041,9 +1041,17 @@ function App() {
     );
     return { url: publicFile.publicUrl, error: null };
   };
-  const submitTicket = async (message: string) => {
+  const submitTicket = async (details: { message:string; category:DbSupportTicket["category"]; priority:DbSupportTicket["priority"]; orderId?:string; files?:File[] }) => {
     if (!userId) return "Please sign in first.";
-    const { error } = await supabase.from("support_tickets").insert({ user_id:userId, message });
+    const attachmentPaths:string[] = [];
+    for (const file of (details.files ?? []).slice(0,3)) {
+      if (file.size > 5*1024*1024 || !["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type)) return "Attachments must be JPG, PNG, WebP, or PDF files no larger than 5 MB.";
+      const path=`${userId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+      const { error:uploadError }=await supabase.storage.from("support-attachments").upload(path,file);
+      if(uploadError)return `Could not upload ${file.name}: ${uploadError.message}`;
+      attachmentPaths.push(path);
+    }
+    const { error } = await supabase.from("support_tickets").insert({ user_id:userId, message:details.message.trim(), category:details.category, priority:details.priority, order_id:details.orderId||null, subject:`${details.category.charAt(0).toUpperCase()+details.category.slice(1)} support request`, attachment_paths:attachmentPaths });
     if (!error) await refreshTickets();
     return error?.message ?? null;
   };

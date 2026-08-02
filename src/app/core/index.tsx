@@ -357,7 +357,7 @@ export type Store = {
     url: string | null;
     error: string | null;
   }>;
-  submitTicket: (message: string) => Promise<string | null>;
+  submitTicket: (details: { message:string; category:DbSupportTicket["category"]; priority:DbSupportTicket["priority"]; orderId?:string; files?:File[] }) => Promise<string | null>;
   replyToTicket: (
     id: string,
     reply: string,
@@ -504,6 +504,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
       setCustomerNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
     }
     if (notification.entity_type === "orders") nav("/profile?tab=orders");
+    if (notification.entity_type === "support_tickets") nav("/profile?tab=support");
     setNotificationOpen(false);
   };
   const matches = products

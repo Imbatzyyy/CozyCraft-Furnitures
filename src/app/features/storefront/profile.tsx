@@ -592,8 +592,17 @@ export function Profile() {
   } = useStore();
   const nav = useNavigate();
   const [tab, setTab] = useState("Profile");
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab")?.toLowerCase();
+    const matching = ["Profile","Orders","Addresses","Payments","Change password","Support"].find((item)=>item.toLowerCase().replace(/\s+/g,"-")===requested || item.toLowerCase()===requested);
+    if (matching) setTab(matching);
+  }, []);
   const [notice, setNotice] = useState("");
   const [ticket, setTicket] = useState("");
+  const [ticketCategory, setTicketCategory] = useState<DbSupportTicket["category"]>("general");
+  const [ticketPriority, setTicketPriority] = useState<DbSupportTicket["priority"]>("normal");
+  const [ticketOrderId, setTicketOrderId] = useState("");
+  const [ticketFiles, setTicketFiles] = useState<File[]>([]);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [photoDialog, setPhotoDialog] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -1597,17 +1606,19 @@ export function Profile() {
                   Send a concern about your order, delivery, payment, or
                   product.
                 </p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3"><label className="grid gap-2 text-xs font-semibold">Concern type<select value={ticketCategory} onChange={(event)=>setTicketCategory(event.target.value as DbSupportTicket["category"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="general">General</option><option value="order">Order</option><option value="delivery">Delivery</option><option value="payment">Payment</option><option value="product">Product</option><option value="return">Return</option><option value="account">Account</option></select></label><label className="grid gap-2 text-xs font-semibold">Priority<select value={ticketPriority} onChange={(event)=>setTicketPriority(event.target.value as DbSupportTicket["priority"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label className="grid gap-2 text-xs font-semibold">Related order<select value={ticketOrderId} onChange={(event)=>setTicketOrderId(event.target.value)} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="">None</option>{orders.map((order)=><option key={order.id} value={order.id}>#{order.order_number}</option>)}</select></label></div>
                 <textarea
                   value={ticket}
                   onChange={(e) => setTicket(e.target.value)}
-                  className="mt-6 min-h-36 w-full rounded-2xl border border-border bg-[#fcfbf8] p-4 text-sm outline-none"
+                  className="mt-3 min-h-36 w-full rounded-2xl border border-border bg-[#fcfbf8] p-4 text-sm outline-none"
                   placeholder="Include your order number and a short description of your concern."
                 />
+                <label className="mt-3 grid gap-2 text-xs font-semibold">Evidence (optional, up to 3 files)<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event)=>setTicketFiles(Array.from(event.target.files??[]).slice(0,3))} className="rounded-xl border border-border bg-[#fcfbf8] p-3 font-normal"/></label>
                 <button
                   onClick={async () => {
                     if (!ticket) return;
-                    const error = await submitTicket(ticket);
-                    if (!error) setTicket("");
+                    const error = await submitTicket({message:ticket,category:ticketCategory,priority:ticketPriority,orderId:ticketOrderId,files:ticketFiles});
+                    if (!error) {setTicket("");setTicketFiles([]);setTicketOrderId("");}
                     setNotice(error ?? "Support ticket sent and visible to the admin care team.");
                   }}
                   className="mt-3 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background"
@@ -1626,6 +1637,7 @@ export function Profile() {
                           {item.status.replace(/_/g, " ")}
                         </Status>
                       </div>
+                      <p className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-muted-foreground">{item.category} · {item.priority} priority</p>
                       <p className="mt-2 font-semibold">
                         {item.status === "open"
                           ? "Your concern has been received."

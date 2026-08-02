@@ -1544,6 +1544,9 @@ export function SupportPage() {
     useState<DbSupportTicket["status"]>("open");
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [notice, setNotice] = useState("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [ticketPriority, setTicketPriority] = useState<DbSupportTicket["priority"]>("normal");
+  const [teamMembers, setTeamMembers] = useState<Array<{id:string;full_name:string;role:string}>>([]);
   useEffect(() => {
     void refreshTickets();
   }, [refreshTickets]);
@@ -1554,7 +1557,9 @@ export function SupportPage() {
     supportTickets.find((item) => item.id === activeId) ?? supportTickets[0];
   useEffect(() => {
     if (active) setTicketStatus(active.status);
+    if (active) {setAssignedTo(active.assigned_to??"");setTicketPriority(active.priority??"normal");}
   }, [active?.id, active?.status]);
+  useEffect(()=>{void supabase.from("profiles").select("id,full_name,role").in("role",["staff","admin","superadmin"]).eq("staff_active",true).then(({data})=>setTeamMembers((data??[]) as typeof teamMembers));},[]);
   const sendReply = async () => {
     if (!active || !reply.trim()) return;
     const nextStatus =
@@ -1576,6 +1581,15 @@ export function SupportPage() {
         `Ticket ${active.ticket_number} marked ${ticketStatus.replace(/_/g, " ")}.`,
     );
   };
+  const saveWorkflow = async () => {
+    if(!active)return;
+    setUpdatingStatus(true);
+    const {error}=await supabase.from("support_tickets").update({assigned_to:assignedTo||null,priority:ticketPriority}).eq("id",active.id);
+    setUpdatingStatus(false);
+    setNotice(error?.message??`Ticket ${active.ticket_number} ownership and priority updated.`);
+    if(!error)await refreshTickets();
+  };
+  const openSupportAttachment=async(path:string)=>{const {data,error}=await supabase.storage.from("support-attachments").createSignedUrl(path,300);if(error||!data?.signedUrl){setNotice(error?.message??"Attachment could not be opened.");return;}window.open(data.signedUrl,"_blank","noopener,noreferrer");};
   return (
     <AdminShell title="Support">
       <div>
@@ -1628,6 +1642,7 @@ export function SupportPage() {
                       active.profiles?.email ||
                       "Customer"}
                   </p>
+                  <p className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-muted-foreground">{active.category} · {active.priority} priority</p>
                 </div>
                 <Status>{active.status.replace(/_/g, " ")}</Status>
               </div>
@@ -1636,6 +1651,7 @@ export function SupportPage() {
               <div className="max-w-md rounded-2xl bg-secondary p-4 text-sm">
                 {active.message}
               </div>
+              {active.attachment_paths?.length>0&&<div className="mt-3 flex flex-wrap gap-2">{active.attachment_paths.map((path,index)=><button key={path} type="button" onClick={()=>void openSupportAttachment(path)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">Open attachment {index+1}</button>)}</div>}
               {active.admin_reply && (
               <div className="ml-auto mt-5 max-w-md rounded-2xl bg-[#292622] p-4 text-sm text-white">
                   {active.admin_reply}
@@ -1671,6 +1687,7 @@ export function SupportPage() {
                   {updatingStatus ? "Saving..." : "Update status"}
                 </button>
               </div>
+              <div className="mb-3 grid gap-3 rounded-xl bg-secondary p-3 sm:grid-cols-[1fr_1fr_auto]"><label className="grid gap-1.5 text-xs font-semibold">Assigned owner<select value={assignedTo} onChange={(event)=>setAssignedTo(event.target.value)} className="h-10 rounded-lg border border-border bg-card px-3 font-normal"><option value="">Unassigned</option>{teamMembers.map((member)=><option key={member.id} value={member.id}>{member.full_name||member.role} · {member.role}</option>)}</select></label><label className="grid gap-1.5 text-xs font-semibold">Priority<select value={ticketPriority} onChange={(event)=>setTicketPriority(event.target.value as DbSupportTicket["priority"])} className="h-10 rounded-lg border border-border bg-card px-3 font-normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><button type="button" onClick={()=>void saveWorkflow()} disabled={updatingStatus||(assignedTo===(active.assigned_to??"")&&ticketPriority===active.priority)} className="h-10 self-end rounded-lg border border-border bg-card px-4 text-xs font-semibold disabled:opacity-45">Save ownership</button></div>
               <div className="flex gap-3">
                 <input
                   value={reply}
