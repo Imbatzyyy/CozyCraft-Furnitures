@@ -60,7 +60,7 @@ Deno.serve(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired. Please sign in again." }, 401);
 
-  let payload: { addressId?: string; paymentMethod?: string; returnOrigin?: string; items?: Array<{ product_id: string; quantity: number }> };
+  let payload: { addressId?: string; paymentMethod?: string; returnOrigin?: string; checkoutKey?: string; items?: Array<{ product_id: string; quantity: number }> };
   try {
     payload = await request.json();
   } catch {
@@ -77,6 +77,9 @@ Deno.serve(async (request) => {
   const paymentMethod = payload.paymentMethod;
   if (!payload.addressId || !["card", "gcash"].includes(paymentMethod ?? "")) {
     return json(request, { error: "Choose a valid delivery address and payment method." }, 400);
+  }
+  if (!payload.checkoutKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.checkoutKey)) {
+    return json(request, { error: "Invalid checkout key." }, 400);
   }
   if (!Array.isArray(payload.items) || payload.items.length === 0 || payload.items.length > 50) {
     return json(request, { error: "Your checkout selection is empty or too large." }, 400);
@@ -95,9 +98,20 @@ Deno.serve(async (request) => {
       p_address_id: payload.addressId,
       p_payment_method: paymentMethod,
       p_items: items,
+      p_checkout_key: payload.checkoutKey,
     });
     if (error) return json(request, { error: error.message }, 400);
     orderId = data as string;
+
+    const { data: existingTransaction } = await adminClient
+      .from("payment_transactions")
+      .select("checkout_url,status")
+      .eq("order_id", orderId)
+      .maybeSingle();
+    if (existingTransaction?.checkout_url && existingTransaction.status === "pending") {
+      const { data: existingOrder } = await adminClient.from("orders").select("order_number").eq("id", orderId).single();
+      return json(request, { orderId, orderNumber: existingOrder?.order_number ?? null, checkoutUrl: existingTransaction.checkout_url, reused: true });
+    }
 
     const { data: order, error: orderError } = await adminClient
       .from("orders")

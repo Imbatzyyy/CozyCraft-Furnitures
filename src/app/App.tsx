@@ -844,6 +844,13 @@ function App() {
     const remainingCart = selectedIds
       ? cart.filter((item) => !selectedIds.has(item.id))
       : [];
+    const checkoutSignature = orderCart.map((item) => `${item.id}:${item.quantity}`).sort().join("|");
+    const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${checkoutSignature}`;
+    let checkoutKey = window.sessionStorage.getItem(checkoutStorageKey);
+    if (!checkoutKey) {
+      checkoutKey = crypto.randomUUID();
+      window.sessionStorage.setItem(checkoutStorageKey, checkoutKey);
+    }
     if (["card", "gcash"].includes(paymentMethod)) {
       const { data, error } = await supabase.functions.invoke(
         "create-paymongo-checkout",
@@ -851,6 +858,7 @@ function App() {
           body: {
             addressId,
             paymentMethod,
+            checkoutKey,
             returnOrigin: window.location.origin,
             items: orderCart.map((item) => ({
               product_id: item.id,
@@ -879,6 +887,7 @@ function App() {
         );
       }
       setCart(remainingCart);
+      window.sessionStorage.removeItem(checkoutStorageKey);
       await Promise.all([refreshOrders(), refreshProducts()]);
       return {
         id: data.orderId ?? null,
@@ -890,7 +899,7 @@ function App() {
     if (paymentMethod !== "cod") {
       return { id: null, orderNumber: null, checkoutUrl: null, error: "Unsupported payment method." };
     }
-    const { data, error } = await supabase.rpc("place_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })) });
+    const { data, error } = await supabase.rpc("place_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })), p_checkout_key: checkoutKey });
     if (error) return { id:null, orderNumber:null, checkoutUrl:null, error:error.message };
     const orderId = data as string;
     const { data: createdOrder } = await supabase
@@ -909,6 +918,7 @@ function App() {
       );
     }
     setCart(remainingCart);
+    window.sessionStorage.removeItem(checkoutStorageKey);
     await Promise.all([refreshOrders(), refreshProducts()]);
     return {
       id: orderId,
