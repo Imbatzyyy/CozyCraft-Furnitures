@@ -485,10 +485,10 @@ export function AdminShell({
   if (mfaRequired) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><form onSubmit={verifyMfa} className="w-full max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary"><ShieldCheck size={20}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">TWO-STEP VERIFICATION</p><h1 className="mt-2 font-serif text-4xl">Confirm it’s you.</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">Enter the current six-digit code from your authenticator app to open operations.</p>{mfaFactorId&&<label className="mt-6 grid gap-2 text-left text-sm font-semibold">Authenticator code<input autoFocus value={mfaCode} onChange={event=>setMfaCode(event.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" autoComplete="one-time-code" className="h-12 rounded-xl border border-border bg-background px-4 text-center text-lg tracking-[.35em]"/></label>}{mfaError&&<p className="mt-4 rounded-xl bg-[#f3e5d4] p-3 text-left text-xs font-semibold text-[#8b5c46]">{mfaError}</p>}<button type={mfaFactorId?"submit":"button"} onClick={mfaFactorId?undefined:()=>void checkMfa()} disabled={mfaBusy||Boolean(mfaFactorId&&mfaCode.length!==6)} className="mt-5 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background disabled:opacity-50">{mfaBusy?"Verifying…":mfaFactorId?"Verify and enter":"Retry secure check"}</button><button type="button" onClick={()=>void signOut()} className="mt-3 text-sm font-semibold underline underline-offset-4">Sign out</button></form></main>;
   if (!canAccess) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><ShieldCheck className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">This feature is restricted.</h1><p className="mt-3 text-sm text-muted-foreground">Your {role.toLowerCase()} role does not have permission to open this page.</p><Link to="/admin" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Return to overview</Link></section></main>;
   return (
-    <div data-admin-shell className="min-h-screen bg-[#f3f0ea]">
+    <div data-admin-shell className="min-h-screen overflow-x-clip bg-[#f3f0ea]">
       <a href="#admin-main" className="skip-link">Skip to admin content</a>
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-white/10 bg-[#201f1d] p-5 text-white transition-transform lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-[70] flex w-72 flex-col border-r border-white/10 bg-[#201f1d] p-5 text-white transition-transform lg:pointer-events-auto lg:translate-x-0 ${open ? "pointer-events-auto translate-x-0" : "pointer-events-none -translate-x-full"}`}
       >
         <button
           className="absolute right-4 top-4 lg:hidden"
@@ -535,12 +535,12 @@ export function AdminShell({
       {open && (
         <button
           onClick={() => setOpen(false)}
-          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          className="fixed inset-0 z-[60] bg-black/40 lg:hidden"
           aria-label="Close menu"
         />
       )}
       <div className="min-w-0 lg:ml-72">
-        <header className="sticky top-0 z-30 flex h-[70px] items-center justify-between border-b border-border/75 bg-[#f3f0ea]/95 px-3 backdrop-blur sm:h-[78px] sm:px-5 lg:px-8">
+        <header className="sticky top-0 z-50 isolate flex h-[70px] items-center justify-between border-b border-border/75 bg-[#f3f0ea]/95 px-3 backdrop-blur sm:h-[78px] sm:px-5 lg:px-8">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setOpen(true)}
@@ -578,7 +578,7 @@ export function AdminShell({
                 <ChevronDown size={14} className="text-muted-foreground" />
               </button>
               {profileOpen && (
-                <div className="absolute right-0 top-12 z-50 w-56 rounded-2xl border border-border bg-card p-2 shadow-xl">
+                <div className="absolute right-0 top-12 z-[70] w-56 rounded-2xl border border-border bg-card p-2 shadow-xl">
                   <p className="px-3 py-2 text-[10px] font-bold tracking-[.15em] text-muted-foreground">SIGNED IN ROLE</p>
                   <div className="rounded-xl bg-secondary px-3 py-2.5 text-xs font-semibold">{role}</div>
                   <button
@@ -596,10 +596,10 @@ export function AdminShell({
             </div>
           </div>
         </header>
-        <nav aria-label="Quick admin navigation" className="sticky top-[70px] z-20 flex gap-2 overflow-x-auto border-b border-border bg-[#f3f0ea]/95 px-3 py-2 backdrop-blur [scrollbar-width:none] sm:top-[78px] sm:px-5 lg:hidden [&::-webkit-scrollbar]:hidden">
+        <nav aria-label="Quick admin navigation" className="sticky top-[70px] z-40 isolate flex gap-2 overflow-x-auto border-b border-border bg-[#f3f0ea]/95 px-3 py-2 backdrop-blur [scrollbar-width:none] sm:top-[78px] sm:px-5 lg:hidden [&::-webkit-scrollbar]:hidden">
           {visibleNav.filter(([, label]) => ["Overview", "Products", "Orders", "Inventory", "Support"].includes(label)).map(([Icon, label, path]) => <Link key={path} to={path} className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-[11px] font-semibold ${loc.pathname === path ? "bg-foreground text-background" : "border border-border bg-card"}`}><Icon size={14} />{label}</Link>)}
         </nav>
-        <main id="admin-main" tabIndex={-1} className="mx-auto max-w-[1500px] p-3 sm:p-5 lg:p-8">{children}</main>
+        <main id="admin-main" tabIndex={-1} className="relative z-0 isolate mx-auto max-w-[1500px] p-3 sm:p-5 lg:p-8">{children}</main>
       </div>
       {confirmSignOut && (
         <ConfirmSignOut
