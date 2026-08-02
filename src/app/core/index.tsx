@@ -468,6 +468,7 @@ export function Logo({
 export function Header({ immersive = false }: { immersive?: boolean }) {
   const { cart, saved, userId, user, avatar, products, profileUsername } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const [menu, setMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -484,6 +485,11 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
     window.addEventListener("scroll", update, { passive: true });
     return () => window.removeEventListener("scroll", update);
   }, [immersive]);
+  useEffect(() => {
+    setNotificationOpen(false);
+    setMenu(false);
+    setSearchOpen(false);
+  }, [location.pathname]);
   useEffect(() => {
     if (!userId) {
       setCustomerNotifications([]);
@@ -1299,17 +1305,27 @@ export function ShopSignInPrompt({ close }: { close: () => void }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
+    const onHeaderAction = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("header a, header button")) {
+        close();
+      }
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("click", onHeaderAction, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("click", onHeaderAction, true);
+    };
   }, [close]);
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="shop-signin-title"
-      className="fixed inset-0 z-[120] grid place-items-center bg-black/45 p-5 backdrop-blur-sm"
+      className="fixed inset-x-0 bottom-0 top-[76px] z-[120] grid place-items-center overflow-y-auto bg-black/45 p-3 backdrop-blur-sm sm:p-5"
     >
-      <section className="w-full max-w-sm overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+      <section className="max-h-[calc(100dvh-6.25rem)] w-full max-w-sm overflow-y-auto rounded-3xl border border-border bg-card shadow-2xl">
         <div className="relative bg-[#292a26] p-7 text-[#f7f3eb]">
           <button
             onClick={close}

@@ -615,6 +615,7 @@ export function AdminShell({
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const nav = useNavigate();
+  const location = useLocation();
   const { userId } = useStore();
   type NotificationItem = {
     id: number;
@@ -627,6 +628,9 @@ export function NotificationCenter() {
   };
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [error, setError] = useState("");
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
 
   const loadNotifications = useCallback(async () => {
     if (!userId) {

@@ -129,6 +129,13 @@ function App() {
   const [adminRole, setAdminRole] = useState<AdminRole>("Staff");
   const [shopPrompt, setShopPrompt] = useState(false);
   const [fly, setFly] = useState<FlyState | null>(null);
+
+  useEffect(() => {
+    // A returning session may finish restoring after the customer taps a
+    // shopping action. Never leave the guest prompt mounted for a signed-in
+    // customer, because its backdrop would otherwise intercept navigation.
+    if (userId) setShopPrompt(false);
+  }, [userId]);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
 
@@ -673,6 +680,7 @@ function App() {
   };
 
   const add = (id: string, amount = 1) => {
+    if (!authReady) return;
     if (!userId) {
       setShopPrompt(true);
       return;
@@ -784,6 +792,7 @@ function App() {
     }
   };
   const toggle = (id: string) => {
+    if (!authReady) return;
     if (!userId) {
       setShopPrompt(true);
       return;
