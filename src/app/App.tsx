@@ -66,7 +66,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {

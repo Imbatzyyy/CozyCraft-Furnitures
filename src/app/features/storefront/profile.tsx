@@ -64,7 +64,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -1539,7 +1539,7 @@ export function Profile() {
                         {selectedOrder.order_items.map((item) => (
                           <div key={item.id} className="flex items-center gap-3 py-4">
                             {item.image_url ? (
-                              <ImageWithFallback src={item.image_url} alt={item.product_name} className="h-16 w-16 rounded-xl object-cover" />
+                              <ResilientImage src={item.image_url} alt={item.product_name} className="h-16 w-16 rounded-xl object-cover" />
                             ) : (
                               <span className="grid h-16 w-16 place-items-center rounded-xl bg-secondary"><Package size={18} /></span>
                             )}

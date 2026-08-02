@@ -65,7 +65,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -447,7 +447,7 @@ export function Logo({
   splash?: boolean;
 }) {
   const art = (
-    <ImageWithFallback
+    <ResilientImage
       src={cozyCraftLogo}
       alt="CozyCraft Furniture official logo"
       className={`h-full w-full origin-center object-contain ${splash ? "scale-[1.25]" : "scale-[1.34]"} ${light ? "brightness-0 invert" : ""}`}
@@ -718,7 +718,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                         key={product.id}
                         className="flex w-full items-center gap-3 rounded-2xl p-3 text-left hover:bg-secondary"
                       >
-                        <ImageWithFallback
+                        <ResilientImage
                           src={product.images[0]}
                           alt={product.name}
                           className="h-14 w-14 rounded-xl object-cover"
@@ -1096,7 +1096,7 @@ export function ProductCard({ product }: { product: Product }) {
           style={{ transform: `translateX(-${imageIndex * 100}%)` }}
         >
           {product.images.map((image, index) => (
-            <ImageWithFallback
+            <ResilientImage
               key={image}
               src={image}
               alt={`${product.name}, view ${index + 1}`}

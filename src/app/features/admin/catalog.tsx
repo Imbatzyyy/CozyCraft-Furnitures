@@ -64,7 +64,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -389,7 +389,7 @@ export function ProductManager() {
                   <tr key={item.id} className="border-t border-border">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        <ImageWithFallback
+                        <ResilientImage
                           src={item.images[item.main] || ""}
                           alt=""
                           className="h-11 w-11 rounded-lg object-cover"
@@ -434,7 +434,7 @@ export function ProductManager() {
                 key={item.id}
               >
                 <div className="relative aspect-[1.25] overflow-hidden rounded-xl bg-secondary">
-                  <ImageWithFallback
+                  <ResilientImage
                     src={item.images[item.main] || ""}
                     alt={item.name}
                     className="h-full w-full object-cover"
@@ -854,7 +854,7 @@ export function ProductEditor({
                   key={`${image}-${index}`}
                   className={`relative aspect-square overflow-hidden rounded-xl border-2 ${product.main === index ? "border-foreground" : "border-transparent"}`}
                 >
-                  <ImageWithFallback
+                  <ResilientImage
                     src={image}
                     alt={`Product upload ${index + 1}`}
                     className="h-full w-full object-cover"
@@ -1147,7 +1147,7 @@ export function CategoriesPage() {
                 onClick={() => setActive(category.name)}
                 className={`group flex w-full items-center gap-3 rounded-xl p-3 text-left transition ${selected.name === category.name ? "bg-[#f5f0e8] text-foreground" : "text-[#f5f0e8] hover:bg-white/10"}`}
               >
-                <ImageWithFallback
+                <ResilientImage
                   src={category.image}
                   alt={category.name}
                   className="h-14 w-14 rounded-lg object-cover"
@@ -1175,7 +1175,7 @@ export function CategoriesPage() {
         </section>
         <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="relative h-44 overflow-hidden">
-            <ImageWithFallback
+            <ResilientImage
               src={selected.image}
               alt={selected.name}
               className="h-full w-full object-cover"

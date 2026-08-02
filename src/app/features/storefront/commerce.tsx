@@ -65,7 +65,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -213,7 +213,7 @@ export function Cart() {
                   >
                     {isSelected && <Check size={12} />}
                   </button>
-                  <ImageWithFallback
+                  <ResilientImage
                     src={item.images[0]}
                     alt={item.name}
                     className="h-28 w-24 rounded-2xl object-cover"
@@ -414,7 +414,7 @@ export function Wishlist() {
                   to={`/products/${p.id}`}
                     className={`relative block overflow-hidden bg-secondary ${index === 0 ? "aspect-auto min-h-[340px]" : "aspect-[.82]"}`}
                 >
-                  <ImageWithFallback
+                  <ResilientImage
                     src={p.images[0]}
                     alt={p.name}
                       className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
@@ -538,7 +538,7 @@ export function CustomerOrders() {
           <section className="overflow-hidden rounded-3xl border border-border bg-card">
             <div className="flex gap-5 p-6">
               {order.order_items[0]?.image_url && (
-                <ImageWithFallback
+                <ResilientImage
                   src={order.order_items[0].image_url}
                   alt="Order item"
                   className="h-32 w-28 rounded-2xl object-cover"
@@ -999,7 +999,7 @@ export function Checkout() {
               <div className="divide-y divide-border">
                 {lines.map(({ item, quantity }) => (
                   <div className="flex gap-3 py-3 first:pt-0" key={item.id}>
-                    <ImageWithFallback
+                    <ResilientImage
                       src={item.images[0]}
                       alt={item.name}
                       className="h-14 w-12 rounded-lg object-cover"

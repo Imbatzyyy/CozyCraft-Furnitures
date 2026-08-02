@@ -64,7 +64,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -361,7 +361,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       <div className="mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1500px] overflow-hidden rounded-[1.5rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.12)] sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] lg:h-full lg:min-h-0 lg:grid-cols-[1.08fr_.92fr]">
         <section className="relative hidden min-h-0 overflow-hidden bg-[#24211e] p-10 text-[#f4f2ee] lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 opacity-35">
-            <ImageWithFallback
+            <ResilientImage
               src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1300&q=80"
               alt="Warm CozyCraft interior"
               className="h-full w-full object-cover"
@@ -416,7 +416,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
               onClick={google}
               className="mt-4 flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-border bg-white text-sm font-semibold transition hover:bg-secondary"
             >
-              <ImageWithFallback
+              <ResilientImage
                 src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
                 alt="Google"
                 className="h-5 w-5"

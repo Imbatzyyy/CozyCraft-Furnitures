@@ -64,7 +64,7 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -157,7 +157,7 @@ export function Home() {
         <section>
           <div className="relative min-h-screen overflow-hidden bg-[#171614]">
             {slides.map((item, index) => (
-              <ImageWithFallback
+              <ResilientImage
                 key={item.title}
                 src={item.image}
                 alt={item.title}
@@ -311,7 +311,7 @@ export function Home() {
                 Discover the edit <ArrowRight size={16} />
               </Link>
             </div>
-            <ImageWithFallback
+            <ResilientImage
               src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1100&q=85"
               alt="Neutral living room"
               className="h-[400px] w-full object-cover"
@@ -347,7 +347,7 @@ export function Home() {
         </section>
         <section className="mx-auto max-w-[1440px] px-5 py-20 lg:px-10 lg:py-28">
           <div className="grid gap-5 lg:grid-cols-[1.35fr_.65fr]">
-            <ImageWithFallback
+            <ResilientImage
               src="https://images.unsplash.com/photo-1616594039964-ae9021a400a0?auto=format&fit=crop&w=1400&q=86"
               alt="A restful CozyCraft bedroom space"
               className="h-[540px] w-full rounded-[2rem] object-cover shadow-[0_14px_36px_rgba(35,31,27,.10)]"
@@ -468,7 +468,7 @@ export function Room({
       to={to}
       className={`group relative h-[340px] overflow-hidden ${span}`}
     >
-      <ImageWithFallback
+      <ResilientImage
         src={image}
         alt={title}
         className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
@@ -508,7 +508,7 @@ export function About() {
       <main>
         <section className="mx-auto max-w-[1440px] px-5 py-5 lg:px-10">
           <div className="relative min-h-[590px] overflow-hidden rounded-[2rem] bg-[#282924]">
-            <ImageWithFallback
+            <ResilientImage
               src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1800&q=88"
               alt="A quiet CozyCraft living space"
               className="absolute inset-0 h-full w-full object-cover opacity-75"
@@ -925,7 +925,7 @@ export function CollectionPage() {
       <main>
         <section className="mx-auto max-w-[1440px] px-5 pt-5 lg:px-10">
           <div className="relative min-h-[420px] overflow-hidden rounded-3xl bg-secondary">
-            <ImageWithFallback
+            <ResilientImage
               src={info.image}
               alt={info.title}
               className="absolute inset-0 h-full w-full object-cover"
@@ -1250,7 +1250,7 @@ export function ProductPage() {
         <div className="grid gap-9 lg:grid-cols-[1.1fr_.9fr] lg:gap-14">
           <section>
             <div className="aspect-[.93] overflow-hidden bg-secondary">
-              <ImageWithFallback
+              <ResilientImage
                 src={product.images[photo]}
                 alt={`${product.name}, view ${photo + 1}`}
                 className="h-full w-full object-cover"
@@ -1263,7 +1263,7 @@ export function ProductPage() {
                   key={image}
                   className={`aspect-square overflow-hidden border-2 ${photo === i ? "border-foreground" : "border-transparent"}`}
                 >
-                  <ImageWithFallback
+                  <ResilientImage
                     src={image}
                     alt={`${product.name} alternate view ${i + 1}`}
                     className="h-full w-full object-cover"
