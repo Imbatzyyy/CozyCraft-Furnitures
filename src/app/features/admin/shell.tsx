@@ -770,7 +770,7 @@ export function NotificationCenter() {
             type="button"
             aria-label="Close notifications"
             onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 bg-black/20 sm:bg-transparent"
+            className="fixed inset-x-0 bottom-0 top-[70px] z-40 bg-black/20 sm:top-[78px] sm:bg-transparent"
           />
           <section
             aria-label="Administrator notifications"

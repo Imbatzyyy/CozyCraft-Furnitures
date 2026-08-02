@@ -581,7 +581,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                       type="button"
                       aria-label="Close notifications"
                       onClick={() => setNotificationOpen(false)}
-                      className="fixed inset-0 z-40 bg-black/20 sm:bg-transparent"
+                      className="fixed inset-x-0 bottom-0 top-[76px] z-40 bg-black/20 sm:bg-transparent"
                     />
                     <section
                       aria-label="Customer notifications"
