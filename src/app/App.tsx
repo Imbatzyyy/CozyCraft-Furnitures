@@ -198,12 +198,29 @@ function App() {
   }, [mapProduct]);
 
   const refreshOrders = useCallback(async () => {
-    const { data, error } = await supabase
+    const loadOrders = () => supabase
       .from("orders")
       .select(
         "*, order_items(*), profiles!orders_user_id_fkey(full_name,email,phone)",
       )
       .order("created_at", { ascending: false });
+    let { data, error } = await loadOrders();
+    const pendingOnlineOrderIds = (data ?? [])
+      .filter(
+        (order) =>
+          order.payment_status === "pending" &&
+          ["card", "gcash"].includes(order.payment_method),
+      )
+      .map((order) => order.id);
+    if (!error && pendingOnlineOrderIds.length) {
+      const { data: syncResult } = await supabase.functions.invoke(
+        "sync-paymongo-payments",
+        { body: { orderIds: pendingOnlineOrderIds } },
+      );
+      if (Number(syncResult?.synchronized) > 0) {
+        ({ data, error } = await loadOrders());
+      }
+    }
     if (!error) setOrders((data ?? []) as DbOrder[]);
   }, []);
 
