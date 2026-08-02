@@ -74,6 +74,7 @@ import {
   supabase,
   type DbCustomerProfile,
   type DbOrder,
+  type DbCustomerNotification,
   type DbProduct,
   type DbRole,
   type DbSupportTicket,
@@ -465,11 +466,13 @@ export function Logo({
 }
 
 export function Header({ immersive = false }: { immersive?: boolean }) {
-  const { cart, saved, user, avatar, products, profileUsername } = useStore();
+  const { cart, saved, userId, user, avatar, products, profileUsername } = useStore();
   const nav = useNavigate();
   const [menu, setMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [customerNotifications, setCustomerNotifications] = useState<DbCustomerNotification[]>([]);
   const [scrolled, setScrolled] = useState(false);
   const cartQty = cart.reduce((n, x) => n + x.quantity, 0);
   const profileDisplayName =
@@ -481,6 +484,28 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
     window.addEventListener("scroll", update, { passive: true });
     return () => window.removeEventListener("scroll", update);
   }, [immersive]);
+  useEffect(() => {
+    if (!userId) {
+      setCustomerNotifications([]);
+      return;
+    }
+    const refresh = async () => {
+      const { data, error } = await supabase.from("customer_notifications").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20);
+      if (!error) setCustomerNotifications((data ?? []) as DbCustomerNotification[]);
+    };
+    void refresh();
+    const channel = supabase.channel(`storefront-notifications-${userId}`).on("postgres_changes", { event: "*", schema: "public", table: "customer_notifications", filter: `user_id=eq.${userId}` }, refresh).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId]);
+  const unreadNotifications = customerNotifications.filter((item) => !item.read_at).length;
+  const openNotification = async (notification: DbCustomerNotification) => {
+    if (!notification.read_at) {
+      await supabase.from("customer_notifications").update({ read_at: new Date().toISOString() }).eq("id", notification.id);
+      setCustomerNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
+    }
+    if (notification.entity_type === "orders") nav("/profile?tab=orders");
+    setNotificationOpen(false);
+  };
   const matches = products
     .filter((product) =>
       `${product.name} ${product.category} ${product.color}`
@@ -541,6 +566,26 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                 </b>
               )}
             </Link>
+            {user && (
+              <div className="relative">
+                <button type="button" onClick={() => setNotificationOpen((value) => !value)} aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`} className={`relative grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}>
+                  <Bell size={18} />
+                  {unreadNotifications > 0 && <b className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#a45f45] px-1 text-[9px] text-white">{Math.min(unreadNotifications, 9)}{unreadNotifications > 9 ? "+" : ""}</b>}
+                </button>
+                {notificationOpen && (
+                  <div className="absolute right-0 top-11 z-50 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-border px-4 py-3"><b className="text-sm">Notifications</b><span className="text-[10px] text-muted-foreground">{unreadNotifications} unread</span></div>
+                    <div className="max-h-80 overflow-y-auto p-2">
+                      {customerNotifications.length ? customerNotifications.map((notification) => (
+                        <button key={notification.id} type="button" onClick={() => void openNotification(notification)} className={`w-full rounded-xl p-3 text-left hover:bg-secondary ${notification.read_at ? "opacity-70" : "bg-secondary/60"}`}>
+                          <span className="flex items-start gap-2"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.read_at ? "bg-transparent" : "bg-[#a45f45]"}`} /><span><b className="block text-xs">{notification.title}</b><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{notification.message}</span><time className="mt-1.5 block text-[9px] text-muted-foreground" dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time></span></span>
+                        </button>
+                      )) : <p className="p-6 text-center text-xs text-muted-foreground">No notifications yet.</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {user ? (
               <Link
                 to="/profile"

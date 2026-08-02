@@ -102,6 +102,18 @@ export type DbOrderStatusHistory = {
   changed_by: string | null;
 };
 
+export type DbCustomerNotification = {
+  id: number;
+  user_id: string;
+  kind: string;
+  title: string;
+  message: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
 export type DbOrder = {
   id: string;
   order_number: string;
