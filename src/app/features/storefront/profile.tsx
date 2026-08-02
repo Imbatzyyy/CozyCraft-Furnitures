@@ -208,12 +208,21 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     [barangays, municipalityCode],
   );
   useEffect(() => {
-    if (!municipalityCode || barangays.length) return;
+    if (!municipalityCode) {
+      setBarangays([]);
+      return;
+    }
     let active = true;
     setBarangaysLoading(true);
-    void import("@jobuntux/psgc/data/2025-2Q/barangays.json")
-      .then((module) => {
-        if (active) setBarangays(module.default as PsgcBarangay[]);
+    setBarangays([]);
+    void supabase.functions.invoke("philippine-barangays", { body: { municipalityCode } })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error || data?.error) {
+          notify(data?.error ?? error?.message ?? "Unable to load barangays.");
+          return;
+        }
+        setBarangays((data?.barangays ?? []) as PsgcBarangay[]);
       })
       .finally(() => {
         if (active) setBarangaysLoading(false);
@@ -221,7 +230,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     return () => {
       active = false;
     };
-  }, [barangays.length, municipalityCode]);
+  }, [municipalityCode]);
   const openEditor = (address: Address) => {
     const matchedProvince = provinceOptions.find(
       (item) => item.provName === address.province,
