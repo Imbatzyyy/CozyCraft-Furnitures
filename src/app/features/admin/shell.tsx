@@ -155,7 +155,7 @@ export function AdminLogin() {
     }
     setAwaitingAccess(true);
   };
-  return <main className="h-dvh overflow-hidden bg-[#e9e5de] p-3 sm:p-5"><div className="mx-auto grid h-full max-w-[1500px] overflow-hidden rounded-[2rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.14)] lg:grid-cols-[1.1fr_.9fr]">
+  return <main className="min-h-dvh overflow-y-auto bg-[#e9e5de] p-3 sm:p-5 lg:h-dvh lg:overflow-hidden"><div className="mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1500px] overflow-hidden rounded-[1.5rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.14)] sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] lg:h-full lg:min-h-0 lg:grid-cols-[1.1fr_.9fr]">
     <section className="relative hidden overflow-hidden bg-[#201e1b] p-10 text-[#f4f2ee] lg:flex lg:flex-col lg:justify-between"><ImageWithFallback src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1400&q=80" alt="CozyCraft operations environment" className="absolute inset-0 h-full w-full object-cover opacity-25"/><div className="absolute inset-0 bg-[#171614]/75"/><div className="relative flex items-center justify-between"><Logo light/><span className="rounded-full border border-white/20 px-3 py-1.5 text-[10px] font-bold tracking-[.16em] text-white/70">SECURE WORKSPACE</span></div><div className="relative max-w-lg"><p className="text-[10px] font-bold tracking-[.22em] text-[#d8c7b0]">COZYCRAFT / OPERATIONS</p><h1 className="mt-6 font-[Playfair_Display] text-6xl leading-[.98] tracking-[-.04em]">Care for every detail behind the scenes.</h1><p className="mt-7 max-w-sm text-sm leading-7 text-white/70">One live workspace for catalog, inventory, customers, and every storefront order.</p></div><p className="relative text-xs text-white/60">Protected by Supabase Auth and role-based database policies.</p></section>
     <section className="flex min-h-0 items-center justify-center overflow-hidden px-5 py-5 sm:px-10"><form onSubmit={submit} className="auth-fixed-form w-full max-w-sm"><div className="mb-5 lg:hidden"><Logo/></div><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-secondary"><LockKeyhole size={15}/></span><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">RESTRICTED ACCESS</p></div><h2 className="mt-4 font-[Playfair_Display] text-4xl tracking-[-.04em] sm:text-5xl">Administrator sign in.</h2><p className="mt-2 text-sm leading-5 text-muted-foreground">Use an approved staff or administrator account.</p><div className="mt-6 grid gap-3"><label className="grid gap-2 text-sm font-semibold">Work email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={loading} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:opacity-60" placeholder="you@cozycraft.com"/></label><label className="grid gap-2 text-sm font-semibold">Password<div className="relative"><input required type={show?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} disabled={loading} className="h-11 w-full rounded-xl border border-border bg-[#fcfbf8] px-4 pr-14 font-normal outline-none disabled:opacity-60" placeholder="••••••••"/><button type="button" onClick={()=>setShow(!show)} disabled={loading} className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground disabled:opacity-50">{show?"Hide":"Show"}</button></div></label></div>{error&&<p className="mt-3 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">{error}</p>}<button disabled={loading} className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-60">{awaitingAccess?"Opening secure workspace…":loading?"Checking access…":"Enter operations"}<ArrowRight size={16}/></button><div className="mt-4 flex items-start gap-3 rounded-2xl bg-secondary p-3 text-xs leading-5 text-muted-foreground"><ShieldCheck className="mt-0.5 shrink-0 text-[#6d8065]" size={16}/>Only accounts marked as staff or admin in Supabase can enter.</div><p className="mt-4 text-center text-sm text-muted-foreground">Looking for the storefront? <Link to="/login" className="font-semibold text-foreground underline underline-offset-4">Customer sign in</Link></p></form></section>
   </div></main>;
@@ -540,7 +540,7 @@ export function AdminShell({
         />
       )}
       <div className="min-w-0 lg:ml-72">
-        <header className="sticky top-0 z-30 flex h-[78px] items-center justify-between border-b border-border/75 bg-[#f3f0ea]/95 px-5 backdrop-blur lg:px-8">
+        <header className="sticky top-0 z-30 flex h-[70px] items-center justify-between border-b border-border/75 bg-[#f3f0ea]/95 px-3 backdrop-blur sm:h-[78px] sm:px-5 lg:px-8">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setOpen(true)}
@@ -596,7 +596,7 @@ export function AdminShell({
             </div>
           </div>
         </header>
-        <main id="admin-main" tabIndex={-1} className="mx-auto max-w-[1500px] p-5 lg:p-8">{children}</main>
+        <main id="admin-main" tabIndex={-1} className="mx-auto max-w-[1500px] p-3 sm:p-5 lg:p-8">{children}</main>
       </div>
       {confirmSignOut && (
         <ConfirmSignOut
@@ -765,7 +765,7 @@ export function NotificationCenter() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-[330px] overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+        <div className="fixed inset-x-3 top-[76px] z-50 overflow-hidden rounded-2xl border border-border bg-card shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-[330px]">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
               <b className="text-sm">Notifications</b>

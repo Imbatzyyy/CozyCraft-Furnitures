@@ -300,7 +300,7 @@ export function Home() {
                 <p className="text-[10px] font-bold tracking-[.18em]">
                   THE NEW ARRIVALS
                 </p>
-                <h2 className="mt-5 max-w-md font-[Playfair_Display] text-5xl leading-[1.02] tracking-[-.035em]">
+                <h2 className="mt-5 max-w-md font-[Playfair_Display] text-4xl leading-[1.02] tracking-[-.035em] sm:text-5xl">
                   A softer shape of modern.
                 </h2>
               </div>
@@ -324,7 +324,7 @@ export function Home() {
               <p className="text-[10px] font-bold tracking-[.2em] text-[#f4f2ee]/55">
                 MATERIAL STUDY / 01
               </p>
-              <h2 className="mt-6 font-[Playfair_Display] text-5xl leading-[1.03] tracking-[-.035em]">
+              <h2 className="mt-6 font-[Playfair_Display] text-4xl leading-[1.03] tracking-[-.035em] sm:text-5xl">
                 Made to become part of the room.
               </h2>
             </div>
@@ -382,7 +382,7 @@ export function Home() {
               <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
                 FROM THE STUDIO
               </p>
-              <h2 className="mt-5 max-w-xl font-[Playfair_Display] text-5xl leading-[1.02] tracking-[-.035em]">
+              <h2 className="mt-5 max-w-xl font-[Playfair_Display] text-4xl leading-[1.02] tracking-[-.035em] sm:text-5xl">
                 Small notes on making a more personal home.
               </h2>
             </div>
@@ -893,7 +893,7 @@ export function CollectionPage() {
               <p className="text-[10px] font-bold tracking-[.2em]">
                 {info.eyebrow}
               </p>
-              <h1 className="mt-5 font-[Playfair_Display] text-6xl tracking-[-.04em] sm:text-7xl">
+              <h1 className="mt-5 font-[Playfair_Display] text-4xl tracking-[-.04em] sm:text-7xl">
                 {info.title}
               </h1>
               <p className="mt-4 max-w-md text-sm leading-6 text-white/80">
@@ -1218,7 +1218,7 @@ export function ProductPage() {
               {product.category.toUpperCase()} <span className="px-1">/</span>{" "}
               {(product.subcategory || subcategoryFor(product.id)).toUpperCase()}
             </p>
-            <h1 className="mt-3 font-[Playfair_Display] text-5xl leading-none tracking-[-.035em]">
+            <h1 className="mt-3 font-[Playfair_Display] text-4xl leading-none tracking-[-.035em] sm:text-5xl">
               {product.name}
             </h1>
             <div className="mt-5 flex items-center gap-3">
@@ -1235,23 +1235,23 @@ export function ProductPage() {
               {product.description}
             </p>
             <div className="mt-8 border-y border-border py-5 text-sm">
-              <div className="flex items-start justify-between gap-5 py-2">
-                <span className="shrink-0 text-muted-foreground">Finish / Material</span>
-                <ul className="w-full max-w-[65%] space-y-2">
+              <div className="grid gap-3 py-3 sm:grid-cols-[auto_1fr] sm:gap-5">
+                <span className="text-muted-foreground">Finish / Material</span>
+                <ul className="w-full space-y-2 sm:justify-self-end sm:max-w-[75%]">
                   {materialItems.map((material, index) => (
-                    <li key={`${material.type}-${index}`} className="grid grid-cols-[10px_minmax(0,.8fr)_minmax(0,1.2fr)] gap-2">
+                    <li key={`${material.type}-${index}`} className="grid grid-cols-[10px_minmax(0,1fr)] gap-x-2 gap-y-1 sm:grid-cols-[10px_minmax(0,.8fr)_minmax(0,1.2fr)]">
                       <span aria-hidden="true">•</span>
                       <strong>{material.type || "Material"}</strong>
-                      <span className="text-right text-muted-foreground">
+                      <span className="col-start-2 break-words text-left text-muted-foreground sm:col-start-auto sm:text-right">
                         {material.description || (index === 0 ? product.color : "")}
                       </span>
                     </li>
                   ))}
                 </ul>
               </div>
-              <div className="flex items-start justify-between gap-5 py-2">
-                <span className="shrink-0 text-muted-foreground">Dimensions</span>
-                <ul className="w-full max-w-[65%] space-y-2">
+              <div className="grid gap-3 py-3 sm:grid-cols-[auto_1fr] sm:gap-5">
+                <span className="text-muted-foreground">Dimensions</span>
+                <ul className="w-full space-y-2 sm:justify-self-end sm:max-w-[75%]">
                   {dimensionItems.map((dimension, index) => (
                     <li key={`${dimension.label}-${index}`} className="grid grid-cols-[10px_minmax(0,1fr)_auto] gap-2">
                       <span aria-hidden="true">•</span>

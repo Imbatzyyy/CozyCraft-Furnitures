@@ -966,8 +966,8 @@ export function Profile() {
   };
   return (
     <Layout>
-      <main className="mx-auto max-w-[1320px] px-5 py-8 lg:py-12">
-        <section className="relative overflow-hidden rounded-[2rem] border border-border bg-[#f0ece4] px-7 py-8 text-foreground shadow-[0_14px_38px_rgba(35,31,27,.05)] sm:px-9">
+      <main className="mx-auto max-w-[1320px] px-4 py-5 sm:px-5 sm:py-8 lg:py-12">
+        <section className="relative overflow-hidden rounded-[1.5rem] border border-border bg-[#f0ece4] px-5 py-6 text-foreground shadow-[0_14px_38px_rgba(35,31,27,.05)] sm:rounded-[2rem] sm:px-9 sm:py-8">
           <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_75%_45%,rgba(185,151,112,.22),transparent_55%)]" />
           <div className="relative flex flex-wrap items-end justify-between gap-6">
             <div className="flex items-center gap-4">
@@ -999,7 +999,7 @@ export function Profile() {
                 <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
                   COZYCRAFT MEMBER
                 </p>
-                <h1 className="mt-1 font-serif text-4xl">
+                <h1 className="mt-1 break-words font-serif text-3xl sm:text-4xl">
                   Hello, {first || user}.
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -1017,15 +1017,15 @@ export function Profile() {
           </div>
         </section>
         <div className="mt-5 grid gap-5 lg:grid-cols-[250px_1fr]">
-          <aside className="h-fit rounded-[1.75rem] border border-border bg-[#fbfaf7] p-3 shadow-[0_10px_30px_rgba(35,31,27,.035)]">
-            <p className="px-3 py-2 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+          <aside className="flex h-fit gap-1 overflow-x-auto rounded-[1.25rem] border border-border bg-[#fbfaf7] p-2 shadow-[0_10px_30px_rgba(35,31,27,.035)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:block lg:rounded-[1.75rem] lg:p-3">
+            <p className="hidden px-3 py-2 text-[10px] font-bold tracking-[.16em] text-muted-foreground lg:block">
               MY ACCOUNT
             </p>
             {tabs.map((item) => (
               <button
                 onClick={() => setTab(item)}
                 key={item}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm transition ${tab === item ? "bg-foreground font-semibold text-background shadow-sm" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+                className={`flex w-auto shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm transition lg:w-full lg:py-3 ${tab === item ? "bg-foreground font-semibold text-background shadow-sm" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
               >
                 {item}
                 {item === "Orders" && <span className="text-xs">{orders.length}</span>}
@@ -1033,22 +1033,22 @@ export function Profile() {
                 {item === "Support" && <MessageCircle size={14} />}
               </button>
             ))}
-            <div className="mt-3 border-t border-border pt-3">
+            <div className="flex shrink-0 gap-1 lg:mt-3 lg:block lg:border-t lg:border-border lg:pt-3">
               <Link
                 to="/wishlist"
-                className="flex justify-between rounded-xl px-3 py-3 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                className="flex shrink-0 gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground lg:justify-between lg:py-3"
               >
                 Wishlist <span>{saved.length}</span>
               </Link>
               <Link
                 to="/cart"
-                className="flex justify-between rounded-xl px-3 py-3 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                className="flex shrink-0 gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground lg:justify-between lg:py-3"
               >
                 My bag <span>{cart.length}</span>
               </Link>
             </div>
           </aside>
-          <section className="min-h-[560px] rounded-[1.75rem] border border-border bg-card p-6 shadow-[0_10px_30px_rgba(35,31,27,.035)] sm:p-9">
+          <section className="min-h-[420px] rounded-[1.25rem] border border-border bg-card p-4 shadow-[0_10px_30px_rgba(35,31,27,.035)] sm:rounded-[1.75rem] sm:p-9 lg:min-h-[560px]">
             {tab === "Profile" && (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-4">

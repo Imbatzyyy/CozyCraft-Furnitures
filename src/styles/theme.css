@@ -41,14 +41,14 @@
   --sidebar-ring: #b8a58d;
 }
 
-@media (max-height: 720px) {
+@media (min-width: 1024px) and (max-height: 720px) {
   .auth-fixed-form {
     transform: scale(0.82);
     transform-origin: center;
   }
 }
 
-@media (max-height: 620px) {
+@media (min-width: 1024px) and (max-height: 620px) {
   .auth-fixed-form {
     transform: scale(0.72);
   }
@@ -153,6 +153,34 @@
 
   html {
     font-size: var(--font-size);
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  body,
+  #root {
+    min-height: 100dvh;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  img,
+  picture,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+
+  :where(.flex, .grid) > * {
+    min-width: 0;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
   }
 
   h1 {
@@ -195,6 +223,16 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+@media (max-width: 639px) {
+  [role="dialog"] > section,
+  [role="dialog"] > form,
+  section[role="dialog"] {
+    max-height: calc(100dvh - 1.5rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 }
 

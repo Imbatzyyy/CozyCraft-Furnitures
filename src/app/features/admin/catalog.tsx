@@ -602,7 +602,7 @@ export function ProductEditor({
   return (
     <div className="fixed inset-0 z-[60] flex justify-end bg-[#201f1d]/40 p-3 sm:p-5">
       <div className="h-full w-full max-w-3xl overflow-y-auto rounded-3xl bg-card shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-6 py-5">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-4 sm:px-6 sm:py-5">
           <div>
             <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
               CATALOG EDITOR
@@ -618,7 +618,7 @@ export function ProductEditor({
             <X size={18} />
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
               Product name

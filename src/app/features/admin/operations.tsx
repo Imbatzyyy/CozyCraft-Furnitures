@@ -1143,7 +1143,7 @@ export function PaymentsPage() {
         </p>
         <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h2 className="font-[Playfair_Display] text-5xl">{money(collected)}</h2>
+            <h2 className="break-words font-[Playfair_Display] text-4xl sm:text-5xl">{money(collected)}</h2>
             <p className="mt-2 text-sm text-[#735c48]">
               Collected across {orders.filter((order) => order.payment_status === "paid").length} recorded transactions.
             </p>
@@ -1617,8 +1617,8 @@ export function SupportPage() {
           No customer support tickets yet.
         </div>
       ) : (
-        <div className="mt-7 grid min-h-[580px] overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-[340px_1fr]">
-          <aside className="border-r border-border">
+        <div className="mt-7 grid overflow-hidden rounded-2xl border border-border bg-card lg:min-h-[580px] lg:grid-cols-[340px_1fr]">
+          <aside className="max-h-[320px] overflow-y-auto border-b border-border lg:max-h-none lg:border-b-0 lg:border-r">
           {supportTickets.map((item) => (
             <button
               onClick={() => {
@@ -1639,7 +1639,7 @@ export function SupportPage() {
             </button>
           ))}
           </aside>
-          <section className="flex flex-col p-6">
+          <section className="flex min-h-[520px] flex-col p-4 sm:p-6 lg:min-h-0">
             <div className="border-b border-border pb-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -1702,7 +1702,7 @@ export function SupportPage() {
                 </button>
               </div>
               <div className="mb-3 grid gap-3 rounded-xl bg-secondary p-3 sm:grid-cols-[1fr_1fr_auto]"><label className="grid gap-1.5 text-xs font-semibold">Assigned owner<select value={assignedTo} onChange={(event)=>setAssignedTo(event.target.value)} className="h-10 rounded-lg border border-border bg-card px-3 font-normal"><option value="">Unassigned</option>{teamMembers.map((member)=><option key={member.id} value={member.id}>{member.full_name||member.role} · {member.role}</option>)}</select></label><label className="grid gap-1.5 text-xs font-semibold">Priority<select value={ticketPriority} onChange={(event)=>setTicketPriority(event.target.value as DbSupportTicket["priority"])} className="h-10 rounded-lg border border-border bg-card px-3 font-normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><button type="button" onClick={()=>void saveWorkflow()} disabled={updatingStatus||(assignedTo===(active.assigned_to??"")&&ticketPriority===active.priority)} className="h-10 self-end rounded-lg border border-border bg-card px-4 text-xs font-semibold disabled:opacity-45">Save ownership</button></div>
-              <div className="flex gap-3">
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <input
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}

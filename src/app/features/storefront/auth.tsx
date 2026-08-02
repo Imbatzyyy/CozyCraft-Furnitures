@@ -206,8 +206,8 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   };
   if (view !== "auth")
     return (
-      <main className="h-dvh overflow-hidden bg-[#e9e5de] p-3 sm:p-5">
-        <div className="mx-auto flex h-full max-w-[1500px] items-center justify-center overflow-hidden rounded-[2rem] bg-card p-6 shadow-[0_24px_80px_rgba(50,42,34,.12)]">
+      <main className="min-h-dvh overflow-y-auto bg-[#e9e5de] p-3 sm:p-5">
+        <div className="mx-auto flex min-h-[calc(100dvh-1.5rem)] max-w-[1500px] items-center justify-center overflow-hidden rounded-[1.5rem] bg-card p-5 shadow-[0_24px_80px_rgba(50,42,34,.12)] sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] sm:p-6">
           <section className="auth-fixed-form w-full max-w-md">
             <button
               onClick={() => setView("auth")}
@@ -231,7 +231,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                 <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
                   PASSWORD RESET
                 </p>
-                <h1 className="mt-4 font-serif text-5xl">
+                <h1 className="mt-4 font-serif text-4xl sm:text-5xl">
                   Let’s get you back in.
                 </h1>
                 <p className="mt-4 text-sm leading-6 text-muted-foreground">
@@ -357,8 +357,8 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       </main>
     );
   return (
-    <main className="h-dvh overflow-hidden bg-[#e9e5de] p-3 sm:p-5">
-      <div className="mx-auto grid h-full max-w-[1500px] overflow-hidden rounded-[2rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.12)] lg:grid-cols-[1.08fr_.92fr]">
+    <main className="min-h-dvh overflow-y-auto bg-[#e9e5de] p-3 sm:p-5 lg:h-dvh lg:overflow-hidden">
+      <div className="mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1500px] overflow-hidden rounded-[1.5rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.12)] sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] lg:h-full lg:min-h-0 lg:grid-cols-[1.08fr_.92fr]">
         <section className="relative hidden min-h-0 overflow-hidden bg-[#24211e] p-10 text-[#f4f2ee] lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 opacity-35">
             <ImageWithFallback
@@ -387,7 +387,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
             Thoughtful furniture, delivered with care.
           </p>
         </section>
-        <section className="flex min-h-0 items-center justify-center overflow-hidden px-5 py-4 sm:px-10 sm:py-5">
+        <section className="flex min-h-0 items-center justify-center px-5 py-7 sm:px-10 sm:py-8 lg:overflow-hidden lg:py-5">
           <form onSubmit={submit} className="auth-fixed-form w-full max-w-md">
             <div className="mb-4 lg:hidden">
               <Logo />
@@ -428,7 +428,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
             </div>
             <div className="grid gap-3">
               {mode === "signup" && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid min-w-0 gap-2 text-sm font-semibold">
                     First name
                   <input
@@ -663,8 +663,8 @@ export function ResetPassword() {
   };
 
   return (
-    <main className="h-dvh overflow-hidden bg-[#e9e5de] p-3 sm:p-5">
-      <div className="mx-auto flex h-full max-w-[1500px] items-center justify-center overflow-hidden rounded-[2rem] bg-card p-6 shadow-[0_24px_80px_rgba(50,42,34,.12)]">
+    <main className="min-h-dvh overflow-y-auto bg-[#e9e5de] p-3 sm:p-5">
+      <div className="mx-auto flex min-h-[calc(100dvh-1.5rem)] max-w-[1500px] items-center justify-center overflow-hidden rounded-[1.5rem] bg-card p-5 shadow-[0_24px_80px_rgba(50,42,34,.12)] sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] sm:p-6">
         <section className="auth-fixed-form w-full max-w-md">
           <Link
             to="/login"
@@ -734,7 +734,7 @@ export function ResetPassword() {
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
                 CREATE NEW PASSWORD
               </p>
-              <h1 className="mt-4 font-serif text-5xl">
+              <h1 className="mt-4 font-serif text-4xl sm:text-5xl">
                 Choose something new.
               </h1>
               <p className="mt-4 text-sm leading-6 text-muted-foreground">

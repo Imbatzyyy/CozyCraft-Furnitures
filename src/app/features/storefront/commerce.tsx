@@ -150,7 +150,7 @@ export function Cart() {
             <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
               YOUR BAG
             </p>
-            <h1 className="mt-3 font-serif text-5xl">A few good things.</h1>
+            <h1 className="mt-3 font-serif text-4xl sm:text-5xl">A few good things.</h1>
             <p className="mt-3 text-sm text-muted-foreground">
               Choose the pieces you would like to bring home today.
             </p>
@@ -836,13 +836,13 @@ export function Checkout() {
   ];
   return (
     <Layout>
-      <main className="mx-auto max-w-[1240px] px-5 py-10">
+      <main className="mx-auto max-w-[1240px] px-4 py-7 sm:px-5 sm:py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
               SECURE CHECKOUT
             </p>
-            <h1 className="mt-3 font-serif text-5xl">Bring it home.</h1>
+            <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Bring it home.</h1>
             <p className="mt-3 text-sm text-muted-foreground">
               A few final details, then we will take care of the rest.
             </p>
@@ -853,7 +853,7 @@ export function Checkout() {
         </div>
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
           <div className="grid gap-5">
-            <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:rounded-3xl sm:p-6">
               <div className="flex justify-between">
                 <div>
                   <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
@@ -916,7 +916,7 @@ export function Checkout() {
                 )}
               </div>
             </section>
-            <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:rounded-3xl sm:p-6">
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
                 02 · RECIPIENT DETAILS
               </p>
@@ -949,7 +949,7 @@ export function Checkout() {
                 </div>
               )}
             </section>
-            <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:rounded-3xl sm:p-6">
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
                 03 · PAYMENT METHOD
               </p>
