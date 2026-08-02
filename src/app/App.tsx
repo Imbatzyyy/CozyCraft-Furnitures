@@ -662,6 +662,16 @@ function App() {
       : null;
   };
 
+  const queueCartWrite = (
+    request: PromiseLike<{ error: { message: string } | null }>,
+  ) => {
+    void queueAccountWrite(
+      Promise.resolve(request).then(async ({ error }) => {
+        if (error && userId) await refreshAccountCollections(userId);
+      }),
+    );
+  };
+
   const add = (id: string, amount = 1) => {
     if (!userId) {
       setShopPrompt(true);
@@ -686,7 +696,7 @@ function App() {
             item.id === id ? { ...item, quantity } : item,
           )
         : [...items, { id, quantity, selectedForCheckout }];
-      void queueAccountWrite(
+      queueCartWrite(
         supabase
           .from("cart_items")
           .upsert(
@@ -705,7 +715,7 @@ function App() {
   const remove = (id: string) => {
     setCart((items) => items.filter((x) => x.id !== id));
     if (userId) {
-      void queueAccountWrite(
+      queueCartWrite(
         supabase
           .from("cart_items")
           .delete()
@@ -729,7 +739,7 @@ function App() {
       ),
     );
     if (userId) {
-      void queueAccountWrite(
+      queueCartWrite(
         supabase
           .from("cart_items")
           .upsert(
@@ -751,7 +761,7 @@ function App() {
       ),
     );
     if (userId) {
-      void queueAccountWrite(
+      queueCartWrite(
         supabase
           .from("cart_items")
           .update({ selected_for_checkout: selected })
@@ -765,7 +775,7 @@ function App() {
       items.map((item) => ({ ...item, selectedForCheckout: selected })),
     );
     if (userId) {
-      void queueAccountWrite(
+      queueCartWrite(
         supabase
           .from("cart_items")
           .update({ selected_for_checkout: selected })
