@@ -149,6 +149,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     deleteAddress,
     setDefaultAddress,
     user,
+    userId,
     userEmail,
     products,
   } = useStore();
@@ -603,11 +604,45 @@ export function Profile() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [orderFilter, setOrderFilter] = useState("all");
   const [selectedOrderId, setSelectedOrderId] = useState("");
+  const [returnRequests, setReturnRequests] = useState<Array<{ id:string; order_id:string; return_number:string; reason:string; details:string; status:string; admin_note:string|null; created_at:string }>>([]);
+  const [returnOrderId, setReturnOrderId] = useState<string | null>(null);
+  const [returnReason, setReturnReason] = useState("Changed my mind");
+  const [returnDetails, setReturnDetails] = useState("");
+  const [returnFiles, setReturnFiles] = useState<File[]>([]);
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
   const [securityView, setSecurityView] = useState<"home" | "setup" | "change">(
     "home",
   );
   const defaultUsername =
     profileUsername.trim() || (user ?? "").trim().split(/\s+/)[0] || "";
+  useEffect(() => {
+    if (!userId) return;
+    const refresh = async () => {
+      const { data } = await supabase.from("return_requests").select("*").eq("user_id", userId).order("created_at", { ascending: false });
+      setReturnRequests((data ?? []) as typeof returnRequests);
+    };
+    void refresh();
+    const channel = supabase.channel(`customer-returns-${userId}`).on("postgres_changes", { event:"*", schema:"public", table:"return_requests", filter:`user_id=eq.${userId}` }, refresh).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId]);
+  const submitReturnRequest = async () => {
+    if (!userId || !returnOrderId || returnDetails.trim().length < 10) {
+      setNotice("Please explain the return in at least 10 characters.");
+      return;
+    }
+    setReturnSubmitting(true);
+    const evidencePaths: string[] = [];
+    for (const file of returnFiles.slice(0, 3)) {
+      const path = `${userId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+      const { error } = await supabase.storage.from("return-evidence").upload(path, file);
+      if (!error) evidencePaths.push(path);
+    }
+    const { error } = await supabase.from("return_requests").insert({ user_id:userId, order_id:returnOrderId, reason:returnReason, details:returnDetails.trim(), evidence_paths:evidencePaths });
+    setReturnSubmitting(false);
+    if (error) { setNotice(error.message); return; }
+    setReturnOrderId(null); setReturnDetails(""); setReturnFiles([]);
+    setNotice("Your return request was submitted for review.");
+  };
   const [username, setUsername] = useState(defaultUsername);
   const [first, setFirst] = useState((user ?? "").split(" ")[0] ?? "");
   const [last, setLast] = useState(
@@ -1459,7 +1494,16 @@ export function Profile() {
                         <Link to="/orders" className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary">
                           <ArrowRight size={14} /> Full tracking
                         </Link>
+                        {selectedOrder.status === "delivered" && !returnRequests.some((request) => request.order_id === selectedOrder.id) && (
+                          <button type="button" onClick={() => setReturnOrderId(selectedOrder.id)} className="flex items-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4]">
+                            <Archive size={14} /> Request return
+                          </button>
+                        )}
                       </div>
+                      {returnRequests.find((request) => request.order_id === selectedOrder.id) && (() => {
+                        const request = returnRequests.find((item) => item.order_id === selectedOrder.id)!;
+                        return <div className="border-t border-border bg-[#e8efe5] p-5 text-xs text-[#486242]"><b>Return {request.return_number}</b><span className="ml-2 rounded-full border border-current px-2 py-1 capitalize">{request.status.replace(/_/g," ")}</span><p className="mt-2">{request.reason} · {request.details}</p>{request.admin_note && <p className="mt-1">Admin: {request.admin_note}</p>}</div>;
+                      })()}
                     </article>
                   </div>
                 )}
@@ -1797,6 +1841,17 @@ export function Profile() {
                 Set up password
               </button>
             </div>
+          </section>
+        </div>
+      )}
+      {returnOrderId && (
+        <div role="dialog" aria-modal="true" aria-labelledby="return-title" className="fixed inset-0 z-[120] grid place-items-center bg-black/55 p-5 backdrop-blur-sm">
+          <section className="w-full max-w-lg rounded-3xl bg-card p-7 shadow-2xl">
+            <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">RETURN REQUEST</p><h2 id="return-title" className="mt-2 font-serif text-3xl">Tell us what happened.</h2></div><button onClick={() => setReturnOrderId(null)} className="rounded-full border border-border p-2" aria-label="Close"><X size={16}/></button></div>
+            <label className="mt-5 grid gap-2 text-sm font-semibold">Reason<select value={returnReason} onChange={(event)=>setReturnReason(event.target.value)} className="h-12 rounded-xl border border-border bg-background px-3 font-normal"><option>Changed my mind</option><option>Damaged on arrival</option><option>Wrong item delivered</option><option>Missing parts</option><option>Product differs from description</option><option>Other</option></select></label>
+            <label className="mt-4 grid gap-2 text-sm font-semibold">Details<textarea value={returnDetails} onChange={(event)=>setReturnDetails(event.target.value)} rows={4} maxLength={1000} placeholder="Describe the issue and condition of the item…" className="resize-none rounded-xl border border-border bg-background p-3 font-normal"/></label>
+            <label className="mt-4 grid gap-2 text-sm font-semibold">Evidence photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event)=>setReturnFiles(Array.from(event.target.files ?? []).slice(0,3))} className="rounded-xl border border-border p-3 text-xs font-normal"/><span className="text-[10px] font-normal text-muted-foreground">Each image must be 5 MB or less.</span></label>
+            <div className="mt-6 flex justify-end gap-3"><button onClick={()=>setReturnOrderId(null)} disabled={returnSubmitting} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Cancel</button><button onClick={()=>void submitReturnRequest()} disabled={returnSubmitting || returnDetails.trim().length<10} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{returnSubmitting?"Submitting…":"Submit return"}</button></div>
           </section>
         </div>
       )}
