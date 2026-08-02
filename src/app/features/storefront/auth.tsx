@@ -601,12 +601,16 @@ export function ResetPassword() {
   >("checking");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const score = [
-    password.length >= 8,
-    password.length >= 12,
+  const meetsPasswordPolicy =
+    password.length >= 10 &&
+    /[a-z]/.test(password) &&
     /[A-Z]/.test(password) &&
-      /[0-9]/.test(password) &&
-      /[^A-Za-z0-9]/.test(password),
+    /\d/.test(password) &&
+    /[^A-Za-z0-9]/.test(password);
+  const score = [
+    password.length >= 10,
+    /[a-z]/.test(password) && /[A-Z]/.test(password),
+    /\d/.test(password) && /[^A-Za-z0-9]/.test(password),
   ].filter(Boolean).length;
   const strength = password
     ? score === 3
@@ -644,8 +648,10 @@ export function ResetPassword() {
       setError("Passwords do not match. Please try again.");
       return;
     }
-    if (score < 2) {
-      setError("Choose a stronger password before saving.");
+    if (!meetsPasswordPolicy) {
+      setError(
+        "Use at least 10 characters with uppercase, lowercase, a number, and a symbol.",
+      );
       return;
     }
     setSubmitting(true);
@@ -758,6 +764,7 @@ export function ResetPassword() {
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       required
+                      minLength={10}
                       type={showPassword ? "text" : "password"}
                       className="h-12 w-full rounded-xl border border-border bg-[#fcfbf8] px-4 pr-12 font-normal outline-none focus:border-foreground"
                       placeholder="••••••••"
@@ -788,7 +795,7 @@ export function ResetPassword() {
                     ))}
                   </div>
                   <span className="text-[10px] font-bold text-muted-foreground">
-                    {strength || "Use 8+ characters"}
+                    {strength || "Use 10+ characters"}
                   </span>
                 </div>
                 <label className="grid gap-2 text-sm font-semibold">
@@ -798,6 +805,7 @@ export function ResetPassword() {
                       value={confirm}
                       onChange={(event) => setConfirm(event.target.value)}
                       required
+                      minLength={10}
                       type={showConfirm ? "text" : "password"}
                       className={`h-12 w-full rounded-xl border bg-[#fcfbf8] px-4 pr-12 font-normal outline-none ${confirm && confirm !== password ? "border-[#ae6d61]" : "border-border"}`}
                       placeholder="Repeat new password"

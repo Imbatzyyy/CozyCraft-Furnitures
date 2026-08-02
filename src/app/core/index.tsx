@@ -382,6 +382,7 @@ export type Store = {
     currentPassword: string,
     newPassword: string,
   ) => Promise<string | null>;
+  requestPasswordSetup: () => Promise<string | null>;
 };
 
 export const StoreContext = createContext<Store | null>(null);

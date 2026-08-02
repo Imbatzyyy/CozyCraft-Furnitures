@@ -616,6 +616,7 @@ export function Profile() {
     requestEmailChange,
     confirmEmailChange,
     changePassword,
+    requestPasswordSetup,
   } = useStore();
   const nav = useNavigate();
   const [tab, setTab] = useState("Profile");
@@ -653,6 +654,7 @@ export function Profile() {
   const [mfaEnrollment, setMfaEnrollment] = useState<{ id:string; qr:string; secret:string } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [passwordSetupSending, setPasswordSetupSending] = useState(false);
   const defaultUsername =
     profileUsername.trim() || (user ?? "").trim().split(/\s+/)[0] || "";
   useEffect(() => {
@@ -955,8 +957,17 @@ export function Profile() {
   };
   const submitPassword = async (event: FormEvent) => {
     event.preventDefault();
-    if (newPassword.length < 8 || newPassword !== confirmPassword) {
-      setNotice("Use matching passwords with at least 8 characters.");
+    if (
+      newPassword.length < 10 ||
+      !/[a-z]/.test(newPassword) ||
+      !/[A-Z]/.test(newPassword) ||
+      !/\d/.test(newPassword) ||
+      !/[^A-Za-z0-9]/.test(newPassword) ||
+      newPassword !== confirmPassword
+    ) {
+      setNotice(
+        "Use matching passwords with at least 10 characters, including uppercase, lowercase, a number, and a symbol.",
+      );
       return;
     }
     const error = await changePassword(currentPassword, newPassword);
@@ -968,10 +979,20 @@ export function Profile() {
     setNewPassword("");
     setConfirmPassword("");
     setSecurityView("home");
+    setNotice("Password changed successfully.");
+  };
+  const sendPasswordSetupLink = async () => {
+    setPasswordSetupSending(true);
+    setNotice("");
+    const error = await requestPasswordSetup();
+    setPasswordSetupSending(false);
+    if (error) {
+      setNotice(error);
+      return;
+    }
+    setSecurityView("home");
     setNotice(
-      hasPassword
-        ? "Password changed successfully."
-        : "Your CozyCraft password is now ready.",
+      `A secure password setup link was sent to ${userEmail ?? "your email"}.`,
     );
   };
   return (
@@ -1247,39 +1268,63 @@ export function Profile() {
             )}
             {tab === "Change password" && (
               <>
-                {securityView === "change" || securityView === "setup" ? (
-                  <form onSubmit={submitPassword} className="max-w-lg">
+                {securityView === "setup" ? (
+                  <section className="max-w-lg">
                     <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
-                      {securityView === "setup"
-                        ? "SET UP PASSWORD"
-                        : "CHANGE PASSWORD"}
+                      SET UP PASSWORD
                     </p>
                     <h2 className="mt-2 font-serif text-3xl">
-                      {securityView === "setup"
-                        ? "Secure your CozyCraft account."
-                        : "Choose a new password."}
+                      Add an email sign-in option.
                     </h2>
                     <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      {securityView === "setup"
-                        ? "Add a password to your Google-created account so you can also sign in with email."
-                        : "Confirm your current password before choosing a new one."}
+                      This account currently signs in with Google and has no
+                      CozyCraft password. We’ll send a secure setup link to
+                      <b> {userEmail}</b>; no current password is required.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void sendPasswordSetupLink()}
+                      disabled={passwordSetupSending}
+                      className="mt-7 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background disabled:opacity-60"
+                    >
+                      {passwordSetupSending
+                        ? "Sending secure link…"
+                        : "Send password setup link"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSecurityView("home")}
+                      disabled={passwordSetupSending}
+                      className="ml-4 text-xs font-semibold underline underline-offset-4 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </section>
+                ) : securityView === "change" ? (
+                  <form onSubmit={submitPassword} className="max-w-lg">
+                    <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                      CHANGE PASSWORD
+                    </p>
+                    <h2 className="mt-2 font-serif text-3xl">
+                      Choose a new password.
+                    </h2>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      Confirm your current password before choosing a new one.
                     </p>
                     <div className="mt-7 grid gap-4">
-                      {securityView === "change" && (
-                        <label className="grid gap-2 text-sm font-semibold">
-                          Current CozyCraft password
-                          <input
-                            value={currentPassword}
-                            onChange={(event) =>
-                              setCurrentPassword(event.target.value)
-                            }
-                            type="password"
-                            required
-                            className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
-                            placeholder="Enter current password"
-                          />
-                        </label>
-                      )}
+                      <label className="grid gap-2 text-sm font-semibold">
+                        Current CozyCraft password
+                        <input
+                          value={currentPassword}
+                          onChange={(event) =>
+                            setCurrentPassword(event.target.value)
+                          }
+                          type="password"
+                          required
+                          className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
+                          placeholder="Enter current password"
+                        />
+                      </label>
                       <label className="grid gap-2 text-sm font-semibold">
                         New password
                         <input
@@ -1289,9 +1334,9 @@ export function Profile() {
                           }
                           type="password"
                           required
-                          minLength={8}
+                          minLength={10}
                           className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
-                          placeholder="At least 8 characters"
+                          placeholder="10+ characters with mixed character types"
                         />
                       </label>
                       <label className="grid gap-2 text-sm font-semibold">
@@ -1303,16 +1348,14 @@ export function Profile() {
                           }
                           type="password"
                           required
-                          minLength={8}
+                          minLength={10}
                           className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
                           placeholder="Repeat new password"
                         />
                       </label>
                     </div>
                     <button className="mt-7 rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">
-                      {securityView === "setup"
-                        ? "Set up password"
-                        : "Change password"}
+                      Change password
                     </button>
                     <button
                       type="button"

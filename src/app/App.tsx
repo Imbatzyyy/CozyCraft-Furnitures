@@ -320,7 +320,6 @@ function App() {
     id: string,
     email: string | null,
     metadata: Record<string, unknown> = {},
-    providers: string[] = [],
   ) => {
     let profileResult = await supabase
       .from("profiles")
@@ -336,7 +335,7 @@ function App() {
         .eq("id", id)
         .single();
     }
-    const [cartResult, wishlistResult, addressResult] = await Promise.all([
+    const [cartResult, wishlistResult, addressResult, passwordStatusResult] = await Promise.all([
       supabase
         .from("cart_items")
         .select("product_id, quantity, selected_for_checkout")
@@ -350,6 +349,7 @@ function App() {
         .select("*")
         .eq("user_id", id)
         .order("is_primary", { ascending: false }),
+      supabase.rpc("current_user_has_password"),
     ]);
     const {
       data: { session: activeSession },
@@ -381,7 +381,9 @@ function App() {
     // outlive an earlier signup-flow mistake, so never use it as a fallback.
     setProfileBirth(profile?.date_of_birth ?? "");
     setProfilePaymentMethod(profile?.preferred_payment_method ?? "cod");
-    setHasPassword(providers.includes("email"));
+    setHasPassword(
+      !passwordStatusResult.error && passwordStatusResult.data === true,
+    );
     setCart((cartResult.data ?? []).map((item) => ({
       id: item.product_id,
       quantity: item.quantity,
@@ -416,14 +418,10 @@ function App() {
     const hydrate = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const providers = Array.isArray(session.user.app_metadata?.providers)
-          ? session.user.app_metadata.providers
-          : [session.user.app_metadata?.provider].filter(Boolean);
         await loadAccount(
           session.user.id,
           session.user.email ?? null,
           session.user.user_metadata ?? {},
-          providers as string[],
         );
       }
       else await refreshProducts();
@@ -441,14 +439,10 @@ function App() {
       if (session?.user) setAuthReady(false);
       window.setTimeout(() => {
         if (session?.user) {
-          const providers = Array.isArray(session.user.app_metadata?.providers)
-            ? session.user.app_metadata.providers
-            : [session.user.app_metadata?.provider].filter(Boolean);
           void loadAccount(
             session.user.id,
             session.user.email ?? null,
             session.user.user_metadata ?? {},
-            providers as string[],
           ).finally(() => setAuthReady(true));
         }
         else {
@@ -473,14 +467,10 @@ function App() {
         data: { user: currentUser },
       } = await supabase.auth.getUser();
       if (!currentUser || currentUser.id !== userId) return;
-      const providers = Array.isArray(currentUser.app_metadata?.providers)
-        ? currentUser.app_metadata.providers
-        : [currentUser.app_metadata?.provider].filter(Boolean);
       await loadAccount(
         currentUser.id,
         currentUser.email ?? null,
         currentUser.user_metadata ?? {},
-        providers as string[],
       );
     };
     const channel = supabase
@@ -1234,6 +1224,13 @@ function App() {
     if (!error) setHasPassword(true);
     return error?.message ?? null;
   };
+  const requestPasswordSetup = async () => {
+    if (!userEmail) return "Your account email is unavailable.";
+    const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
+      redirectTo: `${window.location.origin}/reset-password?mode=setup`,
+    });
+    return error?.message ?? null;
+  };
 
   const store: Store = {
     products,
@@ -1285,6 +1282,7 @@ function App() {
     requestEmailChange,
     confirmEmailChange,
     changePassword,
+    requestPasswordSetup,
   };
   return (
     <StoreContext.Provider value={store}>
