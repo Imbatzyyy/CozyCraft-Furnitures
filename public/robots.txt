@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /profile
+Disallow: /checkout
+Disallow: /orders
+Disallow: /cart
+Disallow: /wishlist
+Disallow: /login
+Disallow: /signup
+Disallow: /reset-password
+
+Sitemap: https://www.cozycraftfurnitures.com/sitemap.xml
