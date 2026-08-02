@@ -541,6 +541,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             <Link
               id="wishlist-nav-target"
               to="/wishlist"
+              aria-label={`Wishlist${saved.length ? `, ${saved.length} saved` : ""}`}
               className={`relative grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >
               <Heart size={18} fill={saved.length ? "currentColor" : "none"} />
@@ -555,6 +556,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             <Link
               id="cart-nav-target"
               to="/cart"
+              aria-label={`Shopping bag${cartQty ? `, ${cartQty} item${cartQty === 1 ? "" : "s"}` : ""}`}
               className={`relative grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >
               <ShoppingBag size={18} />
@@ -619,6 +621,8 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             )}
             <button
               onClick={() => setMenu(!menu)}
+              aria-label={menu ? "Close navigation menu" : "Open navigation menu"}
+              aria-expanded={menu}
               className={`grid h-9 w-9 place-items-center rounded-full md:hidden ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >
               {menu ? <X size={19} /> : <Menu size={19} />}
@@ -660,7 +664,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
         )}
       </header>
       {searchOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-5 pt-24 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-5 pt-24 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Search CozyCraft products">
           <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
             <div className="flex items-center gap-3 border-b border-border px-5">
               <Search size={18} className="text-muted-foreground" />
@@ -673,6 +677,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
               />
               <button
                 onClick={() => setSearchOpen(false)}
+                aria-label="Close product search"
                 className="grid h-8 w-8 place-items-center rounded-full hover:bg-secondary"
               >
                 <X size={17} />
@@ -747,8 +752,9 @@ export function Layout({
 }) {
   return (
     <>
+      <a href="#page-content" className="skip-link">Skip to main content</a>
       <Header immersive={immersive} />
-      <div className={immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"}>
+      <div id="page-content" tabIndex={-1} className={immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"}>
         <div
           className={
             immersive

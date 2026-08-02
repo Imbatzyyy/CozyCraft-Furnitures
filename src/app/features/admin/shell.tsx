@@ -468,12 +468,14 @@ export function AdminShell({
   if (!canAccess) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><ShieldCheck className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">This feature is restricted.</h1><p className="mt-3 text-sm text-muted-foreground">Your {role.toLowerCase()} role does not have permission to open this page.</p><Link to="/admin" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Return to overview</Link></section></main>;
   return (
     <div className="min-h-screen bg-[#f3f0ea]">
+      <a href="#admin-main" className="skip-link">Skip to admin content</a>
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-white/10 bg-[#201f1d] p-5 text-white transition-transform lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
         <button
           className="absolute right-4 top-4 lg:hidden"
           onClick={() => setOpen(false)}
+          aria-label="Close admin navigation"
         >
           <X />
         </button>
@@ -524,6 +526,7 @@ export function AdminShell({
           <div className="flex items-center gap-3">
             <button
               onClick={() => setOpen(true)}
+              aria-label="Open admin navigation"
               className="grid h-10 w-10 place-items-center rounded-xl bg-card shadow-sm lg:hidden"
             >
               <Menu size={19} />
@@ -541,6 +544,8 @@ export function AdminShell({
             <div className="relative">
               <button
                 onClick={() => setProfileOpen(!profileOpen)}
+                aria-label="Open administrator account menu"
+                aria-expanded={profileOpen}
                 className="flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-2 shadow-sm transition hover:bg-secondary"
               >
                 <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#b8a58d] text-[10px] font-bold text-foreground">
@@ -573,7 +578,7 @@ export function AdminShell({
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-[1500px] p-5 lg:p-8">{children}</main>
+        <main id="admin-main" tabIndex={-1} className="mx-auto max-w-[1500px] p-5 lg:p-8">{children}</main>
       </div>
       {confirmSignOut && (
         <ConfirmSignOut
