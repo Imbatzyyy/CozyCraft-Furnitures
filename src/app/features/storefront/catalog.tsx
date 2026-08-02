@@ -165,7 +165,6 @@ export function Home() {
               />
             ))}
             <div className="absolute inset-0 bg-black/42" />
-            <div className="absolute inset-x-0 top-[76px] h-px bg-white/25" />
             <div className="relative mx-auto flex min-h-screen max-w-[1440px] flex-col justify-end px-7 pb-24 pt-32 text-[#f8f6f1] sm:px-14 sm:pb-28">
               <div className="max-w-3xl">
                 <div className="mb-6 flex items-center gap-3">
