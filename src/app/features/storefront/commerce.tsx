@@ -78,6 +78,11 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import {
+  calculateDeliveryFee,
+  isPaymentMethodAvailable,
+  validateCheckoutAmount,
+} from "@/lib/store-settings";
 
 import {
   Product,
@@ -630,7 +635,7 @@ export function CustomerOrders() {
 }
 
 export function Checkout() {
-  const { authReady, cart, user, addresses, products, placeOrder, orders, refreshOrders } = useStore();
+  const { authReady, cart, user, addresses, products, placeOrder, orders, refreshOrders, storeSettings } = useStore();
   const location = useLocation();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
@@ -702,11 +707,43 @@ export function Checkout() {
       total: Number(returnedOrder.total),
     });
   }, [orders, paymentReturn, returnOrderId]);
-  const total = lines.reduce(
+  const subtotal = lines.reduce(
     (sum, line) => sum + line.item.price * line.quantity,
     0,
   );
-  const eta = new Date(Date.now() + 5 * 86_400_000).toLocaleDateString(
+  const deliveryFee = calculateDeliveryFee(subtotal, storeSettings.checkout_settings);
+  const total = subtotal + deliveryFee;
+  const checkoutError = validateCheckoutAmount(subtotal, storeSettings.checkout_settings);
+  const methods = [
+    {
+      id: "cod",
+      name: "Cash on delivery",
+      detail: storeSettings.checkout_settings.cod_maximum_order > 0
+        ? `Available up to ${money(storeSettings.checkout_settings.cod_maximum_order)}`
+        : "Pay when your delivery arrives",
+      icon: "COD",
+      available: isPaymentMethodAvailable("cod", subtotal, storeSettings.checkout_settings),
+    },
+    {
+      id: "card",
+      name: "Debit or credit card",
+      detail: "Secure PayMongo checkout",
+      icon: "••••",
+      available: isPaymentMethodAvailable("card", subtotal, storeSettings.checkout_settings),
+    },
+    {
+      id: "gcash",
+      name: "GCash",
+      detail: "Secure PayMongo checkout",
+      icon: "G",
+      available: isPaymentMethodAvailable("gcash", subtotal, storeSettings.checkout_settings),
+    },
+  ];
+  useEffect(() => {
+    if (methods.some((method) => method.id === payment && method.available)) return;
+    setPayment(methods.find((method) => method.available)?.id ?? "");
+  }, [payment, subtotal, storeSettings.checkout_settings.card_enabled, storeSettings.checkout_settings.cod_enabled, storeSettings.checkout_settings.cod_maximum_order, storeSettings.checkout_settings.gcash_enabled]);
+  const eta = new Date(Date.now() + storeSettings.fulfillment_settings.estimated_delivery_days_max * 86_400_000).toLocaleDateString(
     "en-PH",
     { month: "long", day: "numeric", year: "numeric" },
   );
@@ -811,29 +848,6 @@ export function Checkout() {
       </Layout>
     );
   const chosen = addresses.find((item) => item.id === address) ?? addresses[0];
-  const methods = [
-    {
-      id: "cod",
-      name: "Cash on delivery",
-      detail: "Pay when your delivery arrives",
-      icon: "COD",
-      available: true,
-    },
-    {
-      id: "card",
-      name: "Debit or credit card",
-      detail: "Secure PayMongo test checkout",
-      icon: "••••",
-      available: true,
-    },
-    {
-      id: "gcash",
-      name: "GCash",
-      detail: "Secure PayMongo test checkout",
-      icon: "G",
-      available: true,
-    },
-  ];
   return (
     <Layout>
       <main className="mx-auto max-w-[1240px] px-4 py-7 sm:px-5 sm:py-10">
@@ -1019,11 +1033,11 @@ export function Checkout() {
               <div className="mt-5 grid gap-2 border-t border-border pt-4 text-sm">
                 <p className="flex justify-between">
                   <span>Subtotal</span>
-                  <span>{money(total)}</span>
+                  <span>{money(subtotal)}</span>
                 </p>
                 <p className="flex justify-between">
-                  <span>White-glove delivery</span>
-                  <span>Free</span>
+                  <span>Delivery</span>
+                  <span>{deliveryFee > 0 ? money(deliveryFee) : "Free"}</span>
                 </p>
                 <p className="mt-2 flex justify-between text-base font-semibold">
                   <span>Total</span>
@@ -1031,12 +1045,20 @@ export function Checkout() {
                 </p>
               </div>
               <button
-                disabled={placing || !chosen}
+                disabled={placing || !chosen || !payment || Boolean(checkoutError)}
                 onClick={async () => {
                   if (!chosen) {
                     setNotice(
                       "Add and save a delivery address before placing your order.",
                     );
+                    return;
+                  }
+                  if (checkoutError) {
+                    setNotice(checkoutError);
+                    return;
+                  }
+                  if (!payment) {
+                    setNotice("No payment method is currently available for this order.");
                     return;
                   }
                   setPlacing(true);
@@ -1070,6 +1092,10 @@ export function Checkout() {
                   ? payment === "cod" ? "Placing COD order…" : "Opening secure PayMongo checkout…"
                   : !chosen
                     ? "Save a delivery address to continue"
+                    : checkoutError
+                      ? checkoutError
+                      : !payment
+                        ? "No payment method available"
                     : payment === "cod"
                       ? `Place COD order · ${money(total)}`
                       : `Pay securely · ${money(total)}`}
@@ -1079,6 +1105,7 @@ export function Checkout() {
                   {notice}
                 </div>
               )}
+              {!notice && checkoutError && <div className="mt-4 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">{checkoutError}</div>}
               <p className="mt-4 flex gap-2 text-[10px] leading-4 text-muted-foreground">
                 <ShieldCheck size={14} />
                 Your order is securely recorded in Supabase. Online payments

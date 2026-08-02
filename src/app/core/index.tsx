@@ -79,6 +79,7 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import type { PublicStoreSettings } from "@/lib/store-settings";
 
 
 export type Product = {
@@ -300,6 +301,7 @@ export type Address = {
 };
 
 export type Store = {
+  storeSettings: PublicStoreSettings;
   products: Product[];
   adminProducts: Product[];
   cart: CartLine[];
@@ -772,9 +774,15 @@ export function Layout({
   children: ReactNode;
   immersive?: boolean;
 }) {
+  const { storeSettings, role } = useStore();
+  const staffBypass = role === "staff" || role === "admin" || role === "superadmin";
+  if (storeSettings.maintenance_mode && !staffBypass) {
+    return <main className="grid min-h-dvh place-items-center bg-[#e9e5de] p-5"><section className="w-full max-w-xl rounded-[2rem] border border-border bg-card p-8 text-center shadow-[0_22px_70px_rgba(35,31,27,.12)]"><Logo /><p className="mt-8 text-[10px] font-bold tracking-[.18em] text-muted-foreground">A LITTLE CARE BEHIND THE SCENES</p><h1 className="mt-3 font-serif text-4xl">We’ll be right back.</h1><p className="mx-auto mt-4 max-w-md text-sm leading-6 text-muted-foreground">CozyCraft is receiving a thoughtful update. Please return shortly, or contact {storeSettings.contact_email} if you need help with an existing order.</p></section></main>;
+  }
   return (
     <>
       <a href="#page-content" className="skip-link">Skip to main content</a>
+      {storeSettings.announcement_enabled && storeSettings.announcement_text.trim() && <div className="relative z-[70] bg-[#292622] px-4 py-2 text-center text-[11px] font-semibold text-white"><span>{storeSettings.announcement_text}</span>{storeSettings.announcement_link && <Link className="ml-2 underline underline-offset-4" to={storeSettings.announcement_link}>Learn more</Link>}</div>}
       <Header immersive={immersive} />
       <div id="page-content" tabIndex={-1} className={`${immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"} pb-20 md:pb-0`}>
         <div
@@ -791,7 +799,7 @@ export function Layout({
               <div>
                 <Logo light />
                 <p className="mt-3 max-w-xs text-sm leading-6 text-[#f4f2ee]/65">
-                  Designed for a slower, warmer life at home.
+                  {storeSettings.store_description}
                 </p>
               </div>
               {[
@@ -807,7 +815,7 @@ export function Layout({
                 </div>
               ))}
             </div>
-            <div className="border-t border-white/10 px-5 py-5 text-center text-[10px] tracking-[.12em] text-white/40">© 2026 COZYCRAFT FURNITURE · BUILT FOR FILIPINO HOMES</div>
+            <div className="border-t border-white/10 px-5 py-5 text-center text-[10px] tracking-[.12em] text-white/40">© 2026 {storeSettings.store_name.toUpperCase()} · {storeSettings.contact_email}</div>
           </footer>
         </div>
       </div>
@@ -818,10 +826,16 @@ export function Layout({
 }
 
 function StorefrontServiceStrip() {
+  const { storeSettings } = useStore();
+  const paymentLabels = [
+    storeSettings.checkout_settings.cod_enabled && "COD",
+    storeSettings.checkout_settings.card_enabled && "card",
+    storeSettings.checkout_settings.gcash_enabled && "GCash",
+  ].filter(Boolean).join(", ");
   const services = [
-    [Package, "Careful delivery", "Live order tracking"],
+    [Package, "Careful delivery", `${storeSettings.fulfillment_settings.estimated_delivery_days_min}–${storeSettings.fulfillment_settings.estimated_delivery_days_max} day estimate`],
     [ShieldCheck, "Secure shopping", "Protected account and checkout"],
-    [CreditCard, "Flexible payment", "COD, card, and GCash"],
+    [CreditCard, "Flexible payment", paymentLabels || "Temporarily unavailable"],
     [MessageCircle, "CozyCraft Care", "Support when you need it"],
   ] as const;
   return (

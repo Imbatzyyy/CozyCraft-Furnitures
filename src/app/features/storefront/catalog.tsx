@@ -1068,7 +1068,7 @@ const normalizeProductReviews = (
 
 export function ProductPage() {
   const { productId } = useParams();
-  const { add, toggle, saved, products, userId, orders } = useStore();
+  const { add, toggle, saved, products, userId, orders, storeSettings } = useStore();
   const product = products.find((p) => p.id === productId) ?? products[0];
   const [photo, setPhoto] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -1196,12 +1196,13 @@ export function ProductPage() {
             product.name.trim().toLowerCase(),
       ),
   );
+  const mayReview = !storeSettings.review_settings.verified_purchases_only || hasPurchased;
   const submitReview = async (event: FormEvent) => {
     event.preventDefault();
     if (
       !userId ||
-      !hasPurchased ||
-      reviewBody.trim().length < 5 ||
+      !mayReview ||
+      reviewBody.trim().length < storeSettings.review_settings.minimum_length ||
       submittingReview
     )
       return;
@@ -1220,7 +1221,7 @@ export function ProductPage() {
           ? existingReview
             ? "Your verified review was updated."
             : "Your verified review is now published."
-          : "Your review was updated and remains hidden by moderation."),
+          : "Your review was saved and is awaiting moderation."),
     );
     if (!error) {
       setExistingReview(true);
@@ -1439,15 +1440,15 @@ export function ProductPage() {
               ))}
             </div>
           </div>
-          {userId && hasPurchased ? (
+          {userId && mayReview ? (
             <form
               onSubmit={submitReview}
               className="mt-7 rounded-2xl border border-border bg-[#f4f0e9] p-5"
             >
               <p className="text-sm font-semibold">
                 {existingReview
-                  ? "Update your verified review"
-                  : "Review your delivered purchase"}
+                  ? `Update your ${hasPurchased ? "verified " : ""}review`
+                  : hasPurchased ? "Review your delivered purchase" : "Review this product"}
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-[130px_1fr]">
                 <select
@@ -1472,11 +1473,12 @@ export function ProductPage() {
                 value={reviewBody}
                 onChange={(event) => setReviewBody(event.target.value)}
                 required
-                minLength={5}
-                maxLength={2000}
+                minLength={storeSettings.review_settings.minimum_length}
+                maxLength={storeSettings.review_settings.maximum_length}
                 placeholder="Tell other customers about this piece"
                 className="mt-3 min-h-24 w-full rounded-xl border border-border bg-card p-3 text-sm"
               />
+              <p className="mt-2 text-[10px] text-muted-foreground">{reviewBody.length}/{storeSettings.review_settings.maximum_length} characters · minimum {storeSettings.review_settings.minimum_length}{storeSettings.review_settings.approval_required ? " · reviewed before publishing" : ""}</p>
               <button
                 disabled={submittingReview}
                 className="mt-3 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:cursor-not-allowed disabled:opacity-50"

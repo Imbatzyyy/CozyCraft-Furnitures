@@ -113,7 +113,7 @@ import {
 
 
 export function Account({ mode }: { mode: "login" | "signup" }) {
-  const { authReady, user, role, signOut } = useStore();
+  const { authReady, user, role, signOut, storeSettings } = useStore();
   const nav = useNavigate();
   const location = useLocation();
   const [view, setView] = useState<
@@ -145,9 +145,10 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       setError("Incorrect email or password. Please check your credentials.");
     });
   }, [authReady, nav, role, signOut, user]);
+  const passwordMinimum = storeSettings.account_settings.password_minimum_length;
   const score = [
-    password.length >= 8,
-    password.length >= 12,
+    password.length >= passwordMinimum,
+    password.length >= Math.max(12, passwordMinimum + 4),
     /[A-Z]/.test(password) &&
       /[0-9]/.test(password) &&
       /[^A-Za-z0-9]/.test(password),
@@ -165,7 +166,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
     setVerificationNotice("");
     if (mode === "signup" && password !== confirm) { setError("Passwords do not match. Please try again."); return; }
     if (mode === "signup" && score < 2) { setError("Choose a stronger password before creating your account."); return; }
-    if (mode === "signup" && !/^[A-Za-z0-9._-]{3,24}$/.test(username.trim())) { setError("Username must be 3–24 characters using letters, numbers, dots, underscores, or hyphens."); return; }
+    if (mode === "signup" && storeSettings.account_settings.username_required && !/^[A-Za-z0-9._-]{3,24}$/.test(username.trim())) { setError("Username must be 3–24 characters using letters, numbers, dots, underscores, or hyphens."); return; }
     setSubmitting(true);
     if (mode === "login") {
       const result = await signInForPortal(email, password, "customer");
@@ -420,21 +421,23 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                 ? "Sign in to see your saved pieces, delivery details, and order tracking."
                 : "Create an account for saved addresses, favorites, and effortless checkout."}
             </p>
-            <button
-              type="button"
-              onClick={google}
-              className="mt-4 flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-border bg-white text-sm font-semibold transition hover:bg-secondary"
-            >
-              <ResilientImage
-                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                alt="Google"
-                className="h-5 w-5"
-              />
-              Continue with Google
-            </button>
-            <div className="my-3 flex items-center gap-3 text-[10px] font-bold tracking-[.14em] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-              OR
-            </div>
+            {storeSettings.account_settings.google_auth_enabled && <>
+              <button
+                type="button"
+                onClick={google}
+                className="mt-4 flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-border bg-white text-sm font-semibold transition hover:bg-secondary"
+              >
+                <ResilientImage
+                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                  alt="Google"
+                  className="h-5 w-5"
+                />
+                Continue with Google
+              </button>
+              <div className="my-3 flex items-center gap-3 text-[10px] font-bold tracking-[.14em] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+                OR
+              </div>
+            </>}
             <div className="grid gap-3">
               {mode === "signup" && (
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -460,7 +463,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                   </label>
                 </div>
               )}
-              {mode === "signup" && <label className="grid gap-2 text-sm font-semibold">Username<input value={username} onChange={event=>setUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g,"").slice(0,24))} required minLength={3} maxLength={24} autoComplete="username" className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none focus:border-foreground" placeholder="cozyhome"/><span className="text-[10px] font-normal text-muted-foreground">Shown in your account menu. You can change it later.</span></label>}
+              {mode === "signup" && storeSettings.account_settings.username_required && <label className="grid gap-2 text-sm font-semibold">Username<input value={username} onChange={event=>setUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g,"").slice(0,24))} required minLength={3} maxLength={24} autoComplete="username" className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none focus:border-foreground" placeholder="cozyhome"/><span className="text-[10px] font-normal text-muted-foreground">Shown in your account menu. You can change it later.</span></label>}
               <label className="grid gap-2 text-sm font-semibold">
                 Email address
                 <input
@@ -514,11 +517,11 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                       ))}
                     </div>
                     <span className="text-[10px] font-bold text-muted-foreground">
-                      {strength || "Use 8+ characters"}
+                      {strength || `Use ${passwordMinimum}+ characters`}
                     </span>
                   </div>
                   <p className="-mt-2 text-[11px] leading-4 text-muted-foreground">
-                    For a strong password, use 12+ characters with an uppercase
+                    For a strong password, use {Math.max(12, passwordMinimum + 4)}+ characters with an uppercase
                     letter, number, and symbol.
                   </p>
                   <label className="grid gap-2 text-sm font-semibold">

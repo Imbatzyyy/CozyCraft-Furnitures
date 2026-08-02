@@ -127,6 +127,20 @@ Deno.serve(async (request) => {
       currency: "PHP",
       quantity: item.quantity,
     }));
+    const merchandiseTotal = order.order_items.reduce(
+      (sum: number, item: { unit_price: number; quantity: number }) =>
+        sum + Number(item.unit_price) * item.quantity,
+      0,
+    );
+    const deliveryFee = Math.max(0, Number(order.total) - merchandiseTotal);
+    if (deliveryFee > 0) {
+      lineItems.push({
+        name: "CozyCraft delivery",
+        amount: Math.round(deliveryFee * 100),
+        currency: "PHP",
+        quantity: 1,
+      });
+    }
     const shipping = order.shipping_address as Record<string, string>;
     const paymongoResponse = await fetch("https://api.paymongo.com/v2/checkout_sessions", {
       method: "POST",

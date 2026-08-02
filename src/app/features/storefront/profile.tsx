@@ -617,8 +617,10 @@ export function Profile() {
     confirmEmailChange,
     changePassword,
     requestPasswordSetup,
+    storeSettings,
   } = useStore();
   const nav = useNavigate();
+  const passwordMinimum = storeSettings.account_settings.password_minimum_length;
   const [tab, setTab] = useState("Profile");
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("tab")?.toLowerCase();
@@ -958,7 +960,7 @@ export function Profile() {
   const submitPassword = async (event: FormEvent) => {
     event.preventDefault();
     if (
-      newPassword.length < 10 ||
+      newPassword.length < passwordMinimum ||
       !/[a-z]/.test(newPassword) ||
       !/[A-Z]/.test(newPassword) ||
       !/\d/.test(newPassword) ||
@@ -966,7 +968,7 @@ export function Profile() {
       newPassword !== confirmPassword
     ) {
       setNotice(
-        "Use matching passwords with at least 10 characters, including uppercase, lowercase, a number, and a symbol.",
+        `Use matching passwords with at least ${passwordMinimum} characters, including uppercase, lowercase, a number, and a symbol.`,
       );
       return;
     }
@@ -1334,9 +1336,9 @@ export function Profile() {
                           }
                           type="password"
                           required
-                          minLength={10}
+                          minLength={passwordMinimum}
                           className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
-                          placeholder="10+ characters with mixed character types"
+                          placeholder={`${passwordMinimum}+ characters with mixed character types`}
                         />
                       </label>
                       <label className="grid gap-2 text-sm font-semibold">
@@ -1348,7 +1350,7 @@ export function Profile() {
                           }
                           type="password"
                           required
-                          minLength={10}
+                          minLength={passwordMinimum}
                           className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none"
                           placeholder="Repeat new password"
                         />
@@ -1403,10 +1405,10 @@ export function Profile() {
                         {hasPassword ? "Change password" : "Set up a password"}
                       </button>
                     </div>
-                    <div className="mt-4 rounded-2xl border border-border p-5">
+                    {storeSettings.account_settings.customer_mfa_available && <div className="mt-4 rounded-2xl border border-border p-5">
                       <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-semibold">Authenticator verification</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Use a rotating 6-digit code for stronger account protection.</p></div><ShieldCheck className={mfaFactors.some((factor)=>factor.status === "verified") ? "text-[#6c8364]" : "text-muted-foreground"} size={20}/></div>
                       {mfaEnrollment ? <div className="mt-5 rounded-xl bg-secondary p-4"><p className="text-xs font-semibold">Scan this QR code with Google Authenticator, 1Password, Authy, or another TOTP app.</p><img src={mfaEnrollment.qr} alt="Authenticator setup QR code" className="mt-4 h-44 w-44 rounded-lg bg-white p-2"/><details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer font-semibold">Can’t scan the code?</summary><code className="mt-2 block break-all rounded-lg bg-card p-2 text-foreground">{mfaEnrollment.secret}</code></details><label className="mt-4 grid gap-2 text-xs font-semibold">6-digit verification code<input value={mfaCode} onChange={(event)=>setMfaCode(event.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" autoComplete="one-time-code" className="h-11 rounded-xl border border-border bg-card px-3 text-base tracking-[.3em]"/></label><div className="mt-4 flex gap-3"><button type="button" onClick={()=>void verifyMfaEnrollment()} disabled={mfaBusy || mfaCode.length!==6} className="rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background disabled:opacity-50">{mfaBusy ? "Verifying…" : "Verify and enable"}</button><button type="button" onClick={()=>setMfaEnrollment(null)} disabled={mfaBusy} className="rounded-xl border border-border px-4 py-2.5 text-xs font-semibold">Cancel</button></div></div> : mfaFactors.some((factor)=>factor.status === "verified") ? <div className="mt-4 flex items-center justify-between gap-4 rounded-xl bg-[#e7eee3] p-3 text-xs text-[#50674b]"><span><b className="block">Two-step verification active</b><span className="mt-1 block">Authenticator codes protect this account.</span></span><button type="button" disabled={mfaBusy} onClick={()=>void removeMfaFactor(mfaFactors.find((factor)=>factor.status === "verified")!.id)} className="shrink-0 rounded-lg border border-[#6c8364]/40 px-3 py-2 font-semibold">Remove</button></div> : <button type="button" onClick={()=>void beginMfaEnrollment()} disabled={mfaBusy} className="mt-5 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold disabled:opacity-50">{mfaBusy ? "Starting…" : "Set up authenticator"}</button>}
-                    </div>
+                    </div>}
                     <div className="mt-4 rounded-2xl border border-border p-5"><p className="text-sm font-semibold">Other signed-in devices</p><p className="mt-1 text-xs leading-5 text-muted-foreground">End every other browser session without signing out this device.</p><button type="button" onClick={()=>void signOutOtherDevices()} disabled={mfaBusy} className="mt-5 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold disabled:opacity-50">Sign out other devices</button></div>
                     </div>
                 )}

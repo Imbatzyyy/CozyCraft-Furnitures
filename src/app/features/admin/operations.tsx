@@ -1944,6 +1944,12 @@ export function ActivityLogsPage() {
 export function ReportsPage() {
   const { orders, adminProducts, customerProfiles, refreshOrders, refreshCustomers } = useStore();
   const [range, setRange] = useState<AdminReportRange>("This month");
+  useEffect(() => {
+    void supabase.from("store_settings").select("report_settings").eq("id", true).single().then(({ data }) => {
+      const configured = data?.report_settings?.default_range;
+      if (["This week", "This month", "Quarter"].includes(configured)) setRange(configured as AdminReportRange);
+    });
+  }, []);
   const [format, setFormat] = useState("CSV");
   const [notice, setNotice] = useState("");
   const [scheduled, setScheduled] = useState(false);

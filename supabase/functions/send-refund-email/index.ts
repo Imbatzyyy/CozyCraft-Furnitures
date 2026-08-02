@@ -44,6 +44,14 @@ Deno.serve(async (request) => {
   if (!profile || !["admin", "superadmin"].includes(profile.role)) {
     return json(request, { error: "Administrator access is required." }, 403);
   }
+  const { data: storeSettings } = await adminClient
+    .from("store_settings")
+    .select("email_event_settings")
+    .eq("id", true)
+    .single();
+  if (storeSettings?.email_event_settings?.cancelled_refunded === false) {
+    return json(request, { error: "Refund confirmation emails are disabled in Store Settings." }, 409);
+  }
 
   const body = await request.json().catch(() => ({}));
   const orderId = typeof body.orderId === "string" ? body.orderId : "";

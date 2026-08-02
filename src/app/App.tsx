@@ -96,6 +96,11 @@ import {
   fallbackProducts,
 } from "./core";
 import { checkoutSignature, selectCheckoutLines } from "../lib/checkout";
+import {
+  defaultStoreSettings,
+  normalizeStoreSettings,
+  type PublicStoreSettings,
+} from "@/lib/store-settings";
 
 const splashSessionKey = "cozycraft-welcome-seen";
 const publicAvatarPathMarker = "/storage/v1/object/public/avatars/";
@@ -126,6 +131,9 @@ function App() {
     () => window.sessionStorage.getItem(splashSessionKey) !== "1",
   );
   const [products, setProducts] = useState<Product[]>(fallbackProducts);
+  const [storeSettings, setStoreSettings] = useState<PublicStoreSettings>(
+    defaultStoreSettings,
+  );
   const [adminProducts, setAdminProducts] = useState<Product[]>(fallbackProducts);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
@@ -209,12 +217,16 @@ function App() {
       supabase.from("categories").select("name,active"),
       supabase
         .from("store_settings")
-        .select("low_stock_threshold")
+        .select("*")
         .eq("id", true)
         .single(),
     ]);
     if (productResult.error || !productResult.data) return;
-    const threshold = settingResult.data?.low_stock_threshold ?? 8;
+    const normalizedSettings = normalizeStoreSettings(
+      settingResult.data as Partial<PublicStoreSettings> | null,
+    );
+    setStoreSettings(normalizedSettings);
+    const threshold = normalizedSettings.low_stock_threshold;
     const mapped = (productResult.data as DbProduct[]).map((row) =>
       mapProduct(row, threshold),
     );
@@ -228,6 +240,10 @@ function App() {
       mapped.filter(
         (item) =>
           item.status === "active" &&
+          !(
+            normalizedSettings.fulfillment_settings.out_of_stock_behavior ===
+              "hide" && item.stockQuantity === 0
+          ) &&
           (!activeCategories.size || activeCategories.has(item.category)),
       ),
     );
@@ -1233,6 +1249,7 @@ function App() {
   };
 
   const store: Store = {
+    storeSettings,
     products,
     adminProducts,
     cart,
@@ -1301,11 +1318,11 @@ function App() {
 }
 
 function UsernameSetupGate() {
-  const { authReady, userId, user, role, profileUsername, profilePhone, profileGender, profileBirth, saveProfile } = useStore();
+  const { authReady, userId, user, role, profileUsername, profilePhone, profileGender, profileBirth, saveProfile, storeSettings } = useStore();
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  if (!authReady || !userId || role !== "customer" || profileUsername.trim()) return null;
+  if (!authReady || !userId || role !== "customer" || profileUsername.trim() || !storeSettings.account_settings.username_required) return null;
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const normalized=username.trim();

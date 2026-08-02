@@ -429,6 +429,7 @@ export function AdminShell({
   const [mfaCode, setMfaCode] = useState("");
   const [mfaError, setMfaError] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [adminSecurity, setAdminSecurity] = useState({ require_admin_mfa: true, session_timeout_minutes: 480 });
   const { role } = useAdminSession();
   const { role: databaseRole, authReady, signOut, user } = useStore();
   const accountName = user?.trim() || "Team Member";
@@ -444,6 +445,21 @@ export function AdminShell({
       return;
     }
     setMfaError("");
+    const { data: policy, error: policyError } = await supabase
+      .from("admin_security_settings")
+      .select("require_admin_mfa,session_timeout_minutes")
+      .eq("id", true)
+      .single();
+    if (!policyError && policy) {
+      setAdminSecurity({
+        require_admin_mfa: policy.require_admin_mfa !== false,
+        session_timeout_minutes: Math.max(5, Number(policy.session_timeout_minutes) || 480),
+      });
+      if (policy.require_admin_mfa === false) {
+        setMfaRequired(false);
+        return;
+      }
+    }
     const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (assuranceError) {
       setMfaRequired(true);
@@ -465,6 +481,23 @@ export function AdminShell({
     setMfaRequired(true);
   }, [authReady, databaseRole]);
   useEffect(() => { void checkMfa(); }, [checkMfa]);
+  useEffect(() => {
+    if (!authReady || !isStaffRole(databaseRole)) return;
+    let timer = 0;
+    const arm = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void signOut().then(() => nav("/admin/login", { replace: true }));
+      }, adminSecurity.session_timeout_minutes * 60_000);
+    };
+    const events = ["pointerdown", "keydown", "scroll", "touchstart"] as const;
+    events.forEach((event) => window.addEventListener(event, arm, { passive: true }));
+    arm();
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((event) => window.removeEventListener(event, arm));
+    };
+  }, [adminSecurity.session_timeout_minutes, authReady, databaseRole, nav, signOut]);
   const verifyMfa = async (event: FormEvent) => {
     event.preventDefault();
     if (!mfaFactorId || mfaCode.length !== 6) return;
