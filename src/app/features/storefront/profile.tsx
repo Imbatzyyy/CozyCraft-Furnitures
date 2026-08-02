@@ -1322,6 +1322,11 @@ export function Profile() {
                       {selectedOrder.status === "cancelled" ? (
                         <div className="border-b border-border bg-[#f3e5d4] p-4 text-xs text-[#8b5c46]">
                           <b className="block">This order was cancelled.</b>
+                          {selectedOrder.order_status_history?.find((entry) => entry.status === "cancelled") && (
+                            <time className="mt-1 block" dateTime={selectedOrder.order_status_history.find((entry) => entry.status === "cancelled")!.changed_at}>
+                              {new Date(selectedOrder.order_status_history.find((entry) => entry.status === "cancelled")!.changed_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
+                            </time>
+                          )}
                           <span className="mt-1 block">
                             {selectedOrder.payment_status === "refunded"
                               ? selectedOrder.refund_status === "demo_succeeded"
@@ -1338,13 +1343,27 @@ export function Profile() {
                             {["pending", "processing", "packed", "shipped", "delivered"].map((step, index, steps) => {
                               const current = steps.indexOf(selectedOrder.status);
                               const complete = index <= current;
+                              const history = selectedOrder.order_status_history?.find((entry) => entry.status === step);
                               return (
                                 <div key={step} className="flex min-w-0 flex-1 items-start last:flex-none">
                                   <div className="min-w-0 text-center">
                                     <span className={`mx-auto grid h-7 w-7 place-items-center rounded-full ${complete ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>
                                       {complete ? <Check size={13} /> : index + 1}
                                     </span>
-                                    <span className="mt-2 hidden text-[9px] capitalize text-muted-foreground sm:block">{step}</span>
+                                    <span className="mt-2 hidden text-[9px] capitalize text-muted-foreground sm:block">
+                                      <b className={complete ? "text-foreground" : ""}>{step}</b>
+                                      {history && (
+                                        <time className="mt-0.5 block text-[8px] normal-case leading-3" dateTime={history.changed_at}>
+                                          {new Date(history.changed_at).toLocaleString("en-PH", {
+                                            timeZone: "Asia/Manila",
+                                            month: "short",
+                                            day: "numeric",
+                                            hour: "numeric",
+                                            minute: "2-digit",
+                                          })}
+                                        </time>
+                                      )}
+                                    </span>
                                   </div>
                                   {index < steps.length - 1 && (
                                     <span className={`mt-3.5 h-px flex-1 ${index < current ? "bg-foreground" : "bg-border"}`} />

@@ -94,6 +94,14 @@ export type DbOrderItem = {
   image_url: string | null;
 };
 
+export type DbOrderStatusHistory = {
+  id: number;
+  order_id: string;
+  status: DbOrder["status"];
+  changed_at: string;
+  changed_by: string | null;
+};
+
 export type DbOrder = {
   id: string;
   order_number: string;
@@ -121,6 +129,7 @@ export type DbOrder = {
   shipping_address: Record<string, string>;
   created_at: string;
   order_items: DbOrderItem[];
+  order_status_history: DbOrderStatusHistory[];
   profiles?: {
     full_name: string;
     email: string | null;

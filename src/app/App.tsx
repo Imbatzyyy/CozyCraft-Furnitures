@@ -201,7 +201,7 @@ function App() {
     const loadOrders = () => supabase
       .from("orders")
       .select(
-        "*, order_items(*), profiles!orders_user_id_fkey(full_name,email,phone)",
+        "*, order_items(*), order_status_history(*), profiles!orders_user_id_fkey(full_name,email,phone)",
       )
       .order("created_at", { ascending: false });
     let { data, error } = await loadOrders();
@@ -488,6 +488,7 @@ function App() {
         void refreshOrders();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refreshOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_status_history" }, () => void refreshOrders())
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => void refreshCustomers())
       .on("postgres_changes", { event: "*", schema: "public", table: "addresses" }, () => void refreshCustomers())
       .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, () => { void refreshTickets(); void refreshCustomers(); })

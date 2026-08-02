@@ -882,6 +882,11 @@ export function OrdersWorkspacePage() {
                 {selected.refund_status && (
                   <div className={`mt-4 rounded-xl border p-3 text-xs ${selected.refund_status === "failed" ? "border-[#bd8068] bg-[#f4e3dc] text-[#854b36]" : "border-[#afbea8] bg-[#e8efe5] text-[#486242]"}`}>
                     <b className="block">Refund {selected.refund_status.replace(/_/g, " ")}</b>
+                    {selected.order_status_history?.find((entry) => entry.status === "cancelled") && (
+                      <time className="mt-1 block" dateTime={selected.order_status_history.find((entry) => entry.status === "cancelled")!.changed_at}>
+                        Cancelled {new Date(selected.order_status_history.find((entry) => entry.status === "cancelled")!.changed_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}
+                      </time>
+                    )}
                     {selected.cancellation_reason && <span className="mt-1 block">Reason: {selected.cancellation_reason}</span>}
                     {selected.payment_status === "refunded" && (
                       <button type="button" onClick={() => void sendRefundEmail()} disabled={sendingRefundEmail} className="mt-3 rounded-lg border border-current px-3 py-1.5 font-semibold disabled:opacity-50">
@@ -894,6 +899,7 @@ export function OrdersWorkspacePage() {
                   {fulfillmentSteps.map((step, index) => {
                     const currentIndex = fulfillmentSteps.indexOf(selected.status);
                     const complete = selected.status !== "cancelled" && index <= currentIndex;
+                    const history = selected.order_status_history?.find((entry) => entry.status === step);
                     return (
                       <li key={step} className="relative flex gap-3">
                         <span
@@ -906,7 +912,19 @@ export function OrdersWorkspacePage() {
                           {complete && <Check size={11} />}
                         </span>
                         <span className="text-xs capitalize leading-5 text-muted-foreground">
-                          {step}
+                          <b className={complete ? "text-foreground" : ""}>{step}</b>
+                          {history && (
+                            <time className="block text-[10px] normal-case text-muted-foreground" dateTime={history.changed_at}>
+                              {new Date(history.changed_at).toLocaleString("en-PH", {
+                                timeZone: "Asia/Manila",
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </time>
+                          )}
                         </span>
                       </li>
                     );
