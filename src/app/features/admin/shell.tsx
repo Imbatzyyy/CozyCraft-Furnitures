@@ -319,13 +319,14 @@ function WorkspaceSearch({
           {navigator.platform.toLowerCase().includes("mac") ? "⌘ K" : "Ctrl K"}
         </kbd>
       </button>
-      {open && (
-        <div
-          className="fixed inset-0 z-[80] flex items-start justify-center bg-black/35 px-4 pt-[12vh] backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) close();
-          }}
-        >
+      {open &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[80] flex items-start justify-center bg-transparent px-4 pt-[12vh]"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) close();
+            }}
+          >
           <section
             role="dialog"
             aria-modal="true"
@@ -403,9 +404,10 @@ function WorkspaceSearch({
               <span>Enter Open</span>
               <span>Esc Close</span>
             </footer>
-          </section>
-        </div>
-      )}
+            </section>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
