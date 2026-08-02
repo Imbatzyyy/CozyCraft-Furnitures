@@ -19,8 +19,9 @@ const json = (request: Request, body: unknown, status = 200) =>
 
 const sendRefundEmail = async (email: string | null, orderNumber: string, amount: number, demo: boolean) => {
   const resendKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendKey || !email) return;
-  await fetch("https://api.resend.com/emails", {
+  if (!resendKey || !email) return { sent: false, id: null, error: "Refund email is not configured." };
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -29,7 +30,15 @@ const sendRefundEmail = async (email: string | null, orderNumber: string, amount
       subject: `Order ${orderNumber} cancellation and refund`,
       html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#24211e"><h1>CozyCraft Furnitures</h1><h2>Your order was cancelled.</h2><p>Order <strong>${orderNumber}</strong> has been cancelled.</p><p>A ${demo ? "test-mode refund was recorded" : "refund was submitted to your original payment method"} for <strong>₱${amount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>.</p><p>You can follow the payment status from your CozyCraft account.</p></div>`,
     }),
-  }).catch(() => undefined);
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { sent: false, id: null, error: String(result?.message ?? "Resend rejected the email.").slice(0, 500) };
+    }
+    return { sent: true, id: result?.id ?? null, error: null };
+  } catch (error) {
+    return { sent: false, id: null, error: error instanceof Error ? error.message.slice(0, 500) : "Unable to reach Resend." };
+  }
 };
 
 Deno.serve(async (request) => {
@@ -165,6 +174,17 @@ Deno.serve(async (request) => {
     entity_id: order.id,
   });
   const customerProfile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
-  await sendRefundEmail(customerProfile?.email ?? null, order.order_number, Number(order.total), demo);
-  return json(request, { cancelled: true, refundStatus: demo ? "demo_succeeded" : "succeeded", demo });
+  const emailResult = await sendRefundEmail(customerProfile?.email ?? null, order.order_number, Number(order.total), demo);
+  await adminClient.from("orders").update({
+    refund_email_sent_at: emailResult.sent ? new Date().toISOString() : null,
+    refund_email_id: emailResult.id,
+    refund_email_error: emailResult.error,
+  }).eq("id", order.id);
+  return json(request, {
+    cancelled: true,
+    refundStatus: demo ? "demo_succeeded" : "succeeded",
+    demo,
+    emailSent: emailResult.sent,
+    emailError: emailResult.error,
+  });
 });

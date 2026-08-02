@@ -73,7 +73,14 @@ Deno.serve(async (request) => {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = result?.message ?? result?.error?.message ?? "Resend rejected the email.";
+    await adminClient.from("orders").update({ refund_email_error: String(message).slice(0, 500) }).eq("id", order.id);
     return json(request, { error: message }, 502);
   }
+  const sentAt = new Date().toISOString();
+  await adminClient.from("orders").update({
+    refund_email_sent_at: sentAt,
+    refund_email_id: result?.id ?? null,
+    refund_email_error: null,
+  }).eq("id", order.id);
   return json(request, { sent: true, emailId: result?.id ?? null, recipient: customer.email });
 });

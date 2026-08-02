@@ -112,6 +112,9 @@ export type DbOrder = {
   refund_status?: "processing" | "succeeded" | "failed" | "demo_succeeded" | null;
   provider_refund_id?: string | null;
   refunded_at?: string | null;
+  refund_email_sent_at?: string | null;
+  refund_email_id?: string | null;
+  refund_email_error?: string | null;
   subtotal: number;
   delivery_fee: number;
   total: number;

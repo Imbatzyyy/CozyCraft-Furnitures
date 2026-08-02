@@ -666,7 +666,7 @@ export function OrdersWorkspacePage() {
         : `Order ${selected.order_number} was cancelled and its inventory was restored.`,
     );
   };
-  const resendRefundEmail = async () => {
+  const sendRefundEmail = async () => {
     if (!selected) return;
     setSendingRefundEmail(true);
     const { data, error } = await supabase.functions.invoke("send-refund-email", {
@@ -677,6 +677,7 @@ export function OrdersWorkspacePage() {
       data?.error ?? error?.message ??
         `Refund confirmation sent to ${data?.recipient ?? "the customer"}.`,
     );
+    if (!error && !data?.error) await refreshOrders();
   };
   const nextStatus = selected
     ? fulfillmentSteps[
@@ -844,8 +845,8 @@ export function OrdersWorkspacePage() {
                     <b className="block">Refund {selected.refund_status.replace(/_/g, " ")}</b>
                     {selected.cancellation_reason && <span className="mt-1 block">Reason: {selected.cancellation_reason}</span>}
                     {selected.payment_status === "refunded" && (
-                      <button type="button" onClick={() => void resendRefundEmail()} disabled={sendingRefundEmail} className="mt-3 rounded-lg border border-current px-3 py-1.5 font-semibold disabled:opacity-50">
-                        {sendingRefundEmail ? "Sending…" : "Resend refund email"}
+                      <button type="button" onClick={() => void sendRefundEmail()} disabled={sendingRefundEmail} className="mt-3 rounded-lg border border-current px-3 py-1.5 font-semibold disabled:opacity-50">
+                        {sendingRefundEmail ? "Sending…" : selected.refund_email_sent_at ? "Resend refund email" : "Send refund email"}
                       </button>
                     )}
                   </div>
