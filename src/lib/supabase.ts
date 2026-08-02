@@ -159,6 +159,7 @@ export type DbCustomerProfile = DbProfile & {
     id: string;
     order_number: string;
     status: DbOrder["status"];
+    payment_status: DbOrder["payment_status"];
     total: number;
     created_at: string;
   }>;

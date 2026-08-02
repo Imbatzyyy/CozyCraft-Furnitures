@@ -111,6 +111,11 @@ import {
 import { AdminShell } from "./shell";
 import { allowedFulfillmentStatuses } from "@/lib/order-workflow";
 import { allowedReturnStatuses, type ReturnStatus } from "@/lib/return-workflow";
+import {
+  customerLifetimeValue,
+  isSettledSale,
+  settledRevenue,
+} from "@/lib/admin-metrics";
 
 export function AdminOverview() {
   const { orders, adminProducts, user, refreshOrders } = useStore();
@@ -149,7 +154,7 @@ export function AdminOverview() {
   const monthOrders = orders.filter(
     (order) => new Date(order.created_at) >= monthStart,
   );
-  const sales = orders.filter(order=>order.status!=="cancelled").reduce((sum,order)=>sum+Number(order.total),0);
+  const sales = settledRevenue(orders);
   const pending = orders.filter(order=>order.status==="pending").length;
   const lowStock = adminProducts.filter(product=>(product.stockQuantity??0)<=8).length;
   const salesData = Array.from({ length: 7 }, (_, index) => {
@@ -160,7 +165,7 @@ export function AdminOverview() {
       v: orders
         .filter(
           (order) =>
-            order.status !== "cancelled" &&
+            isSettledSale(order) &&
             new Date(order.created_at) >= date &&
             new Date(order.created_at) < next,
         )
@@ -211,7 +216,7 @@ export function AdminOverview() {
         <Metric
           label="Total sales"
           value={money(sales)}
-          note="All non-cancelled orders"
+          note="Paid, non-cancelled orders"
         />
         <Metric
           label="Orders this month"
@@ -1215,7 +1220,7 @@ export function CustomersPage() {
     customerProfiles.find((item) => item.id === selectedId) ??
     customerProfiles[0];
   const lifetimeValue = (profile: DbCustomerProfile) =>
-    profile.orders.reduce((sum, order) => sum + Number(order.total), 0);
+    customerLifetimeValue(profile.orders);
   const primaryAddress = customer?.addresses.find(
     (address) => address.is_primary,
   ) ?? customer?.addresses[0];
