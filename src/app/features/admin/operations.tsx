@@ -613,8 +613,9 @@ export function OrdersWorkspacePage() {
   const [cancelling, setCancelling] = useState(false);
   const [sendingRefundEmail, setSendingRefundEmail] = useState(false);
   const [orderPage, setOrderPage] = useState(1);
-  const [returnRequests, setReturnRequests] = useState<Array<{id:string;order_id:string;return_number:string;reason:string;details:string;status:string;admin_note:string|null;created_at:string}>>([]);
+  const [returnRequests, setReturnRequests] = useState<Array<{id:string;order_id:string;return_number:string;reason:string;details:string;status:string;admin_note:string|null;evidence_paths:string[];created_at:string}>>([]);
   const [returnNote, setReturnNote] = useState("");
+  const [processingReturnRefund, setProcessingReturnRefund] = useState(false);
   const ordersPerPage = 8;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
@@ -662,8 +663,31 @@ export function OrdersWorkspacePage() {
   const selectedReturn = selected ? returnRequests.find((request) => request.order_id === selected.id) : undefined;
   const updateReturn = async (status:string) => {
     if (!selectedReturn) return;
+    if (status === "refunded") {
+      if (!['item_received', 'refund_processing'].includes(selectedReturn.status)) {
+        setNotice("Mark the returned item as received before processing its refund.");
+        return;
+      }
+      setProcessingReturnRefund(true);
+      const { data, error } = await supabase.functions.invoke("process-return-refund", {
+        body: { returnId: selectedReturn.id },
+      });
+      setProcessingReturnRefund(false);
+      setNotice(
+        data?.error ?? error?.message ??
+          (data?.demo
+            ? `Return ${selectedReturn.return_number} was refunded in demo mode and inventory was restored.`
+            : `Return ${selectedReturn.return_number} was refunded successfully and inventory was restored.`),
+      );
+      return;
+    }
     const { error } = await supabase.from("return_requests").update({status,admin_note:returnNote.trim()||null,reviewed_at:new Date().toISOString()}).eq("id",selectedReturn.id);
     setNotice(error?.message ?? `Return ${selectedReturn.return_number} updated to ${status.replace(/_/g," ")}.`);
+  };
+  const openReturnEvidence = async (path:string) => {
+    const { data, error } = await supabase.storage.from("return-evidence").createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) { setNotice(error?.message ?? "Evidence could not be opened."); return; }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
   const update = async (status: DbOrder["status"]) => {
     if (!selected) return;
@@ -1017,7 +1041,8 @@ export function OrdersWorkspacePage() {
               <div className="mt-5 rounded-xl border border-white/15 bg-white/5 p-4 text-xs">
                 <p className="font-bold tracking-[.12em] text-[#d7c9b8]">RETURN {selectedReturn.return_number}</p>
                 <p className="mt-2 font-semibold">{selectedReturn.reason}</p><p className="mt-1 leading-5 text-[#c9c0b3]">{selectedReturn.details}</p>
-                <select value={selectedReturn.status} onChange={(event)=>void updateReturn(event.target.value)} className="mt-3 h-10 w-full rounded-lg bg-[#f7f3ec] px-2 text-xs font-semibold text-[#252723]"><option value="requested">Requested</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="item_received">Item received</option><option value="refund_processing">Refund processing</option><option value="refunded">Refunded</option><option value="closed">Closed</option></select>
+                {selectedReturn.evidence_paths?.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{selectedReturn.evidence_paths.map((path,index)=><button key={path} type="button" onClick={()=>void openReturnEvidence(path)} className="rounded-lg border border-white/20 px-2.5 py-1.5 font-semibold text-[#f7f3ec]">View evidence {index+1}</button>)}</div>}
+                <select value={selectedReturn.status === "refund_processing" ? "refund_processing" : selectedReturn.status} disabled={processingReturnRefund || selectedReturn.status === "refunded" || selectedReturn.status === "closed"} onChange={(event)=>void updateReturn(event.target.value)} className="mt-3 h-10 w-full rounded-lg bg-[#f7f3ec] px-2 text-xs font-semibold text-[#252723] disabled:opacity-60"><option value="requested">Requested</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="item_received">Item received</option>{selectedReturn.status === "refund_processing" && <option value="refund_processing">Refund processing</option>}<option value="refunded" disabled={!['item_received','refund_processing'].includes(selectedReturn.status)}>{processingReturnRefund ? "Processing refund…" : "Process protected refund…"}</option><option value="closed">Closed</option></select>
                 <textarea value={returnNote} onChange={(event)=>setReturnNote(event.target.value)} placeholder="Admin note for customer…" rows={3} className="mt-2 w-full resize-none rounded-lg bg-[#f7f3ec] p-2 text-[#252723]"/>
               </div>
             )}

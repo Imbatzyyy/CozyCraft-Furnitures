@@ -630,12 +630,18 @@ export function Profile() {
       setNotice("Please explain the return in at least 10 characters.");
       return;
     }
+    const invalidEvidence = returnFiles.slice(0, 3).find((file) => file.size > 5 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(file.type));
+    if (invalidEvidence) {
+      setNotice("Return evidence must be a JPG, PNG, or WebP image no larger than 5 MB.");
+      return;
+    }
     setReturnSubmitting(true);
     const evidencePaths: string[] = [];
     for (const file of returnFiles.slice(0, 3)) {
       const path = `${userId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("return-evidence").upload(path, file);
-      if (!error) evidencePaths.push(path);
+      if (error) { setReturnSubmitting(false); setNotice(`Could not upload ${file.name}: ${error.message}`); return; }
+      evidencePaths.push(path);
     }
     const { error } = await supabase.from("return_requests").insert({ user_id:userId, order_id:returnOrderId, reason:returnReason, details:returnDetails.trim(), evidence_paths:evidencePaths });
     setReturnSubmitting(false);
