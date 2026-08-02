@@ -98,6 +98,28 @@ import {
 import { checkoutSignature, selectCheckoutLines } from "../lib/checkout";
 
 const splashSessionKey = "cozycraft-welcome-seen";
+const publicAvatarPathMarker = "/storage/v1/object/public/avatars/";
+
+function avatarObjectPath(value: string | null | undefined) {
+  if (!value) return null;
+  const markerIndex = value.indexOf(publicAvatarPathMarker);
+  if (markerIndex >= 0) {
+    return decodeURIComponent(
+      value.slice(markerIndex + publicAvatarPathMarker.length).split("?")[0],
+    );
+  }
+  return /^https?:\/\//i.test(value) ? null : value;
+}
+
+async function privateAvatarUrl(value: string | null | undefined) {
+  if (!value) return null;
+  const path = avatarObjectPath(value);
+  if (!path) return value;
+  const { data, error } = await supabase.storage
+    .from("avatars")
+    .createSignedUrl(path, 60 * 60);
+  return error ? null : data.signedUrl;
+}
 
 function App() {
   const [splash, setSplash] = useState(
@@ -120,6 +142,7 @@ function App() {
   const [role, setRole] = useState<DbRole | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [orders, setOrders] = useState<DbOrder[]>([]);
   const [customerProfiles, setCustomerProfiles] = useState<
@@ -272,7 +295,15 @@ function App() {
       )
       .eq("role", "customer")
       .order("created_at", { ascending: false });
-    if (!error) setCustomerProfiles((data ?? []) as DbCustomerProfile[]);
+    if (!error) {
+      const protectedProfiles = await Promise.all(
+        ((data ?? []) as DbCustomerProfile[]).map(async (profile) => ({
+          ...profile,
+          avatar_url: await privateAvatarUrl(profile.avatar_url),
+        })),
+      );
+      setCustomerProfiles(protectedProfiles);
+    }
   }, []);
 
   const refreshTickets = useCallback(async () => {
@@ -341,7 +372,8 @@ function App() {
     setUserEmail(email);
     setUser(profile?.full_name || email?.split("@")[0] || "Member");
     setRole((profile?.role as DbRole) ?? "customer");
-    setAvatar(profile?.avatar_url ?? null);
+    setAvatarPath(profile?.avatar_url ?? null);
+    setAvatar(await privateAvatarUrl(profile?.avatar_url));
     setProfilePhone(profile?.phone ?? "");
     setProfileUsername(profile?.username ?? String(metadata.username ?? ""));
     setProfileGender(profile?.gender ?? String(metadata.gender ?? ""));
@@ -421,7 +453,7 @@ function App() {
         }
         else {
           setUserId(null); setUser(null); setUserEmail(null); setRole(null);
-          setAvatar(null); setProfilePhone(""); setProfileUsername("");
+          setAvatar(null); setAvatarPath(null); setProfilePhone(""); setProfileUsername("");
           setProfileGender(""); setProfileBirth(""); setHasPassword(false);
           setProfilePaymentMethod("cod");
           setCart([]); setSaved([]); setAddresses([]); setOrders([]);
@@ -1024,16 +1056,13 @@ function App() {
       };
     }
 
-    const { data: publicFile } = supabase.storage
-      .from("avatars")
-      .getPublicUrl(uploaded.path);
     const { data: savedProfile, error: profileError } = await supabase
       .from("profiles")
-      .update({ avatar_url: publicFile.publicUrl })
+      .update({ avatar_url: uploaded.path })
       .eq("id", userId)
       .select("avatar_url")
       .single();
-    if (profileError || savedProfile?.avatar_url !== publicFile.publicUrl) {
+    if (profileError || savedProfile?.avatar_url !== uploaded.path) {
       await supabase.storage.from("avatars").remove([uploaded.path]);
       return {
         url: null,
@@ -1043,28 +1072,28 @@ function App() {
       };
     }
 
-    const publicPathMarker = "/storage/v1/object/public/avatars/";
-    const oldPathStart = avatar?.indexOf(publicPathMarker) ?? -1;
-    if (avatar && oldPathStart >= 0) {
-      const oldPath = decodeURIComponent(
-        avatar
-          .slice(oldPathStart + publicPathMarker.length)
-          .split("?")[0],
-      );
-      if (oldPath.startsWith(userId + "/") && oldPath !== uploaded.path) {
-        void supabase.storage.from("avatars").remove([oldPath]);
-      }
+    const oldPath = avatarObjectPath(avatarPath);
+    if (oldPath?.startsWith(userId + "/") && oldPath !== uploaded.path) {
+      void supabase.storage.from("avatars").remove([oldPath]);
     }
 
-    setAvatar(publicFile.publicUrl);
+    const signedUrl = await privateAvatarUrl(uploaded.path);
+    if (!signedUrl) {
+      return {
+        url: null,
+        error: "The photo was saved, but its private preview could not be created.",
+      };
+    }
+    setAvatarPath(uploaded.path);
+    setAvatar(signedUrl);
     setCustomerProfiles((profiles) =>
       profiles.map((profile) =>
         profile.id === userId
-          ? { ...profile, avatar_url: publicFile.publicUrl }
+          ? { ...profile, avatar_url: signedUrl }
           : profile,
       ),
     );
-    return { url: publicFile.publicUrl, error: null };
+    return { url: signedUrl, error: null };
   };
   const submitTicket = async (details: { message:string; category:DbSupportTicket["category"]; priority:DbSupportTicket["priority"]; orderId?:string; files?:File[] }) => {
     if (!userId) return "Please sign in first.";
