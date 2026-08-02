@@ -109,6 +109,7 @@ import {
 
 import { AdminShell } from "./shell";
 import { allowedFulfillmentStatuses } from "@/lib/order-workflow";
+import { allowedReturnStatuses, type ReturnStatus } from "@/lib/return-workflow";
 
 export function AdminOverview() {
   const { orders, adminProducts, user, refreshOrders } = useStore();
@@ -1036,7 +1037,7 @@ export function OrdersWorkspacePage() {
                 <p className="font-bold tracking-[.12em] text-[#d7c9b8]">RETURN {selectedReturn.return_number}</p>
                 <p className="mt-2 font-semibold">{selectedReturn.reason}</p><p className="mt-1 leading-5 text-[#c9c0b3]">{selectedReturn.details}</p>
                 {selectedReturn.evidence_paths?.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{selectedReturn.evidence_paths.map((path,index)=><button key={path} type="button" onClick={()=>void openReturnEvidence(path)} className="rounded-lg border border-white/20 px-2.5 py-1.5 font-semibold text-[#f7f3ec]">View evidence {index+1}</button>)}</div>}
-                <select value={selectedReturn.status === "refund_processing" ? "refund_processing" : selectedReturn.status} disabled={processingReturnRefund || selectedReturn.status === "refunded" || selectedReturn.status === "closed"} onChange={(event)=>void updateReturn(event.target.value)} className="mt-3 h-10 w-full rounded-lg bg-[#f7f3ec] px-2 text-xs font-semibold text-[#252723] disabled:opacity-60"><option value="requested">Requested</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="item_received">Item received</option>{selectedReturn.status === "refund_processing" && <option value="refund_processing">Refund processing</option>}<option value="refunded" disabled={!['item_received','refund_processing'].includes(selectedReturn.status)}>{processingReturnRefund ? "Processing refund…" : "Process protected refund…"}</option><option value="closed">Closed</option></select>
+                <select value={selectedReturn.status} disabled={processingReturnRefund || selectedReturn.status === "closed"} onChange={(event)=>void updateReturn(event.target.value)} className="mt-3 h-10 w-full rounded-lg bg-[#f7f3ec] px-2 text-xs font-semibold text-[#252723] disabled:opacity-60">{selectedReturn.status==="refund_processing"&&<option value="refund_processing">Refund processing</option>}{allowedReturnStatuses(selectedReturn.status as ReturnStatus).filter(status=>status!=="refund_processing"&&status!=="refunded").map(status=><option key={status} value={status}>{status.replace(/_/g," ").replace(/^./,letter=>letter.toUpperCase())}</option>)}{["item_received","refund_processing"].includes(selectedReturn.status)&&<option value="refunded">Process protected refund…</option>}</select>
                 <textarea value={returnNote} onChange={(event)=>setReturnNote(event.target.value)} placeholder="Admin note for customer…" rows={3} className="mt-2 w-full resize-none rounded-lg bg-[#f7f3ec] p-2 text-[#252723]"/>
               </div>
             )}

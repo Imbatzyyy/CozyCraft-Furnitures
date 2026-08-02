@@ -23,17 +23,21 @@ Deno.serve(async(request)=>{
   const returnId=typeof body.returnId==="string"?body.returnId:"";
   const {data:returnRequest,error:returnError}=await admin.from("return_requests").select("*,orders!inner(id,order_number,total,payment_method,payment_status,user_id,payment_transactions(id,provider_payment_id,status,livemode))").eq("id",returnId).single();
   if(returnError||!returnRequest)return json(request,{error:"Return request not found."},404);
-  if(!["item_received","refund_processing"].includes(returnRequest.status))return json(request,{error:"Mark the returned item as received before refunding."},409);
+  if(!["item_received","refund_processing","refunded"].includes(returnRequest.status))return json(request,{error:"Mark the returned item as received before refunding."},409);
   const order=Array.isArray(returnRequest.orders)?returnRequest.orders[0]:returnRequest.orders;
   if(order.payment_status==="refunded"||returnRequest.status==="refunded")return json(request,{refunded:true,reused:true});
   const transaction=Array.isArray(order.payment_transactions)?order.payment_transactions[0]:order.payment_transactions;
-  await admin.from("return_requests").update({status:"refund_processing",reviewed_by:user.id,reviewed_at:new Date().toISOString()}).eq("id",returnId);
+  const {data:claim,error:claimError}=await admin.rpc("begin_return_refund",{p_return_id:returnId,p_reviewer:user.id});
+  if(claimError)return json(request,{error:claimError.message},409);
+  if(claim==="already_refunded")return json(request,{refunded:true,reused:true});
+  // A repeated request is safe: PayMongo receives the return ID as its
+  // idempotency key, while COD/demo settlement is itself an idempotent update.
   let refundId=`offline_refund_${crypto.randomUUID()}`,demo=order.payment_method==="cod"||!transaction?.livemode;
   let raw:Record<string,unknown>={offline:order.payment_method==="cod",demo};
   if(order.payment_method!=="cod"){
     if(!transaction?.provider_payment_id){await admin.from("return_requests").update({status:"item_received",admin_note:"Payment reference missing; refund not processed."}).eq("id",returnId);return json(request,{error:"PayMongo payment reference is missing."},409);}
     if(!demo){
-      const response=await fetch("https://api.paymongo.com/v1/refunds",{method:"POST",headers:{Authorization:`Basic ${btoa(`${paymongo}:`)}`,"Content-Type":"application/json"},body:JSON.stringify({data:{attributes:{amount:Math.round(Number(order.total)*100),payment_id:transaction.provider_payment_id,reason:"requested_by_customer",notes:`Return ${returnRequest.return_number} for order ${order.order_number}`}}})});
+      const response=await fetch("https://api.paymongo.com/v1/refunds",{method:"POST",headers:{Authorization:`Basic ${btoa(`${paymongo}:`)}`,"Content-Type":"application/json","Idempotency-Key":returnRequest.id},body:JSON.stringify({data:{attributes:{amount:Math.round(Number(order.total)*100),payment_id:transaction.provider_payment_id,reason:"requested_by_customer",notes:`Return ${returnRequest.return_number} for order ${order.order_number}`}}})});
       raw=await response.json();
       if(!response.ok){const message=(raw as any)?.errors?.[0]?.detail??"PayMongo rejected the refund.";await admin.from("return_requests").update({status:"item_received",admin_note:message}).eq("id",returnId);return json(request,{error:message},502);}
       refundId=String((raw as any)?.data?.id??"");
