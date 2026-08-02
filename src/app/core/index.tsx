@@ -526,10 +526,10 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const announcementVisible =
     storeSettings.announcement_enabled &&
     Boolean(storeSettings.announcement_text.trim());
-  const overHero = immersive && !scrolled;
-  const navClass = immersive
+  const overHero = immersive && !scrolled && !announcementVisible;
+  const navClass = immersive && !announcementVisible
     ? `fixed inset-x-0 top-0 z-30 transition-colors duration-300 ${overHero ? "border-b border-white/35 bg-transparent text-white" : "border-b border-border bg-background/95 text-foreground backdrop-blur"}`
-    : "sticky top-0 z-30 border-b border-border/90 bg-background/95 text-foreground backdrop-blur";
+    : "sticky top-0 z-30 border-b border-border/90 bg-background/98 text-foreground shadow-[0_8px_24px_rgba(35,31,27,.06)] backdrop-blur";
   return (
     <>
       <header className={navClass}>
