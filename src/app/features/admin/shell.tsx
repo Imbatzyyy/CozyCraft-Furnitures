@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createBrowserRouter,
   Link,
@@ -647,6 +648,20 @@ export function NotificationCenter() {
     setOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
   const loadNotifications = useCallback(async () => {
     if (!userId) {
       setItems([]);
@@ -783,18 +798,21 @@ export function NotificationCenter() {
           </span>
         )}
       </button>
-      {open && (
-        <>
-          <button
-            type="button"
-            aria-label="Close notifications"
-            onClick={() => setOpen(false)}
-            className="fixed inset-x-0 bottom-0 top-[70px] z-40 bg-black/20 sm:top-[78px] sm:bg-transparent"
-          />
-          <section
-            aria-label="Administrator notifications"
-            className="fixed inset-x-3 bottom-3 top-[76px] z-50 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl sm:absolute sm:inset-auto sm:right-0 sm:top-12 sm:h-auto sm:max-h-[min(32rem,calc(100dvh-6rem))] sm:w-[350px]"
-          >
+      {open &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              aria-label="Close notifications"
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-[80] bg-black/20 sm:bg-transparent"
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Administrator notifications"
+              className="fixed inset-x-3 bottom-3 top-[76px] z-[90] flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl sm:inset-x-auto sm:bottom-auto sm:right-5 sm:top-[82px] sm:h-auto sm:max-h-[min(32rem,calc(100dvh-6rem))] sm:w-[350px]"
+            >
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
             <div>
               <b className="text-sm">Notifications</b>
@@ -865,9 +883,10 @@ export function NotificationCenter() {
           >
             Clear notifications
           </button>
-          </section>
-        </>
-      )}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }
