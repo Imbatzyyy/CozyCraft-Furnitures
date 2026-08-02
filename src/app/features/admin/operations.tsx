@@ -612,6 +612,8 @@ export function OrdersWorkspacePage() {
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [sendingRefundEmail, setSendingRefundEmail] = useState(false);
+  const [orderPage, setOrderPage] = useState(1);
+  const ordersPerPage = 8;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
     "processing",
@@ -632,6 +634,21 @@ export function OrdersWorkspacePage() {
       setSelectedId(orders[0].id);
     }
   }, [orders, selectedId]);
+
+  const orderPageCount = Math.max(1, Math.ceil(orders.length / ordersPerPage));
+  const visibleOrders = orders.slice(
+    (orderPage - 1) * ordersPerPage,
+    orderPage * ordersPerPage,
+  );
+  useEffect(() => {
+    if (orderPage > orderPageCount) setOrderPage(orderPageCount);
+  }, [orderPage, orderPageCount]);
+  const changeOrderPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), orderPageCount);
+    setOrderPage(nextPage);
+    const firstOrder = orders[(nextPage - 1) * ordersPerPage];
+    if (firstOrder) setSelectedId(firstOrder.id);
+  };
 
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
   const update = async (status: DbOrder["status"]) => {
@@ -722,8 +739,8 @@ export function OrdersWorkspacePage() {
                 {orders.length}
               </span>
             </div>
-            <div className="divide-y divide-border">
-              {orders.map((order) => {
+            <div className="max-h-[640px] divide-y divide-border overflow-y-auto">
+              {visibleOrders.map((order) => {
                 const address = order.shipping_address;
                 return (
                   <button
@@ -752,6 +769,28 @@ export function OrdersWorkspacePage() {
                   </button>
                 );
               })}
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-border bg-secondary/35 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => changeOrderPage(orderPage - 1)}
+                disabled={orderPage === 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-2 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={13} /> Previous
+              </button>
+              <span className="text-center text-[11px] text-muted-foreground">
+                Page <b className="text-foreground">{orderPage}</b> of {orderPageCount}
+                <span className="block text-[9px]">{orders.length} total orders</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => changeOrderPage(orderPage + 1)}
+                disabled={orderPage === orderPageCount}
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-2 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next <ChevronRight size={13} />
+              </button>
             </div>
           </section>
 
