@@ -1321,7 +1321,15 @@ export function Profile() {
                       </div>
                       {selectedOrder.status === "cancelled" ? (
                         <div className="border-b border-border bg-[#f3e5d4] p-4 text-xs text-[#8b5c46]">
-                          This order was cancelled. It will not proceed to fulfillment.
+                          <b className="block">This order was cancelled.</b>
+                          <span className="mt-1 block">
+                            {selectedOrder.payment_status === "refunded"
+                              ? selectedOrder.refund_status === "demo_succeeded"
+                                ? "The test payment refund has been recorded for this demo transaction."
+                                : "Your refund was submitted to the original payment method."
+                              : "It will not proceed to fulfillment and no settled refund is required."}
+                          </span>
+                          {selectedOrder.cancellation_reason && <span className="mt-1 block">Reason: {selectedOrder.cancellation_reason}</span>}
                         </div>
                       ) : (
                         <div className="border-b border-border p-5">

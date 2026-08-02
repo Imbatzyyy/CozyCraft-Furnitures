@@ -348,6 +348,7 @@ export type Store = {
     id: string,
     status: DbOrder["status"],
   ) => Promise<string | null>;
+  cancelOrder: (id: string, reason: string) => Promise<string | null>;
   saveProduct: (product: ManagedProduct) => Promise<string | null>;
   deleteProduct: (id: string) => Promise<string | null>;
   uploadProductImages: (files: FileList) => Promise<string[]>;

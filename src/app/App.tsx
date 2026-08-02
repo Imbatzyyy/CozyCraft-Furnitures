@@ -917,6 +917,9 @@ function App() {
     };
   };
   const updateOrderStatus = async (id: string, status: DbOrder["status"]) => {
+    if (status === "cancelled") {
+      return "Use the protected cancellation workflow and provide a reason.";
+    }
     const payload: Record<string, string> = { status };
     const order = orders.find((item) => item.id === id);
     if (status === "delivered" && order?.payment_method === "cod") {
@@ -925,6 +928,16 @@ function App() {
     const { error } = await supabase.from("orders").update(payload).eq("id", id);
     if (!error) await refreshOrders();
     return error?.message ?? null;
+  };
+  const cancelOrder = async (id: string, reason: string) => {
+    const { data, error } = await supabase.functions.invoke("cancel-order", {
+      body: { orderId: id, reason },
+    });
+    if (error || data?.error) {
+      return data?.error ?? error?.message ?? "Unable to cancel this order safely.";
+    }
+    await Promise.all([refreshOrders(), refreshProducts()]);
+    return null;
   };
   const saveProduct = async (product: ManagedProduct) => {
     const id = product.id || product.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -1185,6 +1198,7 @@ function App() {
     refreshTickets,
     placeOrder,
     updateOrderStatus,
+    cancelOrder,
     saveProduct,
     deleteProduct,
     uploadProductImages,

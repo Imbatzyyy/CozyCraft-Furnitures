@@ -107,6 +107,11 @@ export type DbOrder = {
     | "cancelled";
   payment_method: string;
   payment_status: "pending" | "paid" | "failed" | "refunded";
+  cancellation_reason?: string | null;
+  cancellation_requested_at?: string | null;
+  refund_status?: "processing" | "succeeded" | "failed" | "demo_succeeded" | null;
+  provider_refund_id?: string | null;
+  refunded_at?: string | null;
   subtotal: number;
   delivery_fee: number;
   total: number;

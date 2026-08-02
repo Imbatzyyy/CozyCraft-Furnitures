@@ -605,9 +605,12 @@ export function OrdersPage() {
 }
 
 export function OrdersWorkspacePage() {
-  const { orders, updateOrderStatus, refreshOrders } = useStore();
+  const { orders, updateOrderStatus, cancelOrder, refreshOrders } = useStore();
   const [selectedId, setSelectedId] = useState("");
   const [notice, setNotice] = useState("");
+  const [showCancellation, setShowCancellation] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
     "processing",
@@ -632,10 +635,34 @@ export function OrdersWorkspacePage() {
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
   const update = async (status: DbOrder["status"]) => {
     if (!selected) return;
+    if (status === "cancelled") {
+      setCancellationReason("");
+      setShowCancellation(true);
+      return;
+    }
     const issue = await updateOrderStatus(selected.id, status);
     setNotice(
       issue ??
         `Order ${selected.order_number} is now ${status.replace(/_/g, " ")} across the customer and admin views.`,
+    );
+  };
+  const confirmCancellation = async () => {
+    if (!selected || cancellationReason.trim().length < 5) {
+      setNotice("Please provide a clear cancellation reason.");
+      return;
+    }
+    setCancelling(true);
+    const issue = await cancelOrder(selected.id, cancellationReason);
+    setCancelling(false);
+    if (issue) {
+      setNotice(issue);
+      return;
+    }
+    setShowCancellation(false);
+    setNotice(
+      selected.payment_status === "paid" && selected.payment_method !== "cod"
+        ? `Order ${selected.order_number} was safely cancelled and its ${selected.payment_method.toUpperCase()} refund was recorded.`
+        : `Order ${selected.order_number} was cancelled and its inventory was restored.`,
     );
   };
   const nextStatus = selected
@@ -794,9 +821,17 @@ export function OrdersWorkspacePage() {
                     <option value="packed">Packed</option>
                     <option value="shipped">Shipped</option>
                     <option value="delivered">Delivered</option>
-                    <option value="cancelled">Cancelled</option>
+                    <option value="cancelled" disabled={selected.status === "shipped" || selected.status === "delivered"}>
+                      Cancel order…
+                    </option>
                   </select>
                 </div>
+                {selected.refund_status && (
+                  <div className={`mt-4 rounded-xl border p-3 text-xs ${selected.refund_status === "failed" ? "border-[#bd8068] bg-[#f4e3dc] text-[#854b36]" : "border-[#afbea8] bg-[#e8efe5] text-[#486242]"}`}>
+                    <b className="block">Refund {selected.refund_status.replace(/_/g, " ")}</b>
+                    {selected.cancellation_reason && <span className="mt-1 block">Reason: {selected.cancellation_reason}</span>}
+                  </div>
+                )}
                 <ol className="mt-5 grid gap-4">
                   {fulfillmentSteps.map((step, index) => {
                     const currentIndex = fulfillmentSteps.indexOf(selected.status);
@@ -889,6 +924,35 @@ export function OrdersWorkspacePage() {
               Open customer profiles
             </Link>
           </aside>
+        </div>
+      )}
+      {showCancellation && selected && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-order-title">
+          <section className="w-full max-w-lg rounded-[1.75rem] border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold tracking-[.16em] text-[#a05f46]">PROTECTED ACTION</p>
+                <h3 id="cancel-order-title" className="mt-2 font-serif text-3xl">Cancel order #{selected.order_number}?</h3>
+              </div>
+              <button onClick={() => setShowCancellation(false)} disabled={cancelling} className="rounded-full border border-border p-2" aria-label="Close cancellation"><X size={16} /></button>
+            </div>
+            <div className="mt-5 rounded-xl bg-secondary p-4 text-sm leading-6">
+              {selected.payment_status === "paid" && selected.payment_method !== "cod" ? (
+                <><b>Paid {selected.payment_method.toUpperCase()} order.</b> A full {selected.payment_method.toUpperCase()} refund of {money(Number(selected.total))} will be {selected.refund_status === "demo_succeeded" ? "recorded" : "initiated"} before inventory is restored.</>
+              ) : (
+                <><b>No settled online payment.</b> The order will be cancelled and reserved inventory will be restored.</>
+              )}
+            </div>
+            <label className="mt-5 grid gap-2 text-sm font-semibold">
+              Cancellation reason
+              <textarea value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} maxLength={500} rows={4} placeholder="Explain why this order must be cancelled…" className="resize-none rounded-xl border border-border bg-background p-3 font-normal outline-none focus:border-foreground" />
+            </label>
+            <p className="mt-3 text-xs text-muted-foreground">Shipped and delivered orders cannot be cancelled here; they require a return workflow.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setShowCancellation(false)} disabled={cancelling} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button>
+              <button onClick={() => void confirmCancellation()} disabled={cancelling || cancellationReason.trim().length < 5} className="rounded-xl bg-[#8f4f38] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{cancelling ? "Processing safely…" : selected.payment_status === "paid" && selected.payment_method !== "cod" ? "Cancel and refund" : "Confirm cancellation"}</button>
+            </div>
+          </section>
         </div>
       )}
       {notice && <Toast message={notice} close={() => setNotice("")} />}
