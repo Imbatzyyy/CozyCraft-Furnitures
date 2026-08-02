@@ -97,6 +97,10 @@ import {
 } from "./core";
 import { checkoutSignature, selectCheckoutLines } from "../lib/checkout";
 import {
+  functionErrorMessage,
+  isHandledFunctionResponse,
+} from "../lib/function-error";
+import {
   defaultStoreSettings,
   normalizeStoreSettings,
   type PublicStoreSettings,
@@ -929,11 +933,25 @@ function App() {
         },
       );
       if (error || data?.error) {
+        const message =
+          typeof data?.error === "string" && data.error.trim()
+            ? data.error.trim()
+            : await functionErrorMessage(
+                error,
+                "Unable to start secure payment. Please try again.",
+              );
+        // A handled non-2xx response means the server rejected and rolled back
+        // this attempt. Use a fresh key on retry instead of pinning the shopper
+        // to a failed/cancelled order forever. Network-unknown failures retain
+        // the key so the original request remains safely idempotent.
+        if (data?.error || isHandledFunctionResponse(error)) {
+          window.sessionStorage.removeItem(checkoutStorageKey);
+        }
         return {
           id: null,
           orderNumber: null,
           checkoutUrl: null,
-          error: data?.error ?? error?.message ?? "Unable to start secure payment.",
+          error: message,
         };
       }
       if (userId && remainingCart.length) {
