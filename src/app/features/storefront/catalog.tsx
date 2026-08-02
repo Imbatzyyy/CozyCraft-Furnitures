@@ -1007,6 +1007,7 @@ export function ProductPage() {
   const [reviewNotice, setReviewNotice] = useState("");
   const [existingReview, setExistingReview] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [recentProductIds, setRecentProductIds] = useState<string[]>([]);
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
   const materialItems = parseMaterialSpecs(
@@ -1019,6 +1020,26 @@ export function ProductPage() {
       : null;
   const atStockLimit = stockLimit !== null && quantity >= stockLimit;
   const outOfStock = stockLimit === 0;
+  useEffect(() => {
+    let active=true;
+    const remember=async()=>{
+      if(userId){
+        await supabase.from("product_views").upsert({user_id:userId,product_id:product.id,viewed_at:new Date().toISOString()},{onConflict:"user_id,product_id"});
+        const {data}=await supabase.from("product_views").select("product_id").eq("user_id",userId).neq("product_id",product.id).order("viewed_at",{ascending:false}).limit(4);
+        if(active)setRecentProductIds((data??[]).map((row)=>row.product_id));
+        return;
+      }
+      const key="cozycraft-recent-products";
+      const stored=JSON.parse(window.localStorage.getItem(key)??"[]") as unknown;
+      const ids=Array.isArray(stored)?stored.filter((id):id is string=>typeof id==="string"):[];
+      const next=[product.id,...ids.filter((id)=>id!==product.id)].slice(0,8);
+      window.localStorage.setItem(key,JSON.stringify(next));
+      if(active)setRecentProductIds(next.filter((id)=>id!==product.id).slice(0,4));
+    };
+    void remember();
+    return()=>{active=false;};
+  },[product.id,userId]);
+  const recentProducts=recentProductIds.map((id)=>products.find((item)=>item.id===id)).filter((item):item is Product=>Boolean(item));
   useEffect(() => {
     let active = true;
     const loadReviews = () => {
@@ -1443,6 +1464,7 @@ export function ProductPage() {
             </p>
           )}
         </section>
+        {recentProducts.length>0&&<section className="mt-16 border-t border-border pt-10"><p className="text-[10px] font-bold tracking-[.17em] text-muted-foreground">CONTINUE BROWSING</p><div className="mt-3 flex items-end justify-between gap-4"><div><h2 className="font-serif text-4xl">Recently viewed.</h2><p className="mt-2 text-sm text-muted-foreground">Pick up where you left off on this or another signed-in device.</p></div><Link to="/home#shop" className="hidden text-xs font-semibold underline underline-offset-4 sm:block">Explore all products</Link></div><div className="mt-7 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{recentProducts.map((item)=><ProductCard key={item.id} product={item}/>)}</div></section>}
       </main>
     </Layout>
   );
