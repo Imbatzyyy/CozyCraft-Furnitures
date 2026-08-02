@@ -77,7 +77,10 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
-import { signInForPortal } from "@/lib/auth";
+import {
+  isExistingAccountSignUpResult,
+  signInForPortal,
+} from "@/lib/auth";
 
 import {
   Product,
@@ -186,6 +189,12 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       },
     });
     setSubmitting(false);
+    if (isExistingAccountSignUpResult(result)) {
+      setError(
+        "An account with this email already exists. Sign in instead or reset your password.",
+      );
+      return;
+    }
     if (result.error) {
       setError(result.error.message);
       return;

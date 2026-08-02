@@ -17,6 +17,37 @@ export type PortalSignInResult = {
 export const roleCanUsePortal = (role: DbRole, portal: AuthPortal) =>
   portal === "customer" ? role === "customer" : isStaffRole(role);
 
+type SignUpResultLike = {
+  data: {
+    user: {
+      identities?: unknown[] | null;
+    } | null;
+  };
+  error: {
+    code?: string;
+    message?: string;
+  } | null;
+};
+
+/**
+ * When email confirmation is enabled, Supabase may deliberately return a
+ * successful-looking signup response for an existing email to limit account
+ * enumeration. That response contains a user with no identities. Supabase can
+ * also return an explicit duplicate-account error, depending on Auth settings.
+ */
+export const isExistingAccountSignUpResult = (result: SignUpResultLike) => {
+  const errorCode = result.error?.code?.toLowerCase();
+  const errorMessage = result.error?.message?.toLowerCase() ?? "";
+  const identities = result.data.user?.identities;
+
+  return (
+    errorCode === "user_already_exists" ||
+    errorMessage.includes("already registered") ||
+    errorMessage.includes("already exists") ||
+    (Array.isArray(identities) && identities.length === 0)
+  );
+};
+
 export async function signInForPortal(
   email: string,
   password: string,
