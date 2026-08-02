@@ -651,7 +651,7 @@ export function CustomerOrders() {
 }
 
 export function Checkout() {
-  const { cart, user, addresses, products, placeOrder, orders, refreshOrders } = useStore();
+  const { authReady, cart, user, addresses, products, placeOrder, orders, refreshOrders } = useStore();
   const location = useLocation();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
@@ -716,6 +716,13 @@ export function Checkout() {
     "en-PH",
     { month: "long", day: "numeric", year: "numeric" },
   );
+  if (!authReady) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
+        Restoring your secure checkout…
+      </div>
+    );
+  }
   if (!user) return <Account mode="login" />;
   if (completed)
     return (

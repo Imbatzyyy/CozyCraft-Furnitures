@@ -1,29 +1,34 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://www.cozycraftfurnitures.com",
+const canonicalOrigin = "https://www.cozycraftfurnitures.com";
+const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com"]);
+const corsHeaders = (request: Request) => ({
+  "Access-Control-Allow-Origin": allowedOrigins.has(request.headers.get("Origin") ?? "")
+    ? request.headers.get("Origin")!
+    : canonicalOrigin,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-const json = (body: unknown, status = 200) =>
+  "Vary": "Origin",
+});
+const json = (request: Request, body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders(request), "Content-Type": "application/json" },
   });
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
+  if (request.method !== "POST") return json(request, { error: "Method not allowed." }, 405);
   const authorization = request.headers.get("Authorization");
-  if (!authorization) return json({ error: "Authentication required." }, 401);
+  if (!authorization) return json(request, { error: "Authentication required." }, 401);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const publishableKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY");
   const paymongoSecretKey = Deno.env.get("PAYMONGO_SECRET_KEY");
   if (!supabaseUrl || !publishableKey || !serviceRoleKey || !paymongoSecretKey) {
-    return json({ error: "Payment reconciliation is not configured." }, 503);
+    return json(request, { error: "Payment reconciliation is not configured." }, 503);
   }
 
   const userClient = createClient(supabaseUrl, publishableKey, {
@@ -34,13 +39,13 @@ Deno.serve(async (request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data: { user }, error: userError } = await userClient.auth.getUser();
-  if (userError || !user) return json({ error: "Invalid session." }, 401);
+  if (userError || !user) return json(request, { error: "Invalid session." }, 401);
 
   const body = await request.json().catch(() => ({ orderIds: [] }));
   const orderIds = Array.isArray(body.orderIds)
     ? body.orderIds.filter((id: unknown): id is string => typeof id === "string").slice(0, 20)
     : [];
-  if (!orderIds.length) return json({ checked: 0, synchronized: 0 });
+  if (!orderIds.length) return json(request, { checked: 0, synchronized: 0 });
 
   const { data: visibleOrders, error: orderError } = await userClient
     .from("orders")
@@ -48,7 +53,7 @@ Deno.serve(async (request) => {
     .in("id", orderIds)
     .in("payment_method", ["card", "gcash"])
     .eq("payment_status", "pending");
-  if (orderError) return json({ error: orderError.message }, 500);
+  if (orderError) return json(request, { error: orderError.message }, 500);
 
   let synchronized = 0;
   for (const order of visibleOrders ?? []) {
@@ -96,6 +101,5 @@ Deno.serve(async (request) => {
     }
   }
 
-  return json({ checked: visibleOrders?.length ?? 0, synchronized });
+  return json(request, { checked: visibleOrders?.length ?? 0, synchronized });
 });
-

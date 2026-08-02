@@ -850,6 +850,7 @@ function App() {
           body: {
             addressId,
             paymentMethod,
+            returnOrigin: window.location.origin,
             items: orderCart.map((item) => ({
               product_id: item.id,
               quantity: item.quantity,
