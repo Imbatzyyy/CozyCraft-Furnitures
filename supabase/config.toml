@@ -4,19 +4,28 @@ project_id = "gwjsivqksyimuabbdyqq"
 verify_jwt = false
 
 [functions.create-paymongo-checkout]
-verify_jwt = false
+verify_jwt = true
 
 [functions.paymongo-webhook]
 verify_jwt = false
 
 [functions.cancel-paymongo-checkout]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sync-paymongo-payments]
-verify_jwt = false
+verify_jwt = true
 
 [functions.philippine-barangays]
 verify_jwt = false
 
 [functions.process-return-refund]
-verify_jwt = false
+verify_jwt = true
+
+[functions.cancel-order]
+verify_jwt = true
+
+[functions.send-refund-email]
+verify_jwt = true
+
+[functions.manage-team-member]
+verify_jwt = true
