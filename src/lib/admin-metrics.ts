@@ -22,3 +22,18 @@ export const customerLifetimeValue = (
       ? orders.filter((order) => order.user_id === customerId)
       : orders,
   );
+
+export type AdminReportRange = "This week" | "This month" | "Quarter";
+
+export const reportRangeStart = (range: AdminReportRange, now = new Date()) => {
+  if (range === "This month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  if (range === "Quarter") {
+    return new Date(now.getFullYear(), now.getMonth() - (now.getMonth() % 3), 1);
+  }
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 6);
+  return start;
+};

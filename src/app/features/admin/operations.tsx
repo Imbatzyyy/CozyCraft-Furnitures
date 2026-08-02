@@ -114,7 +114,9 @@ import { allowedReturnStatuses, type ReturnStatus } from "@/lib/return-workflow"
 import {
   customerLifetimeValue,
   isSettledSale,
+  reportRangeStart,
   settledRevenue,
+  type AdminReportRange,
 } from "@/lib/admin-metrics";
 
 export function AdminOverview() {
@@ -1941,7 +1943,7 @@ export function ActivityLogsPage() {
 
 export function ReportsPage() {
   const { orders, adminProducts, customerProfiles, refreshOrders, refreshCustomers } = useStore();
-  const [range, setRange] = useState("This month");
+  const [range, setRange] = useState<AdminReportRange>("This month");
   const [format, setFormat] = useState("CSV");
   const [notice, setNotice] = useState("");
   const [scheduled, setScheduled] = useState(false);
@@ -1957,17 +1959,15 @@ export function ReportsPage() {
         setScheduled(Boolean(data?.weekly_report_enabled)),
       );
   }, [refreshCustomers, refreshOrders]);
-  const rangeDays = range === "This week" ? 7 : range === "Quarter" ? 90 : 31;
-  const rangeStart = new Date(Date.now() - rangeDays * 86_400_000);
+  const reportNow = new Date();
+  const rangeStart = reportRangeStart(range, reportNow);
+  const rangeDuration = Math.max(1, reportNow.getTime() - rangeStart.getTime());
   const rangeOrders = orders.filter(
     (order) => new Date(order.created_at) >= rangeStart,
   );
-  const paidOrders = rangeOrders.filter((order) => order.payment_status === "paid");
+  const paidOrders = rangeOrders.filter(isSettledSale);
   const refundedOrders = rangeOrders.filter((order) => order.payment_status === "refunded");
-  const grossSales = paidOrders.reduce(
-    (sum, order) => sum + Number(order.total),
-    0,
-  );
+  const grossSales = settledRevenue(paidOrders);
   const refundedValue = refundedOrders.reduce((sum,order)=>sum+Number(order.total),0);
   const fulfilled = rangeOrders.filter(
     (order) => order.status === "delivered",
@@ -1977,21 +1977,23 @@ export function ReportsPage() {
     : 0;
   const paidOrdersByCustomer = orders.filter(order=>order.payment_status === "paid").reduce<Record<string,number>>((counts,order)=>{counts[order.user_id]=(counts[order.user_id]??0)+1;return counts;},{});
   const repeatCustomers = Object.values(paidOrdersByCustomer).filter(count=>count>1).length;
-  const bars = Array.from({ length: 12 }, (_, index) => {
+  const trendData = Array.from({ length: 12 }, (_, index) => {
     const bucketStart = new Date(
-      rangeStart.getTime() + (index * rangeDays * 86_400_000) / 12,
+      rangeStart.getTime() + (index * rangeDuration) / 12,
     );
     const bucketEnd = new Date(
-      rangeStart.getTime() + ((index + 1) * rangeDays * 86_400_000) / 12,
+      rangeStart.getTime() + ((index + 1) * rangeDuration) / 12,
     );
-    return paidOrders
-      .filter((order) => {
+    const bucketOrders = paidOrders.filter((order) => {
         const created = new Date(order.created_at);
-        return created >= bucketStart && created < bucketEnd;
-      })
-      .reduce((sum, order) => sum + Number(order.total), 0);
+        return created >= bucketStart && (index === 11 ? created <= bucketEnd : created < bucketEnd);
+      });
+    return {
+      label: bucketStart.toLocaleDateString("en-PH", { month: "short", day: "numeric" }),
+      revenue: settledRevenue(bucketOrders),
+      orders: bucketOrders.length,
+    };
   });
-  const maxBar = Math.max(1, ...bars);
   const categoryRevenue = paidOrders
     .flatMap((order) => order.order_items)
     .reduce<Record<string, number>>((totals, item) => {
@@ -2030,6 +2032,36 @@ export function ReportsPage() {
     downloadCsv(`cozycraft-${reportName.toLowerCase().replace(/\s/g,"-")}-${range.toLowerCase().replace(/\s/g,"-")}.csv`,rows);
     setNotice(`${reportName} downloaded from live data.`);
   };
+  const exportActionReport = () => {
+    const soldByProduct = rangeOrders
+      .flatMap((order) => order.order_items)
+      .reduce<Record<string, number>>((totals, item) => {
+        if (!item.product_id) return totals;
+        totals[item.product_id] = (totals[item.product_id] ?? 0) + item.quantity;
+        return totals;
+      }, {});
+    const priorityProducts = adminProducts
+      .filter((product) => (product.stockQuantity ?? 0) <= 8)
+      .sort((a, b) => (a.stockQuantity ?? 0) - (b.stockQuantity ?? 0));
+    downloadCsv(
+      `cozycraft-inventory-action-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        ["Product", "Category", "Current stock", "Units sold in range", "Recommended action"],
+        ...priorityProducts.map((product) => [
+          product.name,
+          product.category,
+          product.stockQuantity ?? 0,
+          soldByProduct[product.id] ?? 0,
+          (product.stockQuantity ?? 0) === 0 ? "Restock immediately" : "Review and reorder",
+        ]),
+      ],
+    );
+    setNotice(
+      priorityProducts.length
+        ? `Action report downloaded with ${priorityProducts.length} priority products.`
+        : "Action report downloaded. No products currently require restocking.",
+    );
+  };
   const reports = [
     {
       name: "Sales performance",
@@ -2062,7 +2094,7 @@ export function ReportsPage() {
             </p>
           </div>
           <div className="flex rounded-xl bg-white/10 p-1">
-            {["This week", "This month", "Quarter"].map((item) => (
+            {(["This week", "This month", "Quarter"] as AdminReportRange[]).map((item) => (
               <button
                 key={item}
                 onClick={() => setRange(item)}
@@ -2111,26 +2143,25 @@ export function ReportsPage() {
               Live Supabase data
             </span>
           </div>
-          <div className="mt-7 flex h-52 items-end gap-2 border-b border-border pb-1">
-            {bars.map((height, index) => (
-              <div
-                key={index}
-                className="group relative flex flex-1 justify-center"
-              >
-                <span className="absolute -top-7 hidden rounded bg-foreground px-2 py-1 text-[10px] text-background group-hover:block">
-                  {money(height)}
-                </span>
-                <div
-                  className={`w-full rounded-t-md transition-all ${index === bars.length - 1 ? "bg-[#b99a76]" : "bg-[#ded7cd] group-hover:bg-[#c5b19a]"}`}
-                  style={{ height: `${Math.max(3, (height / maxBar) * 100)}%` }}
-                />
-              </div>
-            ))}
+          <div className="mt-7 h-60 min-w-0" aria-label={`Paid sales trend for ${range.toLowerCase()}`}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="reportRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#b99a76" stopOpacity={0.55} />
+                    <stop offset="100%" stopColor="#b99a76" stopOpacity={0.04} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#ded9d0" }} interval="preserveStartEnd" tick={{ fontSize: 10, fill: "#706d67" }} />
+                <Tooltip formatter={(value: number) => [money(Number(value)), "Paid sales"]} labelFormatter={(label) => `Period starting ${label}`} contentStyle={{ border: "1px solid #ded9d0", borderRadius: 12, fontSize: 12 }} />
+                <Area type="monotone" dataKey="revenue" stroke="#7f674e" strokeWidth={3} fill="url(#reportRevenue)" dot={{ r: 3, fill: "#7f674e" }} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
           <div className="mt-3 flex justify-between font-mono text-[10px] text-muted-foreground">
             <span>{rangeStart.toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
-            <span>{new Date(rangeStart.getTime()+rangeDays*86_400_000/2).toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
-            <span>{new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
+            <span>{new Date(rangeStart.getTime()+rangeDuration/2).toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
+            <span>{reportNow.toLocaleDateString("en-PH",{month:"short",day:"numeric"})}</span>
           </div>
           <div className="mt-6 grid gap-3 border-t border-border pt-5 sm:grid-cols-2">
             <div>
@@ -2158,7 +2189,7 @@ export function ReportsPage() {
             {adminProducts.filter((product) => (product.stockQuantity ?? 0) <= 8).length} products are at or below the reorder point, across {customerProfiles.length} registered customers.
           </p>
           <button
-            onClick={() => setNotice("Priority inventory report created.")}
+            onClick={exportActionReport}
             className="mt-6 flex items-center gap-2 text-xs font-bold underline underline-offset-4"
           >
             Create action report <ArrowRight size={14} />
@@ -2177,7 +2208,11 @@ export function ReportsPage() {
               </h3>
             </div>
             <button
-              onClick={() => setNotice("Report library refreshed.")}
+              onClick={() => {
+                void Promise.all([refreshOrders(), refreshCustomers()]).then(() =>
+                  setNotice("Report library refreshed from Supabase."),
+                );
+              }}
               className="text-xs font-semibold underline underline-offset-4"
             >
               Refresh
