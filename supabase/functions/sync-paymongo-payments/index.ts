@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
+import { findPaidProviderPayment, providerSessionLivemode } from "../_shared/paymongo-session.ts";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
 const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com"]);
@@ -69,15 +70,14 @@ Deno.serve(async (request) => {
     if (!response.ok) continue;
     const payload = await response.json();
     const session = payload?.data;
-    const payments = session?.attributes?.payments ?? [];
-    const paidPayment = payments.find((payment: any) => payment?.attributes?.status === "paid");
+    const paidPayment = findPaidProviderPayment(payload);
 
     if (paidPayment) {
       const { error: settlementError } = await adminClient.rpc("settle_paymongo_order", {
         p_order_id: order.id,
         p_transaction_id: transaction.id,
         p_provider_payment_id: paidPayment.id,
-        p_livemode: Boolean(session.attributes?.livemode),
+        p_livemode: providerSessionLivemode(payload),
         p_raw_payload: payload,
       });
       if (!settlementError) synchronized += 1;

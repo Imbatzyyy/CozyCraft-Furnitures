@@ -126,6 +126,7 @@ Deno.serve(async (request) => {
       headers: {
         Authorization: `Basic ${btoa(`${paymongoSecretKey}:`)}`,
         "Content-Type": "application/json",
+        "Idempotency-Key": `cancel-${order.id}`,
       },
       body: JSON.stringify({
         data: { attributes: {

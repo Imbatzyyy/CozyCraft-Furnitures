@@ -671,8 +671,23 @@ export function Checkout() {
     if (paymentReturn === "cancelled") {
       void supabase.functions
         .invoke("cancel-paymongo-checkout", { body: { orderId: returnOrderId } })
-        .then(() => refreshOrders());
-      setNotice("Payment was cancelled. No charge was made.");
+        .then(async ({ data, error }) => {
+          await refreshOrders();
+          if (error || data?.error) {
+            setNotice(data?.error ?? error?.message ?? "Payment status could not be verified.");
+            return;
+          }
+          if (data?.paid) {
+            setCompleted({
+              id: data.orderId,
+              orderNumber: data.orderNumber,
+              total: Number(data.total),
+            });
+            setNotice("Payment was confirmed before cancellation. Your order remains active.");
+            return;
+          }
+          setNotice("Payment was cancelled. No charge was made.");
+        });
       return;
     }
     void refreshOrders();
