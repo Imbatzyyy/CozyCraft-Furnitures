@@ -354,7 +354,7 @@ function WorkspaceSearch({
                   }
                 }}
                 placeholder="Search products, orders, customers, tickets…"
-                className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+                className="admin-workspace-search-input h-full min-w-0 flex-1 border-0 bg-transparent text-base outline-none placeholder:text-muted-foreground"
               />
               <button
                 type="button"
