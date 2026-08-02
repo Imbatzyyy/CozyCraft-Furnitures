@@ -765,27 +765,40 @@ export function NotificationCenter() {
         )}
       </button>
       {open && (
-        <div className="fixed inset-x-3 top-[76px] z-50 overflow-hidden rounded-2xl border border-border bg-card shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-[330px]">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <>
+          <button
+            type="button"
+            aria-label="Close notifications"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 bg-black/20 sm:bg-transparent"
+          />
+          <section
+            aria-label="Administrator notifications"
+            className="fixed inset-x-3 bottom-3 top-[76px] z-50 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl sm:absolute sm:inset-auto sm:right-0 sm:top-12 sm:h-auto sm:max-h-[min(32rem,calc(100dvh-6rem))] sm:w-[350px]"
+          >
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
             <div>
               <b className="text-sm">Notifications</b>
               <p className="text-[10px] text-muted-foreground">
                 {unread} unread
               </p>
             </div>
-            <button
-              disabled={unread === 0}
-              onClick={() =>
-                void saveReadState(
-                  items.filter((item) => item.unread).map((item) => item.id),
-                )
-              }
-              className="text-xs font-semibold underline underline-offset-4"
-            >
-              Mark all read
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                disabled={unread === 0}
+                onClick={() =>
+                  void saveReadState(
+                    items.filter((item) => item.unread).map((item) => item.id),
+                  )
+                }
+                className="whitespace-nowrap px-1 text-[11px] font-semibold underline underline-offset-4 disabled:opacity-50 sm:text-xs"
+              >
+                Mark all read
+              </button>
+              <button type="button" aria-label="Close notifications" onClick={() => setOpen(false)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-secondary"><X size={16} /></button>
+            </div>
           </div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {error && (
               <p className="bg-[#f3e5d4] px-4 py-3 text-xs font-semibold text-[#8b5c46]">
                 {error}
@@ -801,8 +814,8 @@ export function NotificationCenter() {
                   className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.unread ? "bg-[#b8875c]" : "bg-border"}`}
                 />
                 <span className="min-w-0 flex-1">
-                  <b className="block text-xs">{item.title}</b>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  <b className="block break-words text-xs">{item.title}</b>
+                  <span className="mt-1 block break-words text-xs leading-5 text-muted-foreground">
                     {item.message}
                   </span>
                   <span className="mt-1 block text-[10px] font-semibold text-muted-foreground">
@@ -829,11 +842,12 @@ export function NotificationCenter() {
                 true,
               )
             }
-            className="w-full py-3 text-xs font-semibold text-muted-foreground hover:bg-secondary"
+            className="w-full shrink-0 py-3 text-xs font-semibold text-muted-foreground hover:bg-secondary"
           >
             Clear notifications
           </button>
-        </div>
+          </section>
+        </>
       )}
     </div>
   );

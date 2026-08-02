@@ -455,7 +455,7 @@ export function Logo({
   );
   const className = splash
     ? "block h-36 w-72 overflow-hidden sm:h-44 sm:w-80"
-    : "block h-14 w-40 overflow-hidden";
+    : "block h-12 w-32 overflow-hidden sm:h-14 sm:w-40";
   return splash ? (
     <div className={className}>{art}</div>
   ) : (
@@ -521,7 +521,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   return (
     <>
       <header className={navClass}>
-        <div className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between px-5 lg:px-10">
+        <div className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between px-3 sm:px-5 lg:px-10">
           <Logo light={overHero} />
           <nav className="hidden items-center gap-7 text-[12px] font-semibold tracking-[0.035em] md:flex">
             <Link to="/home">Home</Link>
@@ -576,16 +576,30 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                   {unreadNotifications > 0 && <b className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#a45f45] px-1 text-[9px] text-white">{Math.min(unreadNotifications, 9)}{unreadNotifications > 9 ? "+" : ""}</b>}
                 </button>
                 {notificationOpen && (
-                  <div className="absolute right-0 top-11 z-50 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl">
-                    <div className="flex items-center justify-between border-b border-border px-4 py-3"><b className="text-sm">Notifications</b><span className="text-[10px] text-muted-foreground">{unreadNotifications} unread</span></div>
-                    <div className="max-h-80 overflow-y-auto p-2">
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close notifications"
+                      onClick={() => setNotificationOpen(false)}
+                      className="fixed inset-0 z-40 bg-black/20 sm:bg-transparent"
+                    />
+                    <section
+                      aria-label="Customer notifications"
+                      className="fixed inset-x-3 bottom-3 top-[84px] z-50 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-11 sm:h-auto sm:max-h-[min(32rem,calc(100dvh-6rem))] sm:w-[360px]"
+                    >
+                    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+                      <div className="min-w-0"><b className="block text-sm">Notifications</b><span className="block text-[10px] text-muted-foreground">{unreadNotifications} unread</span></div>
+                      <button type="button" aria-label="Close notifications" onClick={() => setNotificationOpen(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-secondary"><X size={16} /></button>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
                       {customerNotifications.length ? customerNotifications.map((notification) => (
                         <button key={notification.id} type="button" onClick={() => void openNotification(notification)} className={`w-full rounded-xl p-3 text-left hover:bg-secondary ${notification.read_at ? "opacity-70" : "bg-secondary/60"}`}>
-                          <span className="flex items-start gap-2"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.read_at ? "bg-transparent" : "bg-[#a45f45]"}`} /><span><b className="block text-xs">{notification.title}</b><span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{notification.message}</span><time className="mt-1.5 block text-[9px] text-muted-foreground" dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time></span></span>
+                          <span className="flex min-w-0 items-start gap-2"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.read_at ? "bg-transparent" : "bg-[#a45f45]"}`} /><span className="min-w-0 flex-1"><b className="block break-words text-xs">{notification.title}</b><span className="mt-1 block break-words text-[11px] leading-4 text-muted-foreground">{notification.message}</span><time className="mt-1.5 block text-[9px] text-muted-foreground" dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time></span></span>
                         </button>
                       )) : <p className="p-6 text-center text-xs text-muted-foreground">No notifications yet.</p>}
                     </div>
-                  </div>
+                    </section>
+                  </>
                 )}
               </div>
             )}
