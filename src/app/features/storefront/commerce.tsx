@@ -138,6 +138,7 @@ export function Cart() {
   );
   const allSelected =
     lines.length > 0 && selectedLines.length === lines.length;
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const toggleSelected = (id: string) => {
     const line = cart.find((item) => item.id === id);
     if (line) setCartSelection(id, !line.selectedForCheckout);
@@ -252,9 +253,7 @@ export function Cart() {
                         </button>
                       </div>
                       <button
-                        onClick={() => {
-                          remove(item.id);
-                        }}
+                        onClick={() => setRemoveTarget({ id: item.id, name: item.name })}
                         className="flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-4"
                       >
                         <Trash2 size={13} />
@@ -331,6 +330,7 @@ export function Cart() {
           </div>
         )}
       </main>
+      {removeTarget && <div role="dialog" aria-modal="true" aria-labelledby="remove-cart-title" className="fixed inset-0 z-[110] grid place-items-center bg-black/45 p-4 backdrop-blur-sm"><section className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-2xl"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-secondary"><Trash2 size={18} /></span><p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">REMOVE FROM BAG</p><h2 id="remove-cart-title" className="mt-2 font-serif text-3xl">Remove {removeTarget.name}?</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">This piece will leave your bag. You can add it again from the collection at any time.</p><div className="mt-7 grid grid-cols-2 gap-3"><button onClick={() => setRemoveTarget(null)} className="rounded-xl border border-border px-4 py-3 text-sm font-semibold">Keep item</button><button onClick={() => { remove(removeTarget.id); setRemoveTarget(null); }} className="rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background">Remove</button></div></section></div>}
     </Layout>
   );
 }
@@ -837,6 +837,11 @@ export function Checkout() {
   return (
     <Layout>
       <main className="mx-auto max-w-[1240px] px-4 py-7 sm:px-5 sm:py-10">
+        <nav aria-label="Checkout progress" className="mb-8 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <ol className="grid grid-cols-4 gap-2">
+            {["Bag", "Delivery", "Payment", "Review"].map((step, index) => <li className="min-w-0" key={step}><div className="flex items-center gap-2"><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-bold ${index === 0 ? "bg-[#e3ecdf] text-[#56714f]" : index < 3 ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>{index === 0 ? <Check size={13} /> : index + 1}</span><span className="hidden truncate text-[10px] font-bold tracking-[.08em] text-muted-foreground sm:block">{step.toUpperCase()}</span></div><span className={`mt-2 block h-1 rounded-full ${index < 3 ? "bg-foreground" : "bg-secondary"}`} /></li>)}
+          </ol>
+        </nav>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">

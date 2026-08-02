@@ -851,9 +851,20 @@ export function CollectionPage() {
   const groups = Object.keys(info.groups);
   const [group, setGroup] = useState(groups[0]);
   const [subcategory, setSubcategory] = useState("");
+  const [query, setQuery] = useState("");
+  const [availability, setAvailability] = useState("all");
+  const [materialFilter, setMaterialFilter] = useState("all");
+  const [priceBand, setPriceBand] = useState("all");
+  const [sort, setSort] = useState("featured");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
     setGroup(groups[0]);
     setSubcategory("");
+    setQuery("");
+    setAvailability("all");
+    setMaterialFilter("all");
+    setPriceBand("all");
+    setSort("featured");
   }, [current]);
   const children =
     (info.groups as Record<string, readonly string[]>)[group] ?? [];
@@ -878,6 +889,37 @@ export function CollectionPage() {
       children.some((child) => matchesSubcategory(product, child)),
     );
   }
+  if (query.trim()) {
+    const needle = query.trim().toLowerCase();
+    items = items.filter((product) => `${product.name} ${product.subcategory ?? ""} ${product.color} ${product.material ?? ""}`.toLowerCase().includes(needle));
+  }
+  if (availability === "in-stock") items = items.filter((product) => (product.stockQuantity ?? 1) > 8);
+  if (availability === "low-stock") items = items.filter((product) => (product.stockQuantity ?? 99) > 0 && (product.stockQuantity ?? 99) <= 8);
+  if (materialFilter !== "all") {
+    const materialAliases: Record<string, string[]> = {
+      Wood: ["wood", "oak", "ash", "walnut", "veneer", "hardwood", "timber"],
+      Fabric: ["fabric", "linen", "upholstery", "weave", "bouclé", "velvet"],
+      Metal: ["metal", "steel", "brass", "aluminium", "aluminum"],
+      Stone: ["stone", "marble", "travertine", "granite"],
+      Leather: ["leather"],
+    };
+    items = items.filter((product) => {
+      const source = (product.material || materialFor(product.id)).toLowerCase();
+      return (materialAliases[materialFilter] ?? [materialFilter.toLowerCase()]).some((term) => source.includes(term));
+    });
+  }
+  if (priceBand === "under-20") items = items.filter((product) => product.price < 20_000);
+  if (priceBand === "20-40") items = items.filter((product) => product.price >= 20_000 && product.price <= 40_000);
+  if (priceBand === "over-40") items = items.filter((product) => product.price > 40_000);
+  items = [...items].sort((a, b) => sort === "price-low" ? a.price - b.price : sort === "price-high" ? b.price - a.price : sort === "rating" ? Number(b.rating) - Number(a.rating) : 0);
+  const materialOptions = ["Wood", "Fabric", "Metal", "Stone", "Leather"];
+  const activeFilterCount = [query.trim(), availability !== "all", materialFilter !== "all", priceBand !== "all"].filter(Boolean).length;
+  const clearFilters = () => {
+    setQuery("");
+    setAvailability("all");
+    setMaterialFilter("all");
+    setPriceBand("all");
+  };
   return (
     <Layout>
       <main>
@@ -929,6 +971,26 @@ export function CollectionPage() {
               </p>
             </div>
             <div className="mt-5 border-t border-border pt-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-background px-4">
+                  <Search size={16} className="shrink-0 text-muted-foreground" />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${info.title.toLowerCase()} pieces`} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+                </label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setFiltersOpen((value) => !value)} aria-expanded={filtersOpen} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 text-xs font-semibold md:hidden"><SlidersHorizontal size={15} />Filters{activeFilterCount > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-foreground px-1 text-[9px] text-background">{activeFilterCount}</span>}</button>
+                  <select aria-label="Sort products" value={sort} onChange={(event) => setSort(event.target.value)} className="h-11 flex-1 rounded-xl border border-border bg-background px-3 text-xs font-semibold md:w-44">
+                    <option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="rating">Highest rated</option>
+                  </select>
+                </div>
+              </div>
+              <div className={`${filtersOpen ? "grid" : "hidden"} mt-3 gap-3 rounded-2xl bg-secondary/55 p-3 sm:grid-cols-3 md:grid`}>
+                <label className="grid gap-1.5 text-[10px] font-bold tracking-[.1em] text-muted-foreground">AVAILABILITY<select value={availability} onChange={(event) => setAvailability(event.target.value)} className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-normal text-foreground"><option value="all">All availability</option><option value="in-stock">In stock</option><option value="low-stock">Low stock</option></select></label>
+                <label className="grid gap-1.5 text-[10px] font-bold tracking-[.1em] text-muted-foreground">MATERIAL<select value={materialFilter} onChange={(event) => setMaterialFilter(event.target.value)} className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-normal text-foreground"><option value="all">All materials</option>{materialOptions.map((material) => <option key={material} value={material}>{material}</option>)}</select></label>
+                <label className="grid gap-1.5 text-[10px] font-bold tracking-[.1em] text-muted-foreground">PRICE<select value={priceBand} onChange={(event) => setPriceBand(event.target.value)} className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-normal text-foreground"><option value="all">All prices</option><option value="under-20">Under ₱20,000</option><option value="20-40">₱20,000–₱40,000</option><option value="over-40">Over ₱40,000</option></select></label>
+              </div>
+              {activeFilterCount > 0 && <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-semibold"><span className="text-muted-foreground">ACTIVE FILTERS</span>{query && <span className="rounded-full bg-secondary px-3 py-1.5">Search: {query}</span>}{availability !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">{availability === "in-stock" ? "In stock" : "Low stock"}</span>}{materialFilter !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">{materialFilter}</span>}{priceBand !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">Price selected</span>}<button onClick={clearFilters} className="px-2 py-1.5 underline underline-offset-4">Clear all</button></div>}
+            </div>
+            <div className="mt-5 border-t border-border pt-4">
               <p className="mb-3 text-[10px] font-bold tracking-[.14em] text-muted-foreground">
                 {group.toUpperCase()} TYPES
               </p>
@@ -957,7 +1019,7 @@ export function CollectionPage() {
                 Showing <b>{subcategory}</b>
               </span>
               <button
-                onClick={() => setSubcategory("")}
+                onClick={() => { setSubcategory(""); clearFilters(); }}
                 className="text-xs font-semibold underline underline-offset-4"
               >
                 Clear filter
@@ -1331,6 +1393,18 @@ export function ProductPage() {
             </div>
           </section>
         </div>
+        <section aria-label="Product services and care" className="mt-12 grid gap-3 lg:grid-cols-3">
+          {[
+            [Package, "Delivery & assembly", "Furniture is carefully prepared for delivery. Order tracking appears in your account, with assembly guidance included when applicable."],
+            [ShieldCheck, "Care & quality", "Follow the included material-care instructions to protect the finish. Contact CozyCraft Care if a piece arrives with an issue."],
+            [CreditCard, "Secure payment", "Choose cash on delivery, card, or GCash during checkout. Online payments are processed through PayMongo’s secure checkout."],
+          ].map(([Icon, title, copy]) => (
+            <details className="group rounded-2xl border border-border bg-card p-5 open:shadow-sm" key={title as string}>
+              <summary className="flex cursor-pointer list-none items-center gap-3 text-sm font-semibold"><span className="grid h-9 w-9 place-items-center rounded-xl bg-secondary">{typeof Icon !== "string" && <Icon size={16} />}</span><span className="flex-1">{title as string}</span><ChevronDown size={15} className="transition group-open:rotate-180" /></summary>
+              <p className="mt-4 text-xs leading-6 text-muted-foreground">{copy as string}</p>
+            </details>
+          ))}
+        </section>
         <section
           id="reviews"
           className="mt-16 scroll-mt-24 border-t border-border pt-10"
@@ -1476,6 +1550,11 @@ export function ProductPage() {
           )}
         </section>
         {recentProducts.length>0&&<section className="mt-16 border-t border-border pt-10"><p className="text-[10px] font-bold tracking-[.17em] text-muted-foreground">CONTINUE BROWSING</p><div className="mt-3 flex items-end justify-between gap-4"><div><h2 className="font-serif text-4xl">Recently viewed.</h2><p className="mt-2 text-sm text-muted-foreground">Pick up where you left off on this or another signed-in device.</p></div><Link to="/home#shop" className="hidden text-xs font-semibold underline underline-offset-4 sm:block">Explore all products</Link></div><div className="mt-7 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{recentProducts.map((item)=><ProductCard key={item.id} product={item}/>)}</div></section>}
+        <div className="fixed inset-x-0 bottom-16 z-30 flex items-center gap-3 border-t border-border bg-card/97 px-4 py-3 shadow-[0_-10px_30px_rgba(35,31,27,.12)] backdrop-blur md:hidden">
+          <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{product.name}</p><p className="mt-0.5 text-sm font-bold">{money(product.price)}</p></div>
+          <button onClick={() => toggle(product.id)} aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border"><Heart size={17} fill={isSaved ? "currentColor" : "none"} /></button>
+          <button onClick={() => add(product.id, quantity)} disabled={outOfStock} className="h-11 rounded-xl bg-foreground px-5 text-xs font-semibold text-background disabled:opacity-50">{outOfStock ? "Out of stock" : "Add to bag"}</button>
+        </div>
       </main>
     </Layout>
   );

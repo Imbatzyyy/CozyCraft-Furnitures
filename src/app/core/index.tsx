@@ -775,7 +775,7 @@ export function Layout({
     <>
       <a href="#page-content" className="skip-link">Skip to main content</a>
       <Header immersive={immersive} />
-      <div id="page-content" tabIndex={-1} className={immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"}>
+      <div id="page-content" tabIndex={-1} className={`${immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"} pb-20 md:pb-0`}>
         <div
           className={
             immersive
@@ -784,25 +784,77 @@ export function Layout({
           }
         >
           {children}
+          <StorefrontServiceStrip />
           <footer className="bg-[#211f1d] text-[#f4f2ee]">
-            <div className="mx-auto flex max-w-[1440px] flex-col justify-between gap-8 px-5 py-10 sm:flex-row lg:px-10">
+            <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-12 sm:grid-cols-2 lg:grid-cols-[1.35fr_repeat(3,1fr)] lg:px-10">
               <div>
                 <Logo light />
-                <p className="mt-3 text-sm text-[#f4f2ee]/65">
+                <p className="mt-3 max-w-xs text-sm leading-6 text-[#f4f2ee]/65">
                   Designed for a slower, warmer life at home.
                 </p>
               </div>
-              <div className="flex gap-6 text-sm text-[#f4f2ee]/70">
-                <Link to="/profile">Account</Link>
-                <Link to="/wishlist">Wishlist</Link>
-                <Link to="/cart">Bag</Link>
-              </div>
+              {[
+                ["SHOP", [["Living room", "/living-room"], ["Bedroom", "/bedroom"], ["Dining room", "/dining-room"], ["New arrivals", "/new-arrivals"]]],
+                ["ACCOUNT", [["Profile", "/profile"], ["Orders", "/orders"], ["Wishlist", "/wishlist"], ["Bag", "/cart"]]],
+                ["COZYCRAFT", [["Our story", "/about"], ["Customer care", "/profile?tab=support"], ["Delivery addresses", "/profile?tab=addresses"], ["Secure checkout", "/cart"]]],
+              ].map(([heading, links]) => (
+                <div key={heading as string}>
+                  <p className="text-[10px] font-bold tracking-[.18em] text-white/45">{heading as string}</p>
+                  <nav className="mt-4 grid gap-3 text-sm text-[#f4f2ee]/70">
+                    {(links as string[][]).map(([label, to]) => <Link className="transition hover:text-white" key={label} to={to}>{label}</Link>)}
+                  </nav>
+                </div>
+              ))}
             </div>
+            <div className="border-t border-white/10 px-5 py-5 text-center text-[10px] tracking-[.12em] text-white/40">© 2026 COZYCRAFT FURNITURE · BUILT FOR FILIPINO HOMES</div>
           </footer>
         </div>
       </div>
       <CareChat />
+      <MobileStoreNav />
     </>
+  );
+}
+
+function StorefrontServiceStrip() {
+  const services = [
+    [Package, "Careful delivery", "Live order tracking"],
+    [ShieldCheck, "Secure shopping", "Protected account and checkout"],
+    [CreditCard, "Flexible payment", "COD, card, and GCash"],
+    [MessageCircle, "CozyCraft Care", "Support when you need it"],
+  ] as const;
+  return (
+    <section aria-label="CozyCraft shopping services" className="border-t border-border bg-[#f1ede6]">
+      <div className="mx-auto grid max-w-[1440px] divide-y divide-border px-5 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4 lg:px-10">
+        {services.map(([Icon, title, note]) => (
+          <div className="flex items-center gap-3 py-5 sm:px-5" key={title}>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-card"><Icon size={17} /></span>
+            <span><b className="block text-xs">{title}</b><span className="mt-1 block text-[11px] text-muted-foreground">{note}</span></span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MobileStoreNav() {
+  const location = useLocation();
+  const { cart, saved, user } = useStore();
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const entries = [
+    [LayoutDashboard, "Home", "/home", 0],
+    [Grid2X2, "Shop", "/living-room", 0],
+    [Heart, "Saved", "/wishlist", saved.length],
+    [ShoppingBag, "Bag", "/cart", cartCount],
+    [UserRound, "Account", user ? "/profile" : "/login", 0],
+  ] as const;
+  return (
+    <nav aria-label="Mobile shopping navigation" className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t border-border bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_25px_rgba(35,31,27,.08)] backdrop-blur md:hidden">
+      {entries.map(([Icon, label, to, count]) => {
+        const active = location.pathname === to || (label === "Shop" && ["/living-room", "/bedroom", "/dining-room", "/new-arrivals"].includes(location.pathname));
+        return <Link key={label} to={to} aria-current={active ? "page" : undefined} className={`relative flex flex-col items-center justify-center gap-1 text-[9px] font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}><span className={`grid h-8 w-10 place-items-center rounded-full ${active ? "bg-secondary" : ""}`}><Icon size={17} />{count > 0 && <b className="absolute right-[20%] top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#9a6047] px-1 text-[8px] text-white">{count > 99 ? "99+" : count}</b>}</span>{label}</Link>;
+      })}
+    </nav>
   );
 }
 
@@ -896,7 +948,7 @@ export function CareChat() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Open CozyCraft chat"
-          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#292a26] text-[#f7f3eb] shadow-[0_14px_30px_rgba(35,31,27,.28)] transition hover:-translate-y-0.5 hover:bg-[#3d3b36] sm:bottom-7 sm:right-7"
+          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#292a26] text-[#f7f3eb] shadow-[0_14px_30px_rgba(35,31,27,.28)] transition hover:-translate-y-0.5 hover:bg-[#3d3b36] md:bottom-7 md:right-7 md:z-40"
         >
           <MessageCircle size={23} />
           <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-background bg-[#b89b78]" />
@@ -907,7 +959,7 @@ export function CareChat() {
           role="dialog"
           aria-modal="true"
           aria-label="CozyCraft customer care chat"
-          className="fixed bottom-3 right-3 z-50 flex h-[min(620px,calc(100dvh-24px))] w-[calc(100vw-24px)] max-w-[390px] flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-2xl sm:bottom-7 sm:right-7 sm:h-[min(620px,calc(100dvh-56px))] sm:w-[calc(100vw-56px)]"
+          className="fixed bottom-[4.75rem] right-3 z-50 flex h-[min(580px,calc(100dvh-6rem))] w-[calc(100vw-24px)] max-w-[390px] flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-2xl md:bottom-7 md:right-7 md:h-[min(620px,calc(100dvh-56px))] md:w-[calc(100vw-56px)]"
         >
           <header className="flex items-center justify-between bg-[#292a26] px-5 py-4 text-[#f7f3eb]">
             <div className="flex items-center gap-3">
@@ -1182,21 +1234,21 @@ export function ConfirmSignOut({
 
 export function Status({ children, text }: { children?: ReactNode; text?: string }) {
   const label = String(children ?? text ?? "Unknown");
-  const tone =
-    label.includes("Complete") ||
-    label.includes("Active") ||
-    label.includes("Paid")
-      ? "bg-[#e3ecdf] text-[#56714f]"
-      : label.includes("Low") ||
-          label.includes("Pending") ||
-          label.includes("Process")
-        ? "bg-[#f3e5d4] text-[#9a6047]"
-        : "bg-secondary text-muted-foreground";
+  const normalized = label.toLowerCase().replaceAll("_", " ");
+  const tone = ["complete", "active", "paid", "delivered", "resolved", "approved", "verified"].some((value) => normalized.includes(value))
+    ? "bg-[#e3ecdf] text-[#56714f]"
+    : ["cancel", "failed", "declined", "rejected", "refund required"].some((value) => normalized.includes(value))
+      ? "bg-[#f5dfda] text-[#9a4f46]"
+      : ["ship", "packed", "out for delivery", "information"].some((value) => normalized.includes(value))
+        ? "bg-[#e1e8ee] text-[#526b7b]"
+        : ["low", "pending", "process", "progress", "open", "refund pending"].some((value) => normalized.includes(value))
+          ? "bg-[#f3e5d4] text-[#9a6047]"
+          : "bg-secondary text-muted-foreground";
   return (
     <span
       className={`inline-flex min-w-[72px] items-center justify-center text-center rounded-full px-2 py-1 text-[10px] font-semibold leading-none ${tone}`}
     >
-      {label}
+      {normalized.replace(/\b\w/g, (character) => character.toUpperCase())}
     </span>
   );
 }
@@ -1266,10 +1318,10 @@ export function Metric({
   note: string;
 }) {
   return (
-    <div className="border border-border bg-card p-5">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-4 text-2xl font-semibold tracking-[-.04em]">{value}</p>
-      <p className="mt-2 text-xs text-[#6c805f]">{note}</p>
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-[0_8px_24px_rgba(35,31,27,.035)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(35,31,27,.07)]">
+      <p className="text-[10px] font-bold uppercase tracking-[.12em] text-muted-foreground">{label}</p>
+      <p className="mt-4 break-words text-2xl font-semibold tracking-[-.04em]">{value}</p>
+      <p className="mt-2 text-xs leading-5 text-[#6c805f]">{note}</p>
     </div>
   );
 }

@@ -265,3 +265,28 @@
     transition-duration: .01ms !important;
   }
 }
+
+/* Shared interaction polish for storefront and operations. */
+button, a, input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--foreground) 75%, transparent);
+  outline-offset: 3px;
+}
+
+[data-admin-shell] table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--card);
+}
+
+[data-admin-shell] tbody tr {
+  transition: background-color .18s ease;
+}
+
+[data-admin-shell] tbody tr:hover {
+  background: color-mix(in srgb, var(--secondary) 55%, transparent);
+}
