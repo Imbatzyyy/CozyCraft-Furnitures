@@ -268,7 +268,7 @@ function App() {
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,created_at,addresses(*),orders(id,order_number,status,total,created_at),support_tickets(id,ticket_number,status,created_at)",
+        "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,created_at,addresses!addresses_user_id_fkey(*),orders!orders_user_id_fkey(id,order_number,status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
       )
       .eq("role", "customer")
       .order("created_at", { ascending: false });
