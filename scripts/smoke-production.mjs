@@ -1,5 +1,26 @@
 const baseUrl = (process.env.COZYCRAFT_BASE_URL ?? "https://www.cozycraftfurnitures.com").replace(/\/$/, "");
-const routes = ["/", "/living-room", "/bedroom", "/dining-room", "/about", "/login", "/cart"];
+const routes = [
+  "/",
+  "/living-room",
+  "/bedroom",
+  "/dining-room",
+  "/about",
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/cart",
+  "/profile",
+  "/admin",
+  "/admin/login",
+];
+const requiredSecurityHeaders = {
+  "content-security-policy": "default-src",
+  "permissions-policy": "camera=()",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "strict-transport-security": "max-age=",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+};
 
 const failures = [];
 for (const route of routes) {
@@ -7,8 +28,15 @@ for (const route of routes) {
   const html = await response.text();
   if (!response.ok) failures.push(`${route}: HTTP ${response.status}`);
   if (!html.includes('id="root"')) failures.push(`${route}: SPA root is missing`);
-  if (!response.headers.get("content-security-policy")) failures.push(`${route}: CSP header is missing`);
-  if (response.headers.get("x-content-type-options") !== "nosniff") failures.push(`${route}: nosniff header is missing`);
+  if (!response.headers.get("content-type")?.includes("text/html")) failures.push(`${route}: HTML content type is missing`);
+  for (const [header, expected] of Object.entries(requiredSecurityHeaders)) {
+    if (!response.headers.get(header)?.includes(expected)) {
+      failures.push(`${route}: ${header} is missing or invalid`);
+    }
+  }
+  if ((route.startsWith("/admin") || route === "/profile") && !response.headers.get("x-robots-tag")?.includes("noindex")) {
+    failures.push(`${route}: private route is indexable`);
+  }
 }
 
 const robots = await fetch(`${baseUrl}/robots.txt`);
@@ -24,4 +52,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Production smoke test passed for ${routes.length} routes, robots.txt, and sitemap.xml.`);
+console.log(`Production smoke test passed for ${routes.length} routes, security headers, robots.txt, and sitemap.xml.`);

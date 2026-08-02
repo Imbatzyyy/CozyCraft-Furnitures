@@ -77,6 +77,7 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import { canManageFinancialOperations } from "@/lib/admin-access";
 
 import {
   Product,
@@ -609,7 +610,7 @@ export function OrdersPage() {
 export function OrdersWorkspacePage() {
   const { orders, updateOrderStatus, cancelOrder, refreshOrders } = useStore();
   const { role: workspaceRole } = useAdminSession();
-  const canManageFinancials = workspaceRole === "Administrator" || workspaceRole === "Super Administrator";
+  const canManageFinancials = canManageFinancialOperations(workspaceRole);
   const [selectedId, setSelectedId] = useState("");
   const [notice, setNotice] = useState("");
   const [showCancellation, setShowCancellation] = useState(false);

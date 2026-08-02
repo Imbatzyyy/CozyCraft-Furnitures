@@ -430,10 +430,14 @@ export function Home() {
             </div>
             <div className="flex w-full max-w-sm border-b border-foreground">
               <input
+                type="email"
+                name="newsletter-email"
+                aria-label="Email address for CozyCraft updates"
+                autoComplete="email"
                 className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 placeholder="Your email address"
               />
-              <button className="text-sm font-semibold">Join</button>
+              <button type="button" className="text-sm font-semibold">Join</button>
             </div>
           </div>
         </section>
