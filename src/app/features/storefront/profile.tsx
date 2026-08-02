@@ -111,6 +111,7 @@ import { Account } from "./auth";
 import regions from "@jobuntux/psgc/data/2025-2Q/regions.json";
 import provinces from "@jobuntux/psgc/data/2025-2Q/provinces.json";
 import municipalities from "@jobuntux/psgc/data/2025-2Q/muncities.json";
+import { isReturnWindowOpen } from "@/lib/return-workflow";
 
 type PsgcRegion = {
   regCode: string;
@@ -1553,7 +1554,7 @@ export function Profile() {
                         <Link to="/orders" className="flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary">
                           <ArrowRight size={14} /> Full tracking
                         </Link>
-                        {selectedOrder.status === "delivered" && !returnRequests.some((request) => request.order_id === selectedOrder.id) && (
+                        {selectedOrder.status === "delivered" && isReturnWindowOpen(selectedOrder.order_status_history?.find((entry)=>entry.status==="delivered")?.changed_at) && !returnRequests.some((request) => request.order_id === selectedOrder.id) && (
                           <button type="button" onClick={() => setReturnOrderId(selectedOrder.id)} className="flex items-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4]">
                             <Archive size={14} /> Request return
                           </button>
