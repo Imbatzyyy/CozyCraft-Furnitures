@@ -1469,34 +1469,48 @@ export function Profile() {
                       ) : (
                         <div className="border-b border-border p-5">
                           <p className="text-xs font-semibold">Delivery progress</p>
-                          <div className="mt-4 flex items-start">
+                          <div className="mt-4 grid gap-3 sm:flex sm:items-start sm:gap-0">
                             {["pending", "processing", "packed", "shipped", "delivered"].map((step, index, steps) => {
                               const current = steps.indexOf(selectedOrder.status);
                               const complete = index <= current;
-                              const history = selectedOrder.order_status_history?.find((entry) => entry.status === step);
+                              const history = selectedOrder.order_status_history
+                                ?.filter((entry) => entry.status === step)
+                                .reduce((latest, entry) =>
+                                  !latest || new Date(entry.changed_at) > new Date(latest.changed_at)
+                                    ? entry
+                                    : latest,
+                                undefined as (typeof selectedOrder.order_status_history)[number] | undefined);
+                              const statusTime = history
+                                ? new Date(history.changed_at).toLocaleString("en-PH", {
+                                    timeZone: "Asia/Manila",
+                                    dateStyle: "medium",
+                                    timeStyle: "short",
+                                  })
+                                : null;
                               return (
-                                <div key={step} className="flex min-w-0 flex-1 items-start last:flex-none">
-                                  <div className="min-w-0 text-center">
-                                    <span className={`mx-auto grid h-7 w-7 place-items-center rounded-full ${complete ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>
-                                      {complete ? <Check size={13} /> : index + 1}
-                                    </span>
-                                    <span className="mt-2 hidden text-[9px] capitalize text-muted-foreground sm:block">
+                                <div key={step} className="relative flex min-w-0 items-start gap-3 sm:flex-1 sm:gap-0 sm:last:flex-none">
+                                  {index < steps.length - 1 && (
+                                    <span className={`absolute left-[13px] top-7 h-[calc(100%+0.75rem)] w-px sm:hidden ${index < current ? "bg-foreground" : "bg-border"}`} aria-hidden="true" />
+                                  )}
+                                  <span className={`relative z-[1] grid h-7 w-7 shrink-0 place-items-center rounded-full ${complete ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>
+                                    {complete ? <Check size={13} /> : index + 1}
+                                  </span>
+                                  <div className="min-w-0 flex-1 pb-1 sm:text-center">
+                                    <span className="block text-sm capitalize text-muted-foreground sm:mt-2 sm:text-[9px]">
                                       <b className={complete ? "text-foreground" : ""}>{step}</b>
-                                      {history && (
-                                        <time className="mt-0.5 block text-[8px] normal-case leading-3" dateTime={history.changed_at}>
-                                          {new Date(history.changed_at).toLocaleString("en-PH", {
-                                            timeZone: "Asia/Manila",
-                                            month: "short",
-                                            day: "numeric",
-                                            hour: "numeric",
-                                            minute: "2-digit",
-                                          })}
+                                      {statusTime ? (
+                                        <time className="mt-0.5 block text-[10px] normal-case leading-4 text-muted-foreground sm:text-[8px] sm:leading-3" dateTime={history!.changed_at}>
+                                          {statusTime}
                                         </time>
+                                      ) : (
+                                        <span className="mt-0.5 block text-[10px] normal-case leading-4 text-muted-foreground/70 sm:text-[8px] sm:leading-3">
+                                          Awaiting update
+                                        </span>
                                       )}
                                     </span>
                                   </div>
                                   {index < steps.length - 1 && (
-                                    <span className={`mt-3.5 h-px flex-1 ${index < current ? "bg-foreground" : "bg-border"}`} />
+                                    <span className={`mt-3.5 hidden h-px flex-1 sm:block ${index < current ? "bg-foreground" : "bg-border"}`} aria-hidden="true" />
                                   )}
                                 </div>
                               );
