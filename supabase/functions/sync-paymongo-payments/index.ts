@@ -73,31 +73,30 @@ Deno.serve(async (request) => {
     const paidPayment = payments.find((payment: any) => payment?.attributes?.status === "paid");
 
     if (paidPayment) {
-      const timestamp = new Date().toISOString();
-      const { error: transactionError } = await adminClient
-        .from("payment_transactions")
-        .update({
-          status: "paid",
-          provider_payment_id: paidPayment.id,
-          paid_at: timestamp,
-          livemode: Boolean(session.attributes?.livemode),
-          raw_payload: payload,
-          updated_at: timestamp,
-        })
-        .eq("id", transaction.id);
-      if (transactionError) continue;
-      const { error: paymentError } = await adminClient
-        .from("orders")
-        .update({ payment_status: "paid" })
-        .eq("id", order.id)
-        .eq("payment_status", "pending");
-      if (!paymentError) synchronized += 1;
+      const { error: settlementError } = await adminClient.rpc("settle_paymongo_order", {
+        p_order_id: order.id,
+        p_transaction_id: transaction.id,
+        p_provider_payment_id: paidPayment.id,
+        p_livemode: Boolean(session.attributes?.livemode),
+        p_raw_payload: payload,
+      });
+      if (!settlementError) synchronized += 1;
     } else if (session?.attributes?.status === "expired") {
       await adminClient.rpc("fail_paymongo_order", {
         p_order_id: order.id,
         p_reason: "PayMongo checkout session expired",
       });
       synchronized += 1;
+    } else {
+      await adminClient
+        .from("payment_transactions")
+        .update({
+          provider_status: session?.attributes?.status ?? "active",
+          last_synced_at: new Date().toISOString(),
+          raw_payload: payload,
+        })
+        .eq("id", transaction.id)
+        .eq("status", "pending");
     }
   }
 

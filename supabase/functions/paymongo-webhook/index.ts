@@ -93,26 +93,17 @@ Deno.serve(async (request) => {
 
   const payment = session?.attributes?.payments?.[0];
   const providerPaymentId = payment?.id ?? payment?.data?.id ?? null;
-  const { error: updateTransactionError } = await adminClient
-    .from("payment_transactions")
-    .update({
-      status: "paid",
-      provider_payment_id: providerPaymentId,
-      paid_at: new Date().toISOString(),
-      livemode: Boolean(event.livemode ?? session?.attributes?.livemode),
-      raw_payload: payload,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", transaction.id);
-  if (updateTransactionError) return json({ error: updateTransactionError.message }, 500);
+  const { data: result, error: settlementError } = await adminClient.rpc(
+    "settle_paymongo_order",
+    {
+      p_order_id: transaction.order_id,
+      p_transaction_id: transaction.id,
+      p_provider_payment_id: providerPaymentId,
+      p_livemode: Boolean(event.livemode ?? session?.attributes?.livemode),
+      p_raw_payload: payload,
+    },
+  );
+  if (settlementError) return json({ error: settlementError.message }, 409);
 
-  const { error: updateOrderError } = await adminClient
-    .from("orders")
-    .update({ payment_status: "paid", status: "processing" })
-    .eq("id", transaction.order_id)
-    .eq("payment_status", "pending");
-  if (updateOrderError) return json({ error: updateOrderError.message }, 500);
-
-  return json({ received: true });
+  return json({ received: true, result });
 });
-
