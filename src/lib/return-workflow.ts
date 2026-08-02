@@ -35,3 +35,14 @@ export function isReturnWindowOpen(
   if (Number.isNaN(delivered.getTime()) || delivered > now) return false;
   return now.getTime() - delivered.getTime() <= windowDays * 86_400_000;
 }
+
+export function isCancellationWindowOpen(
+  createdAt: string | null | undefined,
+  now = new Date(),
+  windowHours = 24,
+) {
+  if (!createdAt || windowHours <= 0) return false;
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime()) || created > now) return false;
+  return now.getTime() - created.getTime() <= windowHours * 3_600_000;
+}

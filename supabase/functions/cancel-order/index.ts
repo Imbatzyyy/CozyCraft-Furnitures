@@ -65,8 +65,8 @@ Deno.serve(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired." }, 401);
   const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["admin", "superadmin"].includes(profile.role)) {
-    return json(request, { error: "Administrator access is required." }, 403);
+  if (!profile || !["customer", "admin", "superadmin"].includes(profile.role)) {
+    return json(request, { error: "This account cannot cancel orders." }, 403);
   }
 
   const body = await request.json().catch(() => ({}));
@@ -76,10 +76,26 @@ Deno.serve(async (request) => {
 
   const { data: order, error: orderError } = await adminClient
     .from("orders")
-    .select("id,order_number,user_id,status,payment_method,payment_status,total,profiles(email),payment_transactions(id,status,provider_payment_id,livemode)")
+    .select("id,order_number,user_id,status,payment_method,payment_status,total,created_at,profiles(email),payment_transactions(id,status,provider_payment_id,livemode)")
     .eq("id", orderId)
     .single();
   if (orderError || !order) return json(request, { error: "Order not found." }, 404);
+  const customerRequest = profile.role === "customer";
+  if (customerRequest && order.user_id !== user.id) {
+    return json(request, { error: "You can only cancel your own order." }, 403);
+  }
+  const { data: settings } = await adminClient
+    .from("store_settings")
+    .select("fulfillment_settings,email_event_settings")
+    .eq("id", true)
+    .single();
+  if (customerRequest) {
+    const cancellationHours = Math.max(0, Number(settings?.fulfillment_settings?.cancellation_window_hours) || 0);
+    const deadline = new Date(order.created_at).getTime() + cancellationHours * 3_600_000;
+    if (!["pending", "processing", "packed"].includes(order.status) || cancellationHours === 0 || Date.now() > deadline) {
+      return json(request, { error: `The ${cancellationHours}-hour cancellation window has closed. Contact support for assistance.` }, 409);
+    }
+  }
   if (["shipped", "delivered"].includes(order.status)) {
     return json(request, { error: "Shipped or delivered orders require a return workflow." }, 409);
   }
@@ -175,7 +191,9 @@ Deno.serve(async (request) => {
     entity_id: order.id,
   });
   const customerProfile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
-  const emailResult = await sendRefundEmail(customerProfile?.email ?? null, order.order_number, Number(order.total), demo);
+  const emailResult = settings?.email_event_settings?.cancelled_refunded === false
+    ? { sent: false, id: null, error: "Refund confirmation emails are disabled in Store Settings." }
+    : await sendRefundEmail(customerProfile?.email ?? null, order.order_number, Number(order.total), demo);
   await adminClient.from("orders").update({
     refund_email_sent_at: emailResult.sent ? new Date().toISOString() : null,
     refund_email_id: emailResult.id,

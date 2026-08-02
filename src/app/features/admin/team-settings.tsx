@@ -555,6 +555,8 @@ export function StoreSettingsPage() {
     if (!settings.store_name.trim()) return "Store name is required.";
     if (!/^\S+@\S+\.\S+$/.test(settings.contact_email)) return "Enter a valid customer contact email.";
     if (settings.announcement_enabled && !settings.announcement_text.trim()) return "Announcement text is required while the banner is enabled.";
+    if (settings.announcement_link && !/^(\/|https:\/\/)/i.test(settings.announcement_link)) return "Announcement links must be an internal path or an HTTPS URL.";
+    if (Object.values(settings.social_links).some((url) => url && !/^https:\/\//i.test(url))) return "Social links must use HTTPS.";
     if (!settings.checkout_settings.cod_enabled && !settings.checkout_settings.card_enabled && !settings.checkout_settings.gcash_enabled) return "Keep at least one payment method enabled.";
     if (settings.fulfillment_settings.estimated_delivery_days_min > settings.fulfillment_settings.estimated_delivery_days_max) return "Minimum delivery days cannot exceed maximum delivery days.";
     if (!/^[A-Z0-9-]{1,10}$/.test(settings.fulfillment_settings.order_number_prefix)) return "Order prefix must use 1–10 uppercase letters, numbers, or hyphens.";
@@ -662,10 +664,8 @@ export function StoreSettingsPage() {
             </>)}
             {section === "Inventory" && (<>
               {numberInput("Global low-stock threshold", settings.low_stock_threshold, (value) => setSettings((current) => ({ ...current, low_stock_threshold: value })))}
-              {numberInput("Checkout stock reservation", settings.fulfillment_settings.stock_reservation_minutes, (value) => updateNested("fulfillment_settings", "stock_reservation_minutes", value), "minutes")}
               {toggle("Inventory alerts", "Notify the workspace when stock reaches the reorder threshold.", settings.inventory_alerts, (value) => setSettings((current) => ({ ...current, inventory_alerts: value })))}
               {toggle("Hide out-of-stock products", "Remove unavailable products from customer category listings.", settings.fulfillment_settings.out_of_stock_behavior === "hide", (value) => updateNested("fulfillment_settings", "out_of_stock_behavior", value ? "hide" : "show_unavailable"))}
-              {toggle("Auto-archive discontinued items", "Archive discontinued catalog items during inventory maintenance.", settings.fulfillment_settings.auto_archive_discontinued, (value) => updateNested("fulfillment_settings", "auto_archive_discontinued", value))}
             </>)}
             {section === "Payments" && (<>
               {toggle("Cash on delivery", "Allow eligible customers to pay when furniture arrives.", settings.checkout_settings.cod_enabled, (value) => updateNested("checkout_settings", "cod_enabled", value))}
@@ -686,26 +686,24 @@ export function StoreSettingsPage() {
             {section === "Customer accounts" && (<>
               {toggle("Require username", "Ask new members for a unique public account name.", settings.account_settings.username_required, (value) => updateNested("account_settings", "username_required", value))}
               {toggle("Google sign-in", "Show Google OAuth on customer authentication pages.", settings.account_settings.google_auth_enabled, (value) => updateNested("account_settings", "google_auth_enabled", value))}
-              {toggle("Require email verification", "Keep this aligned with Supabase Auth email confirmation settings.", settings.account_settings.email_verification_required, (value) => updateNested("account_settings", "email_verification_required", value))}
               {toggle("Customer MFA", "Allow customers to enroll an authenticator in Account Security.", settings.account_settings.customer_mfa_available, (value) => updateNested("account_settings", "customer_mfa_available", value))}
-              {numberInput("Minimum password length", settings.account_settings.password_minimum_length, (value) => updateNested("account_settings", "password_minimum_length", value), "chars")}
+              {numberInput("CozyCraft form password minimum", settings.account_settings.password_minimum_length, (value) => updateNested("account_settings", "password_minimum_length", value), "chars")}
             </>)}
             {section === "Security" && (<>
               {toggle("Require administrator MFA", "Require an AAL2 authenticator session for enrolled staff accounts.", security.require_admin_mfa, (value) => setSecurity((current) => ({ ...current, require_admin_mfa: value })))}
               {toggle("Security alerts", "Enable security event alerts for administrator activity.", security.security_alerts_enabled, (value) => setSecurity((current) => ({ ...current, security_alerts_enabled: value })))}
               {numberInput("Inactive admin session timeout", security.session_timeout_minutes, (value) => setSecurity((current) => ({ ...current, session_timeout_minutes: Math.max(15, value) })), "minutes")}
-              {textInput("Security notification email", security.notification_email, (value) => setSecurity((current) => ({ ...current, notification_email: value })))}
             </>)}
             {section === "Integrations" && (<>
               {Object.keys(security.integration_status).map((name) => <div key={name} className="flex items-center justify-between rounded-xl border border-border p-4"><span><b className="block text-sm">{name.replace("_", " ").replace(/^./, (value) => value.toUpperCase())}</b><span className="mt-1 block text-xs text-muted-foreground">Credentials stay inside Supabase Edge Function secrets.</span></span><span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-bold text-muted-foreground">SERVER-MANAGED</span></div>)}
               <button type="button" onClick={() => void testConnections()} disabled={checking} className="rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-secondary disabled:opacity-60">{checking ? "Checking connection…" : "Run safe connection check"}</button>
             </>)}
             {section === "Reports & privacy" && (<>
-              {toggle("Scheduled report delivery", "Allow the protected weekly-report job to email its configured recipients.", settings.weekly_report_enabled, (value) => setSettings((current) => ({ ...current, weekly_report_enabled: value })))}
+              {toggle("Scheduled report briefing", "Create a realtime admin notification when the scheduled performance briefing is ready.", settings.weekly_report_enabled, (value) => setSettings((current) => ({ ...current, weekly_report_enabled: value })))}
               <label className="grid gap-2 text-sm font-semibold">Report frequency<select value={settings.report_settings.frequency} onChange={(event) => updateNested("report_settings", "frequency", event.target.value)} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
               <label className="grid gap-2 text-sm font-semibold">Default analytics range<select value={settings.report_settings.default_range} onChange={(event) => updateNested("report_settings", "default_range", event.target.value)} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option>This week</option><option>This month</option><option>Quarter</option></select></label>
               {textInput("Reporting timezone", settings.report_settings.timezone, (value) => updateNested("report_settings", "timezone", value))}
-              {numberInput("Report data retention", settings.report_settings.data_retention_days, (value) => updateNested("report_settings", "data_retention_days", value), "days")}
+              {numberInput("Operational telemetry retention", settings.report_settings.data_retention_days, (value) => updateNested("report_settings", "data_retention_days", Math.min(3650, Math.max(7, value))), "days")}
             </>)}
           </div>}
           <div className="mt-7 flex flex-wrap gap-3 border-t border-border pt-5"><button disabled={!dirty || saving || loading} onClick={() => void save()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-45">{saving ? "Applying settings…" : "Review and apply changes"}</button><button disabled={!dirty || saving} onClick={() => { if (window.confirm("Discard every unsaved settings change?")) void loadSettings(); }} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold disabled:opacity-45">Discard changes</button></div>

@@ -863,7 +863,7 @@ export function Checkout() {
             </p>
             <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Bring it home.</h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              A few final details, then we will take care of the rest.
+              Delivery is currently available in {storeSettings.delivery_area}. A few final details, then we will take care of the rest.
             </p>
           </div>
           <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-xs font-semibold text-[#56714f]">
@@ -1039,6 +1039,7 @@ export function Checkout() {
                   <span>Delivery</span>
                   <span>{deliveryFee > 0 ? money(deliveryFee) : "Free"}</span>
                 </p>
+                {storeSettings.checkout_settings.free_delivery_minimum > subtotal && <p className="text-[10px] text-muted-foreground">Add {money(storeSettings.checkout_settings.free_delivery_minimum - subtotal)} more for free delivery.</p>}
                 <p className="mt-2 flex justify-between text-base font-semibold">
                   <span>Total</span>
                   <span>{money(total)}</span>

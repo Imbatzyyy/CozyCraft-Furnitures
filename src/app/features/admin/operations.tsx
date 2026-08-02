@@ -1944,26 +1944,27 @@ export function ActivityLogsPage() {
 export function ReportsPage() {
   const { orders, adminProducts, customerProfiles, refreshOrders, refreshCustomers } = useStore();
   const [range, setRange] = useState<AdminReportRange>("This month");
-  useEffect(() => {
-    void supabase.from("store_settings").select("report_settings").eq("id", true).single().then(({ data }) => {
-      const configured = data?.report_settings?.default_range;
-      if (["This week", "This month", "Quarter"].includes(configured)) setRange(configured as AdminReportRange);
-    });
-  }, []);
+  const [reportSchedule, setReportSchedule] = useState({ frequency: "weekly", timezone: "Asia/Manila" });
   const [format, setFormat] = useState("CSV");
   const [notice, setNotice] = useState("");
   const [scheduled, setScheduled] = useState(false);
   useEffect(() => {
     void refreshOrders();
     void refreshCustomers();
-    void supabase
+    const loadReportSettings = () => void supabase
       .from("store_settings")
-      .select("weekly_report_enabled")
+      .select("weekly_report_enabled,report_settings")
       .eq("id", true)
       .single()
-      .then(({ data }) =>
-        setScheduled(Boolean(data?.weekly_report_enabled)),
-      );
+      .then(({ data }) => {
+        setScheduled(Boolean(data?.weekly_report_enabled));
+        const configured = data?.report_settings?.default_range;
+        if (["This week", "This month", "Quarter"].includes(configured)) setRange(configured as AdminReportRange);
+        setReportSchedule({ frequency: data?.report_settings?.frequency ?? "weekly", timezone: data?.report_settings?.timezone ?? "Asia/Manila" });
+      });
+    loadReportSettings();
+    const channel = supabase.channel("admin-reports-settings").on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, loadReportSettings).subscribe();
+    return () => { void supabase.removeChannel(channel); };
   }, [refreshCustomers, refreshOrders]);
   const reportNow = new Date();
   const rangeStart = reportRangeStart(range, reportNow);
@@ -2271,9 +2272,9 @@ export function ReportsPage() {
           </button>
           <div className="mt-4 flex items-center justify-between rounded-xl bg-secondary p-3">
             <div>
-              <p className="text-xs font-semibold">Monday briefing</p>
+              <p className="text-xs font-semibold capitalize">{reportSchedule.frequency} briefing</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Workspace briefing every Monday, 8:00 AM Philippine time
+                Realtime workspace notification · {reportSchedule.timezone}
               </p>
             </div>
             <button

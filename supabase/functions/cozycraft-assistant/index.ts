@@ -179,7 +179,7 @@ Deno.serve(async (request) => {
     supabase
       .from("store_settings")
       .select(
-        "store_name,contact_email,delivery_area,low_stock_threshold",
+        "store_name,store_description,contact_email,support_phone,business_address,delivery_area,social_links,announcement_enabled,announcement_text,maintenance_mode,checkout_settings,fulfillment_settings,review_settings",
       )
       .limit(1)
       .maybeSingle(),

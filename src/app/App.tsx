@@ -134,6 +134,9 @@ function App() {
   const [storeSettings, setStoreSettings] = useState<PublicStoreSettings>(
     defaultStoreSettings,
   );
+  useEffect(() => {
+    document.title = storeSettings.store_name || "CozyCraft Furnitures";
+  }, [storeSettings.store_name]);
   const [adminProducts, setAdminProducts] = useState<Product[]>(fallbackProducts);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [saved, setSaved] = useState<string[]>([]);

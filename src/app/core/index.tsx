@@ -801,6 +801,15 @@ export function Layout({
                 <p className="mt-3 max-w-xs text-sm leading-6 text-[#f4f2ee]/65">
                   {storeSettings.store_description}
                 </p>
+                <div className="mt-4 grid gap-1 text-xs leading-5 text-[#f4f2ee]/55">
+                  {storeSettings.business_address && <span>{storeSettings.business_address}</span>}
+                  {storeSettings.support_phone && <a className="hover:text-white" href={`tel:${storeSettings.support_phone.replace(/\s/g, "")}`}>{storeSettings.support_phone}</a>}
+                  <a className="hover:text-white" href={`mailto:${storeSettings.contact_email}`}>{storeSettings.contact_email}</a>
+                  {storeSettings.delivery_area && <span>Delivery area: {storeSettings.delivery_area}</span>}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3 text-[10px] font-bold tracking-[.12em] text-white/60">
+                  {Object.entries(storeSettings.social_links).filter(([, url]) => Boolean(url)).map(([network, url]) => <a key={network} href={url} target="_blank" rel="noreferrer" className="uppercase hover:text-white">{network}</a>)}
+                </div>
               </div>
               {[
                 ["SHOP", [["Living room", "/living-room"], ["Bedroom", "/bedroom"], ["Dining room", "/dining-room"], ["New arrivals", "/new-arrivals"]]],

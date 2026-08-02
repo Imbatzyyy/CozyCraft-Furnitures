@@ -108,7 +108,7 @@ import {
 } from "../../core";
 
 import { Account } from "./auth";
-import { isReturnWindowOpen } from "@/lib/return-workflow";
+import { isCancellationWindowOpen, isReturnWindowOpen } from "@/lib/return-workflow";
 
 type PsgcRegion = {
   regCode: string;
@@ -618,6 +618,7 @@ export function Profile() {
     changePassword,
     requestPasswordSetup,
     storeSettings,
+    cancelOrder,
   } = useStore();
   const nav = useNavigate();
   const passwordMinimum = storeSettings.account_settings.password_minimum_length;
@@ -649,6 +650,9 @@ export function Profile() {
   const [returnDetails, setReturnDetails] = useState("");
   const [returnFiles, setReturnFiles] = useState<File[]>([]);
   const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [securityView, setSecurityView] = useState<"home" | "setup" | "change">(
     "home",
   );
@@ -727,6 +731,22 @@ export function Profile() {
     if (error) { setNotice(error.message); return; }
     setReturnOrderId(null); setReturnDetails(""); setReturnFiles([]);
     setNotice("Your return request was submitted for review.");
+  };
+  const submitCancellation = async () => {
+    if (!cancelOrderId || cancelReason.trim().length < 5) {
+      setNotice("Please provide a cancellation reason of at least 5 characters.");
+      return;
+    }
+    setCancelSubmitting(true);
+    const error = await cancelOrder(cancelOrderId, cancelReason.trim());
+    setCancelSubmitting(false);
+    if (error) {
+      setNotice(error);
+      return;
+    }
+    setCancelOrderId(null);
+    setCancelReason("");
+    setNotice("Your order was cancelled. Payment and refund updates are available in order tracking.");
   };
   const [username, setUsername] = useState(defaultUsername);
   const [first, setFirst] = useState((user ?? "").split(" ")[0] ?? "");
@@ -1656,7 +1676,12 @@ export function Profile() {
                         <Link to="/orders" className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary min-[390px]:col-span-2 sm:col-auto">
                           <ArrowRight size={14} /> Full tracking
                         </Link>
-                        {selectedOrder.status === "delivered" && isReturnWindowOpen(selectedOrder.order_status_history?.find((entry)=>entry.status==="delivered")?.changed_at) && !returnRequests.some((request) => request.order_id === selectedOrder.id) && (
+                        {["pending", "processing", "packed"].includes(selectedOrder.status) && isCancellationWindowOpen(selectedOrder.created_at, new Date(), storeSettings.fulfillment_settings.cancellation_window_hours) && (
+                          <button type="button" onClick={() => setCancelOrderId(selectedOrder.id)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4] min-[390px]:col-span-2 sm:col-auto">
+                            <X size={14} /> Cancel order
+                          </button>
+                        )}
+                        {selectedOrder.status === "delivered" && isReturnWindowOpen(selectedOrder.order_status_history?.find((entry)=>entry.status==="delivered")?.changed_at, new Date(), storeSettings.fulfillment_settings.return_window_days) && !returnRequests.some((request) => request.order_id === selectedOrder.id) && (
                           <button type="button" onClick={() => setReturnOrderId(selectedOrder.id)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4] min-[390px]:col-span-2 sm:col-auto">
                             <Archive size={14} /> Request return
                           </button>
@@ -1678,22 +1703,15 @@ export function Profile() {
                   PAYMENT PREFERENCES
                 </p>
                 <h2 className="mt-2 font-serif text-3xl">Ways to pay.</h2>
-                <div className="mt-6 rounded-2xl border border-foreground bg-[#f4f0e9] p-5 ring-1 ring-foreground">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <b className="text-sm">Cash on delivery</b>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Your database-backed default payment preference.
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-[10px] font-bold text-[#56714f]">
-                      {profilePaymentMethod.toUpperCase()} · ACTIVE
-                    </span>
-                  </div>
+                <div className="mt-6 grid gap-3">
+                  {[
+                    ["cod", "Cash on delivery", storeSettings.checkout_settings.cod_enabled, "Pay when your delivery arrives"],
+                    ["card", "Debit or credit card", storeSettings.checkout_settings.card_enabled, "Secure hosted PayMongo checkout"],
+                    ["gcash", "GCash", storeSettings.checkout_settings.gcash_enabled, "Secure hosted PayMongo checkout"],
+                  ].filter(([, , enabled]) => enabled).map(([id, label, , detail]) => <div key={String(id)} className={`rounded-2xl border p-5 ${profilePaymentMethod === id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border"}`}><div className="flex items-center justify-between gap-4"><div><b className="text-sm">{label}</b><p className="mt-2 text-xs text-muted-foreground">{detail}</p></div><span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-[10px] font-bold text-[#56714f]">AVAILABLE</span></div></div>)}
                 </div>
                 <p className="mt-4 max-w-xl text-xs leading-5 text-muted-foreground">
-                  Card and GCash storage are disabled until secure payment
-                  processing is added. CozyCraft does not store card numbers.
+                  Payment availability updates from Store Settings in realtime. Card and GCash details stay on PayMongo’s protected checkout; CozyCraft never stores card numbers.
                 </p>
               </>
             )}
@@ -1709,6 +1727,7 @@ export function Profile() {
                   Send a concern about your order, delivery, payment, or
                   product.
                 </p>
+                <p className="mt-2 text-xs text-muted-foreground">Direct support: <a className="font-semibold underline" href={`mailto:${storeSettings.contact_email}`}>{storeSettings.contact_email}</a>{storeSettings.support_phone ? <> · <a className="font-semibold underline" href={`tel:${storeSettings.support_phone.replace(/\s/g, "")}`}>{storeSettings.support_phone}</a></> : null}</p>
                 <div className="mt-6 grid gap-3 sm:grid-cols-3"><label className="grid gap-2 text-xs font-semibold">Concern type<select value={ticketCategory} onChange={(event)=>setTicketCategory(event.target.value as DbSupportTicket["category"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="general">General</option><option value="order">Order</option><option value="delivery">Delivery</option><option value="payment">Payment</option><option value="product">Product</option><option value="return">Return</option><option value="account">Account</option></select></label><label className="grid gap-2 text-xs font-semibold">Priority<select value={ticketPriority} onChange={(event)=>setTicketPriority(event.target.value as DbSupportTicket["priority"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label className="grid gap-2 text-xs font-semibold">Related order<select value={ticketOrderId} onChange={(event)=>setTicketOrderId(event.target.value)} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="">None</option>{orders.map((order)=><option key={order.id} value={order.id}>#{order.order_number}</option>)}</select></label></div>
                 <textarea
                   value={ticket}
@@ -2024,6 +2043,7 @@ export function Profile() {
           </section>
         </div>
       )}
+      {cancelOrderId && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-cancel-title"><section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">CANCEL ORDER</p><h2 id="customer-cancel-title" className="mt-2 font-serif text-3xl">Confirm cancellation.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Cancellation is available within {storeSettings.fulfillment_settings.cancellation_window_hours} hours of ordering. Paid orders are safely refunded to the original payment method.</p><label className="mt-5 grid gap-2 text-sm font-semibold">Reason<textarea value={cancelReason} onChange={(event)=>setCancelReason(event.target.value)} maxLength={500} className="min-h-24 rounded-xl border border-border bg-background p-3 font-normal" placeholder="Tell us why you need to cancel" /></label><div className="mt-5 flex gap-3"><button disabled={cancelSubmitting || cancelReason.trim().length < 5} onClick={()=>void submitCancellation()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{cancelSubmitting ? "Cancelling safely…" : "Confirm cancellation"}</button><button disabled={cancelSubmitting} onClick={()=>{setCancelOrderId(null);setCancelReason("");}} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button></div></section></div>}
       {confirmSignOut && (
         <ConfirmSignOut
           kind="customer"

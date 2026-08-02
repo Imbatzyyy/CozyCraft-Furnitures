@@ -482,6 +482,15 @@ export function AdminShell({
   }, [authReady, databaseRole]);
   useEffect(() => { void checkMfa(); }, [checkMfa]);
   useEffect(() => {
+    if (!isStaffRole(databaseRole)) return;
+    const channel = supabase.channel("admin-shell-security-settings").on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "admin_security_settings" },
+      () => void checkMfa(),
+    ).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [checkMfa, databaseRole]);
+  useEffect(() => {
     if (!authReady || !isStaffRole(databaseRole)) return;
     let timer = 0;
     const arm = () => {
