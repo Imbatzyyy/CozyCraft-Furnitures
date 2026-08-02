@@ -1340,6 +1340,15 @@ const adminTeamRoute = async (name: string) => {
 function RouteErrorBoundary() {
   const error = useRouteError();
   const message = error instanceof Error ? error.message : String(error ?? "");
+  useEffect(() => {
+    void supabase.rpc("report_client_error", {
+      p_message: message || "Unknown route error",
+      p_stack: error instanceof Error ? error.stack ?? "" : "",
+      p_path: window.location.pathname + window.location.search,
+      p_context: "route_boundary",
+      p_user_agent: window.navigator.userAgent,
+    });
+  }, [error, message]);
   const isDeploymentUpdate =
     /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk .* failed/i.test(
       message,

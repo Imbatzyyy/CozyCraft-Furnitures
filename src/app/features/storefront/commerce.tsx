@@ -1097,6 +1097,13 @@ export function CheckoutErrorBoundary() {
   const error = useRouteError();
   useEffect(() => {
     console.error("Checkout route error", error);
+    void supabase.rpc("report_client_error", {
+      p_message: error instanceof Error ? error.message : String(error ?? "Unknown checkout error"),
+      p_stack: error instanceof Error ? error.stack ?? "" : "",
+      p_path: window.location.pathname + window.location.search,
+      p_context: "checkout_boundary",
+      p_user_agent: window.navigator.userAgent,
+    });
   }, [error]);
   return (
     <Layout>

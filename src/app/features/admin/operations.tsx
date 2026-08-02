@@ -1719,7 +1719,7 @@ export function ActivityLogsPage() {
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   type ActivityRow = {
-    id: number;
+    id: number | string;
     action: string;
     entity_type: string;
     entity_id: string | null;
@@ -1732,20 +1732,25 @@ export function ActivityLogsPage() {
     setError("");
     const since = new Date();
     since.setDate(since.getDate() - 7);
-    const { data, error: loadError } = await supabase
-      .from("activity_logs")
-      .select(
-        "id,action,entity_type,entity_id,details,created_at,profiles!activity_logs_actor_id_fkey(full_name,email)",
-      )
-      .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (loadError) {
-      setError(loadError.message);
+    const [activityResult, errorResult] = await Promise.all([
+      supabase.from("activity_logs").select("id,action,entity_type,entity_id,details,created_at,profiles!activity_logs_actor_id_fkey(full_name,email)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(500),
+      supabase.from("client_error_events").select("id,message,stack,path,context,user_agent,created_at,profiles!client_error_events_user_id_fkey(full_name,email)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(200),
+    ]);
+    if (activityResult.error || errorResult.error) {
+      setError(activityResult.error?.message ?? errorResult.error?.message ?? "Unable to load activity.");
       setLoading(false);
       return;
     }
-    setRows((data ?? []) as ActivityRow[]);
+    const clientErrors: ActivityRow[] = (errorResult.data ?? []).map((event:any)=>({
+      id:`error-${event.id}`,
+      action:"client_error",
+      entity_type:"errors",
+      entity_id:null,
+      details:{message:event.message,path:event.path,context:event.context,stack:event.stack},
+      created_at:event.created_at,
+      profiles:event.profiles,
+    }));
+    setRows([...(activityResult.data as ActivityRow[] ?? []),...clientErrors].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()));
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
@@ -1758,6 +1763,7 @@ export function ActivityLogsPage() {
         { event: "*", schema: "public", table: "activity_logs" },
         () => void loadActivity(),
       )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "client_error_events" }, () => void loadActivity())
       .subscribe();
     const interval = window.setInterval(() => void loadActivity(), 30_000);
     return () => {
@@ -1777,6 +1783,7 @@ export function ActivityLogsPage() {
     ["cart", "Shopping carts"],
     ["wishlist", "Wishlists"],
     ["addresses", "Delivery addresses"],
+    ["errors", "Application errors"],
   ] as const;
   const belongsToScope = (row: ActivityRow) => {
     const entity = row.entity_type.toLowerCase();
