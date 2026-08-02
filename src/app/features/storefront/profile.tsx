@@ -1637,18 +1637,22 @@ export function Profile() {
                 <textarea
                   value={ticket}
                   onChange={(e) => setTicket(e.target.value)}
+                  minLength={10}
+                  maxLength={4000}
                   className="mt-3 min-h-36 w-full rounded-2xl border border-border bg-[#fcfbf8] p-4 text-sm outline-none"
                   placeholder="Include your order number and a short description of your concern."
                 />
+                <p className="mt-1 text-right text-[10px] text-muted-foreground">{ticket.length}/4,000</p>
                 <label className="mt-3 grid gap-2 text-xs font-semibold">Evidence (optional, up to 3 files)<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event)=>setTicketFiles(Array.from(event.target.files??[]).slice(0,3))} className="rounded-xl border border-border bg-[#fcfbf8] p-3 font-normal"/></label>
                 <button
                   onClick={async () => {
-                    if (!ticket) return;
+                    if (ticket.trim().length < 10) { setNotice("Please describe your concern in at least 10 characters."); return; }
                     const error = await submitTicket({message:ticket,category:ticketCategory,priority:ticketPriority,orderId:ticketOrderId,files:ticketFiles});
                     if (!error) {setTicket("");setTicketFiles([]);setTicketOrderId("");}
                     setNotice(error ?? "Support ticket sent and visible to the admin care team.");
                   }}
-                  className="mt-3 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background"
+                  disabled={ticket.trim().length < 10}
+                  className="mt-3 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   Send support ticket
                 </button>

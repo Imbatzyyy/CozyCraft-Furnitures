@@ -1049,6 +1049,10 @@ function App() {
   };
   const submitTicket = async (details: { message:string; category:DbSupportTicket["category"]; priority:DbSupportTicket["priority"]; orderId?:string; files?:File[] }) => {
     if (!userId) return "Please sign in first.";
+    const message = details.message.trim();
+    if (message.length < 10 || message.length > 4000) {
+      return "Please describe your concern in 10 to 4,000 characters.";
+    }
     const attachmentPaths:string[] = [];
     for (const file of (details.files ?? []).slice(0,3)) {
       if (file.size > 5*1024*1024 || !["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type)) return "Attachments must be JPG, PNG, WebP, or PDF files no larger than 5 MB.";
@@ -1057,7 +1061,10 @@ function App() {
       if(uploadError)return `Could not upload ${file.name}: ${uploadError.message}`;
       attachmentPaths.push(path);
     }
-    const { error } = await supabase.from("support_tickets").insert({ user_id:userId, message:details.message.trim(), category:details.category, priority:details.priority, order_id:details.orderId||null, subject:`${details.category.charAt(0).toUpperCase()+details.category.slice(1)} support request`, attachment_paths:attachmentPaths });
+    const { error } = await supabase.from("support_tickets").insert({ user_id:userId, message, category:details.category, priority:details.priority, order_id:details.orderId||null, subject:`${details.category.charAt(0).toUpperCase()+details.category.slice(1)} support request`, attachment_paths:attachmentPaths });
+    if (error && attachmentPaths.length) {
+      await supabase.storage.from("support-attachments").remove(attachmentPaths);
+    }
     if (!error) await refreshTickets();
     return error?.message ?? null;
   };
