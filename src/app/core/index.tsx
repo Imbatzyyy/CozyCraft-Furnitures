@@ -469,7 +469,7 @@ export function Logo({
 }
 
 export function Header({ immersive = false }: { immersive?: boolean }) {
-  const { cart, saved, userId, user, avatar, products, profileUsername } = useStore();
+  const { cart, saved, userId, user, avatar, products, profileUsername, storeSettings } = useStore();
   const nav = useNavigate();
   const location = useLocation();
   const [menu, setMenu] = useState(false);
@@ -523,6 +523,9 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
         .includes(query.toLowerCase()),
     )
     .slice(0, 5);
+  const announcementVisible =
+    storeSettings.announcement_enabled &&
+    Boolean(storeSettings.announcement_text.trim());
   const overHero = immersive && !scrolled;
   const navClass = immersive
     ? `fixed inset-x-0 top-0 z-30 transition-colors duration-300 ${overHero ? "border-b border-white/35 bg-transparent text-white" : "border-b border-border bg-background/95 text-foreground backdrop-blur"}`
@@ -530,6 +533,25 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   return (
     <>
       <header className={navClass}>
+        {announcementVisible && (
+          <div
+            role="status"
+            aria-label="Store announcement"
+            className="flex h-9 items-center justify-center gap-2 overflow-hidden bg-[#292622] px-3 text-center text-[11px] font-semibold text-white"
+          >
+            <span className="min-w-0 truncate">
+              {storeSettings.announcement_text}
+            </span>
+            {storeSettings.announcement_link && (
+              <Link
+                className="shrink-0 underline underline-offset-4"
+                to={storeSettings.announcement_link}
+              >
+                Learn more
+              </Link>
+            )}
+          </div>
+        )}
         <div className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between px-3 sm:px-5 lg:px-10">
           <Logo light={overHero} />
           <nav className="hidden items-center gap-7 text-[12px] font-semibold tracking-[0.035em] md:flex">
@@ -590,11 +612,11 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                       type="button"
                       aria-label="Close notifications"
                       onClick={() => setNotificationOpen(false)}
-                      className="fixed inset-x-0 bottom-0 top-[76px] z-40 bg-black/20 sm:bg-transparent"
+                      className={`fixed inset-x-0 bottom-0 z-40 bg-black/20 sm:bg-transparent ${announcementVisible ? "top-[112px]" : "top-[76px]"}`}
                     />
                     <section
                       aria-label="Customer notifications"
-                      className="fixed inset-x-3 bottom-3 top-[84px] z-50 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-11 sm:h-auto sm:max-h-[min(32rem,calc(100dvh-6rem))] sm:w-[360px]"
+                      className={`fixed inset-x-3 bottom-3 z-50 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-11 sm:h-auto sm:max-h-[min(32rem,calc(100dvh-6rem))] sm:w-[360px] ${announcementVisible ? "top-[120px]" : "top-[84px]"}`}
                     >
                     <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
                       <div className="min-w-0"><b className="block text-sm">Notifications</b><span className="block text-[10px] text-muted-foreground">{unreadNotifications} unread</span></div>
@@ -688,7 +710,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
         )}
       </header>
       {searchOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-5 pt-24 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Search CozyCraft products">
+        <div className={`fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-5 backdrop-blur-sm ${announcementVisible ? "pt-36" : "pt-24"}`} role="dialog" aria-modal="true" aria-label="Search CozyCraft products">
           <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
             <div className="flex items-center gap-3 border-b border-border px-5">
               <Search size={18} className="text-muted-foreground" />
@@ -782,7 +804,6 @@ export function Layout({
   return (
     <>
       <a href="#page-content" className="skip-link">Skip to main content</a>
-      {storeSettings.announcement_enabled && storeSettings.announcement_text.trim() && <div className="relative z-[70] bg-[#292622] px-4 py-2 text-center text-[11px] font-semibold text-white"><span>{storeSettings.announcement_text}</span>{storeSettings.announcement_link && <Link className="ml-2 underline underline-offset-4" to={storeSettings.announcement_link}>Learn more</Link>}</div>}
       <Header immersive={immersive} />
       <div id="page-content" tabIndex={-1} className={`${immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"} pb-20 md:pb-0`}>
         <div
