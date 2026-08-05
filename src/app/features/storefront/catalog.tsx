@@ -483,7 +483,12 @@ export function Room({
 
 export function About() {
   const team = [
-    { name: "Joylyn Campuso", role: "Product & Research", initials: "CJ", image: undefined },
+    {
+      name: "Joylyn Campuso",
+      role: "Product & Research",
+      initials: "CJ",
+      image: "/team/joylyn-campuso.jpg",
+    },
     {
       name: "Jacob Christopher Cañete",
       role: "Platform Development",
