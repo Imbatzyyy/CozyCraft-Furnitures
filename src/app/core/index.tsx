@@ -354,7 +354,7 @@ export type Store = {
   cancelOrder: (id: string, reason: string) => Promise<string | null>;
   saveProduct: (product: ManagedProduct) => Promise<string | null>;
   deleteProduct: (id: string) => Promise<string | null>;
-  uploadProductImages: (files: FileList) => Promise<string[]>;
+  uploadProductImages: (files: File[]) => Promise<string[]>;
   uploadAvatar: (file: File) => Promise<{
     url: string | null;
     error: string | null;

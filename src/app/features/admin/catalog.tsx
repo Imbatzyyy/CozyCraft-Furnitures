@@ -265,7 +265,7 @@ export function ProductManager() {
   };
   const save = async () => {
     if (!editing) return;
-    if (!editing.name.trim() || editing.description.trim().length < 10 || editing.images.length < 1) { setError("Add a product name, a description of at least 10 characters, and at least one image before saving."); return; }
+    if (!editing.name.trim() || editing.description.trim().length < 10 || editing.images.length !== 4) { setError("Add a product name, a description of at least 10 characters, and exactly four product images before saving."); return; }
     if (!(catalogTaxonomy[editing.category] ?? []).includes(editing.subcategory)) {
       setError("Choose a valid room category and product subcategory.");
       return;
@@ -287,9 +287,17 @@ export function ProductManager() {
   };
   const upload = async (files: FileList | null) => {
     if (!files || !editing) return;
-    const urls = await uploadProductImages(files);
-    setEditing((current) => current ? { ...current, images:[...current.images,...urls].slice(0,8) } : current);
+    const availableSlots = Math.max(0, 4 - editing.images.length);
+    if (availableSlots === 0) {
+      setError("The four-photo limit has already been reached. Remove a photo before adding another.");
+      return;
+    }
+    const selectedFiles = Array.from(files).slice(0, availableSlots);
+    const urls = await uploadProductImages(selectedFiles);
+    setEditing((current) => current ? { ...current, images:[...current.images,...urls].slice(0,4) } : current);
     if (!urls.length) setError("No images were uploaded. Use JPG, PNG, or WebP files up to 10 MB.");
+    else if (files.length > availableSlots) setError(`Only ${availableSlots} more photo${availableSlots === 1 ? "" : "s"} could be added. CozyCraft products are limited to four photos.`);
+    else setError("");
   };
   const visible = items.filter(
     (item) =>
@@ -600,12 +608,19 @@ export function ProductEditor({
     ]);
   const removeDimension = (index: number) =>
     commitDimensions(dimensions.filter((_, itemIndex) => itemIndex !== index));
-  const remove = (index: number) =>
+  const remove = (index: number) => {
+    const nextMain =
+      index === product.main
+        ? 0
+        : index < product.main
+          ? product.main - 1
+          : product.main;
     setProduct({
       ...product,
       images: product.images.filter((_, i) => i !== index),
-      main: Math.max(0, Math.min(product.main, index - 1)),
+      main: Math.max(0, nextMain),
     });
+  };
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex justify-end bg-[#201f1d]/40 p-3 sm:p-5"
@@ -865,21 +880,29 @@ export function ProductEditor({
               <div>
                 <h4 className="font-semibold">Product images</h4>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Upload at least 4 photos. Select one as the main storefront
+                  Upload exactly 4 photos. Select one as the main storefront
                   view.
                 </p>
               </div>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold">
-                <Upload size={14} />
-                Add photos
-                <input
-                  onChange={(e) => upload(e.target.files)}
-                  multiple
-                  accept="image/*"
-                  type="file"
-                  className="hidden"
-                />
-              </label>
+              {product.images.length < 4 ? (
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold">
+                  <Upload size={14} />
+                  Add photos
+                  <input
+                    onChange={(e) => upload(e.target.files)}
+                    multiple
+                    accept="image/jpeg,image/png,image/webp"
+                    type="file"
+                    className="hidden"
+                  />
+                </label>
+              ) : (
+                <span className="rounded-full bg-[#e4ecdf] px-3 py-2 text-xs font-semibold text-[#5b744f]">
+                  {product.images.length > 4
+                    ? "Remove extra photos"
+                    : "4-photo limit reached"}
+                </span>
+              )}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {product.images.map((image, index) => (
@@ -906,24 +929,31 @@ export function ProductEditor({
                   </button>
                 </div>
               ))}
-              <label className="grid aspect-square cursor-pointer place-items-center rounded-xl border border-dashed border-border bg-secondary text-center text-xs text-muted-foreground">
-                <ImagePlus size={18} />
-                <span className="px-2">
-                  Add image
-                  <input
-                    onChange={(e) => upload(e.target.files)}
-                    multiple
-                    accept="image/*"
-                    type="file"
-                    className="hidden"
-                  />
-                </span>
-              </label>
+              {product.images.length < 4 && (
+                <label className="grid aspect-square cursor-pointer place-items-center rounded-xl border border-dashed border-border bg-secondary text-center text-xs text-muted-foreground">
+                  <ImagePlus size={18} />
+                  <span className="px-2">
+                    Add image
+                    <input
+                      onChange={(e) => upload(e.target.files)}
+                      multiple
+                      accept="image/jpeg,image/png,image/webp"
+                      type="file"
+                      className="hidden"
+                    />
+                  </span>
+                </label>
+              )}
             </div>
             <p
-              className={`mt-3 text-xs ${product.images.length >= 4 ? "text-[#5b744f]" : "text-[#9a6047]"}`}
+              className={`mt-3 text-xs ${product.images.length === 4 ? "text-[#5b744f]" : "text-[#9a6047]"}`}
             >
-              {product.images.length}/4 minimum images uploaded
+              {product.images.length}/4 images uploaded
+              {product.images.length === 4
+                ? " · Maximum reached"
+                : product.images.length > 4
+                  ? ` · Remove ${product.images.length - 4} to continue`
+                  : ` · ${4 - product.images.length} remaining`}
             </p>
           </div>
           {error && (

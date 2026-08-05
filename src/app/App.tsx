@@ -1036,9 +1036,9 @@ function App() {
     return error?.message ?? null;
   };
   const deleteProduct = async (id: string) => { const { error } = await supabase.from("products").delete().eq("id", id); if (!error) await refreshProducts(); return error?.message ?? null; };
-  const uploadProductImages = async (files: FileList) => {
+  const uploadProductImages = async (files: File[]) => {
     const urls: string[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       const path = Date.now() + "-" + crypto.randomUUID() + "-" + safeFileName(file.name);
       const { error } = await supabase.storage.from("product-images").upload(path, file);
       if (error) continue;
