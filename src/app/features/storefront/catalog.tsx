@@ -65,6 +65,7 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/app/components/media/ResilientImage";
+import { selectNewArrivals } from "@/lib/new-arrivals";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -804,9 +805,10 @@ export const roomCollections = {
     image:
       "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1800&q=88",
     groups: {
-      "Living Room": ["Sofas", "Coffee Tables", "TV Stands"],
-      Bedroom: ["Beds", "Wardrobes", "Nightstands"],
-      "Dining Room": ["Dining Tables", "Dining Chairs", "Dining Storage"],
+      All: [],
+      "Living room": [],
+      Bedroom: [],
+      "Dining room": [],
     },
     match: "new",
   },
@@ -892,17 +894,13 @@ export function CollectionPage() {
       (subcategoryProductMap[value] ?? []).includes(product.id));
   let items =
     info.match === "new"
-      ? products.slice(0, 6)
+      ? selectNewArrivals(products, group)
       : products.filter((p) => p.category === info.match);
-  if (info.match === "new")
-    items = items.filter(
-      (p) => p.category.toLowerCase() === group.toLowerCase(),
-    );
   if (subcategory) {
     items = items.filter((product) =>
       matchesSubcategory(product, subcategory),
     );
-  } else if (children.length) {
+  } else if (info.match !== "new" && children.length) {
     items = items.filter((product) =>
       children.some((child) => matchesSubcategory(product, child)),
     );
