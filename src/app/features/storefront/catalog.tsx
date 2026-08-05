@@ -495,7 +495,7 @@ export function About() {
       role: "Project Lead · Vision Ventures",
       initials: "PB",
       lead: true,
-      image: undefined,
+      image: "/team/prince-balane.jpg",
     },
     {
       name: "Angela Faith Suba",
