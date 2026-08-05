@@ -512,7 +512,7 @@ export function About() {
       name: "Hydee Mae Sumalinog",
       role: "Operations & Quality",
       initials: "HS",
-      image: undefined,
+      image: "/team/hydee-mae-sumalinog.jpg",
     },
   ];
   return (
