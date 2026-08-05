@@ -80,6 +80,7 @@ import {
   type DbSupportTicket,
 } from "@/lib/supabase";
 import type { PublicStoreSettings } from "@/lib/store-settings";
+import { functionErrorMessage } from "@/lib/function-error";
 
 
 export type Product = {
@@ -956,12 +957,25 @@ export function CareChat() {
     setMessages((current) => [...current, { from: "you", text: message }]);
 
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke(
-        "cozycraft-assistant",
-        {
+      const invokeAssistant = () =>
+        supabase.functions.invoke("cozycraft-assistant", {
           body: { message, history },
-        },
-      );
+        });
+
+      let response = await invokeAssistant();
+      if (response.error) {
+        const status =
+          response.error.context instanceof Response
+            ? response.error.context.status
+            : 0;
+        const canRetry = status === 0 || status === 429 || status >= 500;
+        if (canRetry) {
+          await new Promise((resolve) => window.setTimeout(resolve, 650));
+          response = await invokeAssistant();
+        }
+      }
+
+      const { data, error: invokeError } = response;
 
       if (invokeError) {
         throw invokeError;
@@ -977,9 +991,10 @@ export function CareChat() {
       ]);
     } catch (requestError) {
       console.error("CozyCraft assistant error", requestError);
-      setError(
-        "I couldn’t connect just now. Please check your connection and try again.",
-      );
+      setError(await functionErrorMessage(
+        requestError,
+        "CozyCraft Care is temporarily unavailable. Please try again in a moment.",
+      ));
     } finally {
       setSending(false);
     }
