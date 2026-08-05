@@ -488,7 +488,7 @@ export function About() {
       name: "Jacob Christopher Cañete",
       role: "Platform Development",
       initials: "JC",
-      image: undefined,
+      image: "/team/jacob-christopher-canete.jpg",
     },
     {
       name: "Prince Balane",
