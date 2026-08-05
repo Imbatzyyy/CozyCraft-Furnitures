@@ -483,23 +483,31 @@ export function Room({
 
 export function About() {
   const team = [
-    { name: "Joylyn Campuso", role: "Product & Research", initials: "CJ" },
+    { name: "Joylyn Campuso", role: "Product & Research", initials: "CJ", image: undefined },
     {
       name: "Jacob Christopher Cañete",
       role: "Platform Development",
       initials: "JC",
+      image: undefined,
     },
     {
       name: "Prince Balane",
       role: "Project Lead · Vision Ventures",
       initials: "PB",
       lead: true,
+      image: undefined,
     },
-    { name: "Angela Faith Suba", role: "Customer Experience", initials: "AS" },
+    {
+      name: "Angela Faith Suba",
+      role: "Customer Experience",
+      initials: "AS",
+      image: "/team/angela-faith-suba.jpeg",
+    },
     {
       name: "Hydee Mae Sumalinog",
       role: "Operations & Quality",
       initials: "HS",
+      image: undefined,
     },
   ];
   return (
@@ -645,9 +653,17 @@ export function About() {
                   key={member.name}
                   className={`rounded-2xl border p-4 ${member.lead ? "border-[#c8ae8b] bg-[#3a3934] lg:col-span-1" : "border-white/10 bg-white/5"}`}
                 >
-                  <div className="grid aspect-square place-items-center rounded-xl bg-[#d4c3aa] font-serif text-4xl text-[#292a26]">
-                    {member.initials}
-                  </div>
+                  {member.image ? (
+                    <ResilientImage
+                      src={member.image}
+                      alt={`${member.name}, ${member.role}`}
+                      className="aspect-square w-full rounded-xl bg-[#d4c3aa] object-cover object-top"
+                    />
+                  ) : (
+                    <div className="grid aspect-square place-items-center rounded-xl bg-[#d4c3aa] font-serif text-4xl text-[#292a26]">
+                      {member.initials}
+                    </div>
+                  )}
                   <p className="mt-5 text-sm font-semibold">{member.name}</p>
                   <p className="mt-1 text-xs leading-5 text-[#c9c0b3]">
                     {member.role}
@@ -657,9 +673,11 @@ export function About() {
                       TEAM LEADER
                     </span>
                   )}
-                  <p className="mt-4 text-[10px] text-[#9f988f]">
-                    Photo placeholder
-                  </p>
+                  {!member.image && (
+                    <p className="mt-4 text-[10px] text-[#9f988f]">
+                      Photo placeholder
+                    </p>
+                  )}
                 </article>
               ))}
             </div>
