@@ -647,10 +647,6 @@ export function About() {
                 </p>
                 <h2 className="mt-4 font-serif text-4xl">Meet the team.</h2>
               </div>
-              <p className="max-w-sm text-sm leading-6 text-[#d4cdc2]">
-                Photo spaces are ready for each member to customize when your
-                official team images are available.
-              </p>
             </div>
             <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {team.map((member) => (
