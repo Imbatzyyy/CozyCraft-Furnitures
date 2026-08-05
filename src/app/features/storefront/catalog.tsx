@@ -66,6 +66,10 @@ import {
 } from "lucide-react";
 import { ResilientImage } from "@/app/components/media/ResilientImage";
 import { selectNewArrivals } from "@/lib/new-arrivals";
+import {
+  filterByPriceRange,
+  STOREFRONT_MAX_PRICE,
+} from "@/lib/price-range";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -874,7 +878,8 @@ export function CollectionPage() {
   const [query, setQuery] = useState("");
   const [availability, setAvailability] = useState("all");
   const [materialFilter, setMaterialFilter] = useState("all");
-  const [priceBand, setPriceBand] = useState("all");
+  const [minimumPrice, setMinimumPrice] = useState(0);
+  const [maximumPrice, setMaximumPrice] = useState(STOREFRONT_MAX_PRICE);
   const [sort, setSort] = useState("featured");
   const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
@@ -883,7 +888,8 @@ export function CollectionPage() {
     setQuery("");
     setAvailability("all");
     setMaterialFilter("all");
-    setPriceBand("all");
+    setMinimumPrice(0);
+    setMaximumPrice(STOREFRONT_MAX_PRICE);
     setSort("featured");
   }, [current]);
   const children =
@@ -924,17 +930,18 @@ export function CollectionPage() {
       return (materialAliases[materialFilter] ?? [materialFilter.toLowerCase()]).some((term) => source.includes(term));
     });
   }
-  if (priceBand === "under-20") items = items.filter((product) => product.price < 20_000);
-  if (priceBand === "20-40") items = items.filter((product) => product.price >= 20_000 && product.price <= 40_000);
-  if (priceBand === "over-40") items = items.filter((product) => product.price > 40_000);
+  items = filterByPriceRange(items, minimumPrice, maximumPrice);
   items = [...items].sort((a, b) => sort === "price-low" ? a.price - b.price : sort === "price-high" ? b.price - a.price : sort === "rating" ? Number(b.rating) - Number(a.rating) : 0);
   const materialOptions = ["Wood", "Fabric", "Metal", "Stone", "Leather"];
-  const activeFilterCount = [query.trim(), availability !== "all", materialFilter !== "all", priceBand !== "all"].filter(Boolean).length;
+  const priceRangeActive =
+    minimumPrice > 0 || maximumPrice < STOREFRONT_MAX_PRICE;
+  const activeFilterCount = [query.trim(), availability !== "all", materialFilter !== "all", priceRangeActive].filter(Boolean).length;
   const clearFilters = () => {
     setQuery("");
     setAvailability("all");
     setMaterialFilter("all");
-    setPriceBand("all");
+    setMinimumPrice(0);
+    setMaximumPrice(STOREFRONT_MAX_PRICE);
   };
   return (
     <Layout>
@@ -1002,9 +1009,49 @@ export function CollectionPage() {
               <div className={`${filtersOpen ? "grid" : "hidden"} mt-3 gap-3 rounded-2xl bg-secondary/55 p-3 sm:grid-cols-3 md:grid`}>
                 <label className="grid gap-1.5 text-[10px] font-bold tracking-[.1em] text-muted-foreground">AVAILABILITY<select value={availability} onChange={(event) => setAvailability(event.target.value)} className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-normal text-foreground"><option value="all">All availability</option><option value="in-stock">In stock</option><option value="low-stock">Low stock</option></select></label>
                 <label className="grid gap-1.5 text-[10px] font-bold tracking-[.1em] text-muted-foreground">MATERIAL<select value={materialFilter} onChange={(event) => setMaterialFilter(event.target.value)} className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-normal text-foreground"><option value="all">All materials</option>{materialOptions.map((material) => <option key={material} value={material}>{material}</option>)}</select></label>
-                <label className="grid gap-1.5 text-[10px] font-bold tracking-[.1em] text-muted-foreground">PRICE<select value={priceBand} onChange={(event) => setPriceBand(event.target.value)} className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-normal text-foreground"><option value="all">All prices</option><option value="under-20">Under ₱20,000</option><option value="20-40">₱20,000–₱40,000</option><option value="over-40">Over ₱40,000</option></select></label>
+                <fieldset className="grid gap-2 rounded-xl border border-border bg-card px-3 py-2 text-foreground">
+                  <legend className="px-1 text-[10px] font-bold tracking-[.1em] text-muted-foreground">PRICE RANGE</legend>
+                  <div className="flex items-center justify-between gap-3 text-[11px] font-semibold">
+                    <span>From {money(minimumPrice)}</span>
+                    <span>To {money(maximumPrice)}</span>
+                  </div>
+                  <label className="grid grid-cols-[2.5rem_1fr] items-center gap-2 text-[10px] font-bold text-muted-foreground">
+                    FROM
+                    <input
+                      type="range"
+                      aria-label="Minimum price"
+                      min={0}
+                      max={STOREFRONT_MAX_PRICE}
+                      step={1_000}
+                      value={minimumPrice}
+                      onChange={(event) =>
+                        setMinimumPrice(
+                          Math.min(Number(event.target.value), maximumPrice),
+                        )
+                      }
+                      className="w-full accent-foreground"
+                    />
+                  </label>
+                  <label className="grid grid-cols-[2.5rem_1fr] items-center gap-2 text-[10px] font-bold text-muted-foreground">
+                    TO
+                    <input
+                      type="range"
+                      aria-label="Maximum price"
+                      min={0}
+                      max={STOREFRONT_MAX_PRICE}
+                      step={1_000}
+                      value={maximumPrice}
+                      onChange={(event) =>
+                        setMaximumPrice(
+                          Math.max(Number(event.target.value), minimumPrice),
+                        )
+                      }
+                      className="w-full accent-foreground"
+                    />
+                  </label>
+                </fieldset>
               </div>
-              {activeFilterCount > 0 && <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-semibold"><span className="text-muted-foreground">ACTIVE FILTERS</span>{query && <span className="rounded-full bg-secondary px-3 py-1.5">Search: {query}</span>}{availability !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">{availability === "in-stock" ? "In stock" : "Low stock"}</span>}{materialFilter !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">{materialFilter}</span>}{priceBand !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">Price selected</span>}<button onClick={clearFilters} className="px-2 py-1.5 underline underline-offset-4">Clear all</button></div>}
+              {activeFilterCount > 0 && <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-semibold"><span className="text-muted-foreground">ACTIVE FILTERS</span>{query && <span className="rounded-full bg-secondary px-3 py-1.5">Search: {query}</span>}{availability !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">{availability === "in-stock" ? "In stock" : "Low stock"}</span>}{materialFilter !== "all" && <span className="rounded-full bg-secondary px-3 py-1.5">{materialFilter}</span>}{priceRangeActive && <span className="rounded-full bg-secondary px-3 py-1.5">{money(minimumPrice)}–{money(maximumPrice)}</span>}<button onClick={clearFilters} className="px-2 py-1.5 underline underline-offset-4">Clear all</button></div>}
             </div>
             <div className="mt-5 border-t border-border pt-4">
               <p className="mb-3 text-[10px] font-bold tracking-[.14em] text-muted-foreground">
