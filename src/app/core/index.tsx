@@ -1301,6 +1301,7 @@ export function Status({ children, text }: { children?: ReactNode; text?: string
 export type ManagedProduct = {
   id: string;
   name: string;
+  description: string;
   category: string;
   subcategory: string;
   price: number;

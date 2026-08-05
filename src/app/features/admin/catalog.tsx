@@ -182,6 +182,7 @@ export const initialManagedProducts: ManagedProduct[] = fallbackProducts
   .map((p, i) => ({
     id: p.id,
     name: p.name,
+    description: p.description,
     category: p.category,
     subcategory:
       p.category === "Living room"
@@ -213,7 +214,7 @@ export const initialManagedProducts: ManagedProduct[] = fallbackProducts
 export function ProductManager() {
   const location = useLocation();
   const { adminProducts, saveProduct, deleteProduct, uploadProductImages } = useStore();
-  const toManaged = (p: Product): ManagedProduct => ({ id:p.id, name:p.name, category:p.category, subcategory:p.subcategory ?? subcategoryFor(p.id), price:p.price, quantity:p.stockQuantity ?? 0, status:p.status === "draft" ? "Draft" : p.status === "inactive" ? "Inactive" : "Active", images:[...p.images], main:p.mainImageIndex ?? 0, material:p.material ?? materialFor(p.id), dimensions:p.dimensions });
+  const toManaged = (p: Product): ManagedProduct => ({ id:p.id, name:p.name, description:p.description, category:p.category, subcategory:p.subcategory ?? subcategoryFor(p.id), price:p.price, quantity:p.stockQuantity ?? 0, status:p.status === "draft" ? "Draft" : p.status === "inactive" ? "Inactive" : "Active", images:[...p.images], main:p.mainImageIndex ?? 0, material:p.material ?? materialFor(p.id), dimensions:p.dimensions });
   const [items, setItems] = useState<ManagedProduct[]>(adminProducts.map(toManaged));
   useEffect(() => setItems(adminProducts.map(toManaged)), [adminProducts]);
   const [view, setView] = useState<"grid" | "list">("list");
@@ -224,6 +225,7 @@ export function ProductManager() {
       ? {
           id: "",
           name: "",
+          description: "",
           category: "Living room",
           subcategory: catalogTaxonomy["Living room"][0],
           price: 0,
@@ -246,6 +248,7 @@ export function ProductManager() {
         : {
             id: "",
             name: "",
+            description: "",
             category: "Living room",
             subcategory: catalogTaxonomy["Living room"][0],
             price: 0,
@@ -261,7 +264,7 @@ export function ProductManager() {
   };
   const save = async () => {
     if (!editing) return;
-    if (!editing.name || editing.images.length < 1) { setError("Add a product name and at least one image before saving."); return; }
+    if (!editing.name.trim() || editing.description.trim().length < 10 || editing.images.length < 1) { setError("Add a product name, a description of at least 10 characters, and at least one image before saving."); return; }
     if (!(catalogTaxonomy[editing.category] ?? []).includes(editing.subcategory)) {
       setError("Choose a valid room category and product subcategory.");
       return;
@@ -271,6 +274,8 @@ export function ProductManager() {
       id:
         editing.id ||
         editing.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-"),
+      name: editing.name.trim(),
+      description: editing.description.trim(),
       material: serializeMaterialSpecs(parseMaterialSpecs(editing.material)),
       dimensions: serializeDimensionSpecs(parseDimensionSpecs(editing.dimensions)),
     };
@@ -288,7 +293,9 @@ export function ProductManager() {
   const visible = items.filter(
     (item) =>
       (filter === "All categories" || item.category === filter) &&
-      item.name.toLowerCase().includes(query.toLowerCase()),
+      `${item.name} ${item.description}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
   );
   const action = async (type: string, item: ManagedProduct) => {
     setMenu(null);
@@ -399,6 +406,9 @@ export function ProductManager() {
                           <p className="mt-0.5 text-[11px] text-muted-foreground">
                             {item.subcategory}
                           </p>
+                          <p className="mt-1 max-w-sm truncate text-[11px] text-muted-foreground">
+                            {item.description || "No product description yet"}
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -463,6 +473,9 @@ export function ProductManager() {
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
                   {item.quantity} units · {item.images.length} images
+                </p>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                  {item.description || "No product description yet"}
                 </p>
               </article>
             ))}
@@ -630,6 +643,27 @@ export function ProductEditor({
                 className="h-11 rounded-xl border border-border px-3 font-normal"
                 placeholder="e.g. Nara Lounge Chair"
               />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
+              Product description
+              <textarea
+                value={product.description}
+                onChange={(event) =>
+                  setProduct({ ...product, description: event.target.value })
+                }
+                rows={5}
+                maxLength={2000}
+                className="min-h-32 resize-y rounded-xl border border-border px-3 py-3 font-normal leading-6"
+                placeholder="Describe the product's design, comfort, intended use, and distinctive qualities."
+                aria-describedby="product-description-help"
+              />
+              <span
+                id="product-description-help"
+                className="flex justify-between gap-4 text-[10px] font-normal text-muted-foreground"
+              >
+                <span>Shown in the customer product-details page and updated in realtime.</span>
+                <span>{product.description.length}/2000</span>
+              </span>
             </label>
             <label className="grid gap-2 text-sm font-semibold">
               Room category
@@ -924,7 +958,7 @@ export function InventoryPage() {
   const [adjustment, setAdjustment] = useState<{item:ManagedProduct;delta:number}|null>(null);
   const [reason, setReason] = useState("");
   const [movements, setMovements] = useState<Array<{id:number;product_id:string;previous_quantity:number;new_quantity:number;quantity_delta:number;reason:string;created_at:string}>>([]);
-  const items = adminProducts.map((p): ManagedProduct => ({ id:p.id,name:p.name,category:p.category,subcategory:p.subcategory??subcategoryFor(p.id),price:p.price,quantity:p.stockQuantity??0,status:p.status==="draft"?"Draft":p.status==="inactive"?"Inactive":"Active",images:p.images,main:p.mainImageIndex??0,material:p.material??"",dimensions:p.dimensions }));
+  const items = adminProducts.map((p): ManagedProduct => ({ id:p.id,name:p.name,description:p.description,category:p.category,subcategory:p.subcategory??subcategoryFor(p.id),price:p.price,quantity:p.stockQuantity??0,status:p.status==="draft"?"Draft":p.status==="inactive"?"Inactive":"Active",images:p.images,main:p.mainImageIndex??0,material:p.material??"",dimensions:p.dimensions }));
   const low = items.filter(item=>item.quantity<=8);
   const loadMovements = useCallback(async () => { const {data}=await supabase.from("inventory_movements").select("id,product_id,previous_quantity,new_quantity,quantity_delta,reason,created_at").order("created_at",{ascending:false}).limit(12); setMovements((data??[]) as typeof movements); },[]);
   useEffect(()=>{ void loadMovements(); const channel=supabase.channel("admin-inventory-ledger").on("postgres_changes",{event:"*",schema:"public",table:"inventory_movements"},()=>void loadMovements()).subscribe(); return()=>{void supabase.removeChannel(channel);}; },[loadMovements]);

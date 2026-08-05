@@ -1031,7 +1031,7 @@ function App() {
   };
   const saveProduct = async (product: ManagedProduct) => {
     const id = product.id || product.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const { error } = await supabase.from("products").upsert({ id, name:product.name, category:product.category, subcategory:product.subcategory, price:product.price, stock_quantity:product.quantity, status:product.status.toLowerCase(), images:product.images, main_image_index:product.main, material:product.material, dimensions:product.dimensions }, { onConflict:"id" });
+    const { error } = await supabase.from("products").upsert({ id, name:product.name, description:product.description, category:product.category, subcategory:product.subcategory, price:product.price, stock_quantity:product.quantity, status:product.status.toLowerCase(), images:product.images, main_image_index:product.main, material:product.material, dimensions:product.dimensions }, { onConflict:"id" });
     if (!error) await refreshProducts();
     return error?.message ?? null;
   };
