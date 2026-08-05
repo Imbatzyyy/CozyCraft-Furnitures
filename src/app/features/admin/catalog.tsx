@@ -557,56 +557,49 @@ export function ProductEditor({
   error: string;
 }) {
   const pick = (index: number) => setProduct({ ...product, main: index });
-  const materials = parseMaterialSpecs(product.material);
-  const dimensions = parseDimensionSpecs(product.dimensions);
+  const [materials, setMaterials] = useState<MaterialSpec[]>(() =>
+    parseMaterialSpecs(product.material),
+  );
+  const [dimensions, setDimensions] = useState<DimensionSpec[]>(() =>
+    parseDimensionSpecs(product.dimensions),
+  );
+  const commitMaterials = (next: MaterialSpec[]) => {
+    setMaterials(next);
+    setProduct({
+      ...product,
+      material: serializeMaterialSpecs(next),
+    });
+  };
   const updateMaterial = (index: number, patch: Partial<MaterialSpec>) =>
-    setProduct({
-      ...product,
-      material: serializeMaterialSpecs(
-        materials.map((material, itemIndex) =>
-          itemIndex === index ? { ...material, ...patch } : material,
-        ),
+    commitMaterials(
+      materials.map((material, itemIndex) =>
+        itemIndex === index ? { ...material, ...patch } : material,
       ),
-    });
+    );
   const addMaterial = () =>
-    setProduct({
-      ...product,
-      material: serializeMaterialSpecs([
-        ...materials,
-        { type: "", description: "" },
-      ]),
-    });
+    commitMaterials([...materials, { type: "", description: "" }]);
   const removeMaterial = (index: number) =>
+    commitMaterials(materials.filter((_, itemIndex) => itemIndex !== index));
+  const commitDimensions = (next: DimensionSpec[]) => {
+    setDimensions(next);
     setProduct({
       ...product,
-      material: serializeMaterialSpecs(
-        materials.filter((_, itemIndex) => itemIndex !== index),
-      ),
+      dimensions: serializeDimensionSpecs(next),
     });
+  };
   const updateDimension = (index: number, patch: Partial<DimensionSpec>) =>
-    setProduct({
-      ...product,
-      dimensions: serializeDimensionSpecs(
-        dimensions.map((dimension, itemIndex) =>
-          itemIndex === index ? { ...dimension, ...patch } : dimension,
-        ),
+    commitDimensions(
+      dimensions.map((dimension, itemIndex) =>
+        itemIndex === index ? { ...dimension, ...patch } : dimension,
       ),
-    });
+    );
   const addDimension = () =>
-    setProduct({
-      ...product,
-      dimensions: serializeDimensionSpecs([
-        ...dimensions,
-        { label: "", value: "", unit: "cm" },
-      ]),
-    });
+    commitDimensions([
+      ...dimensions,
+      { label: "", value: "", unit: "cm" },
+    ]);
   const removeDimension = (index: number) =>
-    setProduct({
-      ...product,
-      dimensions: serializeDimensionSpecs(
-        dimensions.filter((_, itemIndex) => itemIndex !== index),
-      ),
-    });
+    commitDimensions(dimensions.filter((_, itemIndex) => itemIndex !== index));
   const remove = (index: number) =>
     setProduct({
       ...product,
