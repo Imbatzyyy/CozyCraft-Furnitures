@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createBrowserRouter,
   Link,
@@ -612,15 +613,20 @@ export function ProductEditor({
       images: product.images.filter((_, i) => i !== index),
       main: Math.max(0, Math.min(product.main, index - 1)),
     });
-  return (
-    <div className="fixed inset-0 z-[60] flex justify-end bg-[#201f1d]/40 p-3 sm:p-5">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex justify-end bg-[#201f1d]/40 p-3 sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="product-editor-title"
+    >
       <div className="h-full w-full max-w-3xl overflow-y-auto rounded-3xl bg-card shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-4 sm:px-6 sm:py-5">
           <div>
             <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
               CATALOG EDITOR
             </p>
-            <h3 className="mt-1 text-xl font-semibold">
+            <h3 id="product-editor-title" className="mt-1 text-xl font-semibold">
               {product.id ? "Edit product" : "Add product"}
             </h3>
           </div>
@@ -948,7 +954,8 @@ export function ProductEditor({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
