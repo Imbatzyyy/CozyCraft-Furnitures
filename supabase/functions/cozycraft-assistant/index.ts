@@ -95,7 +95,7 @@ STYLE
 const sanitizeMessages = (value: unknown): ChatMessage[] => {
   if (!Array.isArray(value)) return [];
 
-  return value
+  const messages = value
     .filter(
       (item): item is ChatMessage =>
         typeof item === "object" &&
@@ -104,13 +104,26 @@ const sanitizeMessages = (value: unknown): ChatMessage[] => {
         ["user", "assistant"].includes((item as ChatMessage).role) &&
         typeof (item as ChatMessage).content === "string",
     )
-    .slice(-10)
+    .slice(-6)
     .map((item) => ({
       role: item.role,
-      content: item.content.trim().slice(0, 2_000),
+      content: item.content.trim().slice(0, 700),
     }))
     .filter((item) => item.content.length > 0);
+
+  let remainingCharacters = 3_000;
+  return messages
+    .reverse()
+    .filter((item) => {
+      if (remainingCharacters <= 0) return false;
+      remainingCharacters -= item.content.length;
+      return remainingCharacters >= 0;
+    })
+    .reverse();
 };
+
+const compactText = (value: unknown, maximum: number) =>
+  typeof value === "string" ? value.trim().slice(0, maximum) : value;
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -169,7 +182,7 @@ Deno.serve(async (request) => {
       )
       .eq("status", "active")
       .order("name")
-      .limit(100),
+      .limit(60),
     supabase
       .from("categories")
       .select("name,slug,sort_order")
@@ -243,7 +256,19 @@ Deno.serve(async (request) => {
     generatedAt: new Date().toISOString(),
     storeSettings: settingsResult.data ?? null,
     categories: categoriesResult.data ?? [],
-    products: productsResult.data ?? [],
+    products: (productsResult.data ?? []).map((product) => ({
+      name: product.name,
+      category: product.category,
+      subcategory: product.subcategory,
+      price: product.price,
+      stock: product.stock_quantity,
+      color: compactText(product.color, 80),
+      material: compactText(product.material, 120),
+      dimensions: compactText(product.dimensions, 120),
+      description: compactText(product.description, 180),
+      rating: product.rating,
+      reviews: product.review_count,
+    })),
     currentCustomer: customerContext,
   };
 
@@ -278,14 +303,16 @@ Deno.serve(async (request) => {
     if (!groqResponse.ok) {
       const failure = await groqResponse.text();
       console.error("Groq request failed", groqResponse.status, failure);
+      const isCapacityLimit =
+        groqResponse.status === 413 || groqResponse.status === 429;
       return jsonResponse(
         {
           error:
-            groqResponse.status === 429
+            isCapacityLimit
               ? "The assistant is receiving many requests. Please try again shortly."
               : "The assistant could not respond right now. Please try again.",
         },
-        groqResponse.status === 429 ? 429 : 502,
+        isCapacityLimit ? 429 : 502,
       );
     }
 
