@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const cozyCraftPlatform =
+  typeof window !== "undefined" && window.self !== window.top ? "mobile" : "web";
 
 if (!supabaseUrl || !supabasePublishableKey) {
   throw new Error(
@@ -10,6 +12,9 @@ if (!supabaseUrl || !supabasePublishableKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+  global: {
+    headers: { "x-cozycraft-platform": cozyCraftPlatform },
+  },
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -87,6 +92,7 @@ export type DbProduct = {
   main_image_index: number;
   rating: number;
   review_count: number;
+  created_at: string;
 };
 
 export type DbOrderItem = {

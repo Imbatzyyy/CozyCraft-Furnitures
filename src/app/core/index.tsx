@@ -30,6 +30,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  CircleSlash2,
   ClipboardList,
   CreditCard,
   Download,
@@ -81,6 +82,7 @@ import {
 } from "@/lib/supabase";
 import type { PublicStoreSettings } from "@/lib/store-settings";
 import { functionErrorMessage } from "@/lib/function-error";
+import { matchesCatalogSearch } from "@/lib/catalog-discovery";
 
 
 export type Product = {
@@ -100,6 +102,7 @@ export type Product = {
   description: string;
   images: string[];
   mainImageIndex?: number;
+  createdAt?: string;
 };
 
 export const fallbackProducts: Product[] = [
@@ -518,11 +521,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
     setNotificationOpen(false);
   };
   const matches = products
-    .filter((product) =>
-      `${product.name} ${product.category} ${product.color}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-    )
+    .filter((product) => matchesCatalogSearch(product, query))
     .slice(0, 5);
   const announcementVisible =
     storeSettings.announcement_enabled &&
@@ -1130,11 +1129,13 @@ export function ProductCard({ product }: { product: Product }) {
   const savedNow = saved.includes(product.id);
   const [hovered, setHovered] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
+  const outOfStock = product.stockQuantity === 0;
   useEffect(() => {
     if (!hovered) {
       setImageIndex(0);
       return;
     }
+    if (product.images.length < 2) return;
     const timer = window.setInterval(
       () => setImageIndex((current) => (current + 1) % product.images.length),
       1100,
@@ -1202,10 +1203,12 @@ export function ProductCard({ product }: { product: Product }) {
           </button>
           <button
             onClick={() => add(product.id)}
-            className="grid h-8 w-8 place-items-center rounded-full bg-foreground text-background"
-            aria-label="Add product"
+            disabled={outOfStock}
+            className="grid h-8 w-8 place-items-center rounded-full bg-foreground text-background disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
+            aria-label={outOfStock ? `${product.name} is out of stock` : `Add ${product.name} to bag`}
+            title={outOfStock ? "Out of stock — product details are still available" : "Add to bag"}
           >
-            <Plus size={15} />
+            {outOfStock ? <CircleSlash2 size={15} /> : <Plus size={15} />}
           </button>
         </div>
       </div>

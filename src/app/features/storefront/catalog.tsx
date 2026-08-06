@@ -70,6 +70,11 @@ import {
   filterByPriceRange,
   STOREFRONT_MAX_PRICE,
 } from "@/lib/price-range";
+import {
+  catalogValuesMatch,
+  matchesCatalogSearch,
+  matchesCatalogSubcategory,
+} from "@/lib/catalog-discovery";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -872,8 +877,9 @@ export function CollectionPage() {
   const info =
     roomCollections[current as keyof typeof roomCollections] ??
     roomCollections["living-room"];
-  const groups = Object.keys(info.groups);
-  const [group, setGroup] = useState(groups[0]);
+  const collectionGroups = Object.keys(info.groups);
+  const groups = info.match === "new" ? collectionGroups : ["All", ...collectionGroups];
+  const [group, setGroup] = useState("All");
   const [subcategory, setSubcategory] = useState("");
   const [query, setQuery] = useState("");
   const [availability, setAvailability] = useState("all");
@@ -883,7 +889,7 @@ export function CollectionPage() {
   const [sort, setSort] = useState("featured");
   const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
-    setGroup(groups[0]);
+    setGroup("All");
     setSubcategory("");
     setQuery("");
     setAvailability("all");
@@ -893,27 +899,31 @@ export function CollectionPage() {
     setSort("featured");
   }, [current]);
   const children =
-    (info.groups as Record<string, readonly string[]>)[group] ?? [];
+    group === "All"
+      ? []
+      : (info.groups as Record<string, readonly string[]>)[group] ?? [];
   const matchesSubcategory = (product: Product, value: string) =>
-    product.subcategory === value ||
-    (!product.subcategory &&
-      (subcategoryProductMap[value] ?? []).includes(product.id));
+    matchesCatalogSubcategory(
+      product,
+      value,
+      subcategoryProductMap[value] ?? [],
+    );
   let items =
     info.match === "new"
       ? selectNewArrivals(products, group)
-      : products.filter((p) => p.category === info.match);
-  if (subcategory) {
+      : products.filter((p) => catalogValuesMatch(p.category, info.match));
+  const searchActive = Boolean(query.trim());
+  if (!searchActive && subcategory) {
     items = items.filter((product) =>
       matchesSubcategory(product, subcategory),
     );
-  } else if (info.match !== "new" && children.length) {
+  } else if (!searchActive && info.match !== "new" && children.length) {
     items = items.filter((product) =>
       children.some((child) => matchesSubcategory(product, child)),
     );
   }
   if (query.trim()) {
-    const needle = query.trim().toLowerCase();
-    items = items.filter((product) => `${product.name} ${product.subcategory ?? ""} ${product.color} ${product.material ?? ""}`.toLowerCase().includes(needle));
+    items = items.filter((product) => matchesCatalogSearch(product, query));
   }
   if (availability === "in-stock") items = items.filter((product) => (product.stockQuantity ?? 1) > 8);
   if (availability === "low-stock") items = items.filter((product) => (product.stockQuantity ?? 99) > 0 && (product.stockQuantity ?? 99) <= 8);
@@ -1156,6 +1166,12 @@ export function ProductPage() {
       : null;
   const atStockLimit = stockLimit !== null && quantity >= stockLimit;
   const outOfStock = stockLimit === 0;
+  useEffect(() => {
+    setPhoto(0);
+    setQuantity(1);
+    setReviewFilter("All");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [product.id]);
   useEffect(() => {
     let active=true;
     const remember=async()=>{

@@ -105,6 +105,10 @@ import {
   normalizeStoreSettings,
   type PublicStoreSettings,
 } from "@/lib/store-settings";
+import {
+  catalogValuesMatch,
+  normalizeCatalogValue,
+} from "@/lib/catalog-discovery";
 
 const splashSessionKey = "cozycraft-welcome-seen";
 const publicAvatarPathMarker = "/storage/v1/object/public/avatars/";
@@ -198,9 +202,9 @@ function App() {
 
   const mapProduct = useCallback((row: DbProduct, lowStockThreshold = 8): Product => ({
     id: row.id,
-    name: row.name,
-    category: row.category,
-    subcategory: row.subcategory,
+    name: row.name.trim(),
+    category: row.category.trim().replace(/\s+/g, " "),
+    subcategory: row.subcategory?.trim().replace(/\s+/g, " "),
     price: Number(row.price),
     rating: Number(row.rating).toFixed(1),
     reviews: row.review_count,
@@ -213,6 +217,7 @@ function App() {
     description: row.description,
     images: row.images ?? [],
     mainImageIndex: row.main_image_index,
+    createdAt: row.created_at,
   }), []);
 
   const refreshProducts = useCallback(async () => {
@@ -240,18 +245,17 @@ function App() {
     const activeCategories = new Set(
       (categoryResult.data ?? [])
         .filter((category) => category.active)
-        .map((category) => category.name),
+        .map((category) => normalizeCatalogValue(category.name)),
     );
     setAdminProducts(mapped);
     setProducts(
       mapped.filter(
         (item) =>
           item.status === "active" &&
-          !(
-            normalizedSettings.fulfillment_settings.out_of_stock_behavior ===
-              "hide" && item.stockQuantity === 0
-          ) &&
-          (!activeCategories.size || activeCategories.has(item.category)),
+          (!activeCategories.size ||
+            [...activeCategories].some((category) =>
+              catalogValuesMatch(category, item.category),
+            )),
       ),
     );
   }, [mapProduct]);

@@ -1736,6 +1736,8 @@ export function SupportPage() {
 export function ActivityLogsPage() {
   const [scope, setScope] = useState("all");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -1746,7 +1748,9 @@ export function ActivityLogsPage() {
     entity_id: string | null;
     details: Record<string, unknown>;
     created_at: string;
-    profiles: { full_name: string | null; email: string | null } | null;
+    platform: "web" | "mobile" | "edge" | "system";
+    actor_role: string | null;
+    profiles: { full_name: string | null; email: string | null; role: string | null } | null;
   };
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const loadActivity = useCallback(async () => {
@@ -1754,8 +1758,8 @@ export function ActivityLogsPage() {
     const since = new Date();
     since.setDate(since.getDate() - 7);
     const [activityResult, errorResult] = await Promise.all([
-      supabase.from("activity_logs").select("id,action,entity_type,entity_id,details,created_at,profiles!activity_logs_actor_id_fkey(full_name,email)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(500),
-      supabase.from("client_error_events").select("id,message,stack,path,context,user_agent,created_at,profiles!client_error_events_user_id_fkey(full_name,email)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(200),
+      supabase.from("activity_logs").select("id,action,entity_type,entity_id,details,created_at,platform,actor_role,profiles!activity_logs_actor_id_fkey(full_name,email,role)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(1000),
+      supabase.from("client_error_events").select("id,message,stack,path,context,user_agent,created_at,profiles!client_error_events_user_id_fkey(full_name,email,role)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(300),
     ]);
     if (activityResult.error || errorResult.error) {
       setError(activityResult.error?.message ?? errorResult.error?.message ?? "Unable to load activity.");
@@ -1769,6 +1773,8 @@ export function ActivityLogsPage() {
       entity_id:null,
       details:{message:event.message,path:event.path,context:event.context,stack:event.stack},
       created_at:event.created_at,
+      platform:/(android|iphone|ipad|mobile|capacitor|cordova)/i.test(String(event.user_agent??""))?"mobile":"web",
+      actor_role:event.profiles?.role??null,
       profiles:event.profiles,
     }));
     const activityRows: ActivityRow[] = (activityResult.data ?? []).map((event) => ({
@@ -1833,9 +1839,17 @@ export function ActivityLogsPage() {
       row.entity_id,
       row.profiles?.full_name,
       row.profiles?.email,
+      row.profiles?.role,
+      row.actor_role,
+      row.platform,
       JSON.stringify(row.details),
     ].some((value) => String(value ?? "").toLowerCase().includes(normalizedQuery));
   });
+  useEffect(() => setPage(1), [scope, query, pageSize]);
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  useEffect(() => setPage((current) => Math.min(current, totalPages)), [totalPages]);
+  const pageStart = (page - 1) * pageSize;
+  const paginatedRows = filteredRows.slice(pageStart, pageStart + pageSize);
   const humanizeAction = (action: string) =>
     action
       .replace(/^insert_/, "created ")
@@ -1880,6 +1894,16 @@ export function ActivityLogsPage() {
               <option value={value} key={value}>{label}</option>
             ))}
           </select>
+          <select
+            value={pageSize}
+            onChange={(event) => setPageSize(Number(event.target.value))}
+            aria-label="Activity rows per page"
+            className="h-10 rounded-xl border border-border bg-card px-3 text-xs"
+          >
+            <option value={20}>20 per page</option>
+            <option value={50}>50 per page</option>
+            <option value={100}>100 per page</option>
+          </select>
           <button
             type="button"
             onClick={() => void loadActivity()}
@@ -1906,16 +1930,20 @@ export function ActivityLogsPage() {
               Loading live activity…
             </p>
           )}
-          {filteredRows.map((row, i) => (
+          {paginatedRows.map((row, i) => (
             <div className="relative flex gap-4" key={row.id}>
               <span className="mt-1.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-secondary text-xs font-bold">
-                {i + 1}
+                {pageStart + i + 1}
               </span>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm">
                   <b>{row.profiles?.full_name || row.profiles?.email || "System"}</b>{" "}
                   {humanizeAction(row.action)}
                 </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <span className="rounded-full bg-secondary px-2 py-1 text-[9px] font-bold uppercase tracking-wide">{row.platform}</span>
+                  {(row.actor_role || row.profiles?.role) && <span className="rounded-full border border-border px-2 py-1 text-[9px] font-bold uppercase tracking-wide">{row.actor_role || row.profiles?.role}</span>}
+                </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {String(
                     row.details?.name ||
@@ -1936,6 +1964,18 @@ export function ActivityLogsPage() {
             </p>
           )}
         </div>
+        {!loading && filteredRows.length > 0 && (
+          <div className="mt-7 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Showing {pageStart + 1}–{Math.min(pageStart + pageSize, filteredRows.length)} of {filteredRows.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex h-9 items-center gap-1 rounded-xl border border-border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft size={14} /> Previous</button>
+              <span className="px-2 text-xs font-semibold">Page {page} of {totalPages}</span>
+              <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page === totalPages} className="inline-flex h-9 items-center gap-1 rounded-xl border border-border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40">Next <ChevronRight size={14} /></button>
+            </div>
+          </div>
+        )}
       </section>
     </AdminShell>
   );
