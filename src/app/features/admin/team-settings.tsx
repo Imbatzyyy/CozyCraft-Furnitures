@@ -71,7 +71,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   isStaffRole,
   safeFileName,
-  supabase,
+  adminSupabase as supabase,
   type DbCustomerProfile,
   type DbOrder,
   type DbProduct,

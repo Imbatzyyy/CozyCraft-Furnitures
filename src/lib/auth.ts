@@ -1,4 +1,9 @@
-import { isStaffRole, supabase, type DbRole } from "./supabase";
+import {
+  adminSupabase,
+  isStaffRole,
+  supabase,
+  type DbRole,
+} from "./supabase";
 
 export type AuthPortal = "customer" | "admin";
 
@@ -53,9 +58,10 @@ export async function signInForPortal(
   password: string,
   portal: AuthPortal,
 ): Promise<PortalSignInResult> {
+  const authClient = portal === "admin" ? adminSupabase : supabase;
   const normalizedEmail = email.trim().toLowerCase();
   const { data, error: authError } =
-    await supabase.auth.signInWithPassword({
+    await authClient.auth.signInWithPassword({
       email: normalizedEmail,
       password,
     });
@@ -69,14 +75,14 @@ export async function signInForPortal(
     };
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile, error: profileError } = await authClient
     .from("profiles")
     .select("role,staff_active")
     .eq("id", data.user.id)
     .single();
 
   if (profileError || !profile?.role) {
-    await supabase.auth.signOut({ scope: "local" });
+    await authClient.auth.signOut({ scope: "local" });
     return {
       ok: false,
       role: null,
@@ -88,7 +94,7 @@ export async function signInForPortal(
 
   const role = profile.role as DbRole;
   if (isStaffRole(role) && profile.staff_active === false) {
-    await supabase.auth.signOut({ scope: "local" });
+    await authClient.auth.signOut({ scope: "local" });
     return {
       ok: false,
       role,
@@ -98,7 +104,7 @@ export async function signInForPortal(
     };
   }
   if (!roleCanUsePortal(role, portal)) {
-    await supabase.auth.signOut({ scope: "local" });
+    await authClient.auth.signOut({ scope: "local" });
     return {
       ok: false,
       role,

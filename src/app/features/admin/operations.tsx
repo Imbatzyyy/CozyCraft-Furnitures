@@ -70,7 +70,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   isStaffRole,
   safeFileName,
-  supabase,
+  adminSupabase as supabase,
   type DbCustomerProfile,
   type DbOrder,
   type DbProduct,
@@ -120,7 +120,8 @@ import {
 } from "@/lib/admin-metrics";
 
 export function AdminOverview() {
-  const { orders, adminProducts, user, refreshOrders } = useStore();
+  const { orders, adminProducts, refreshOrders } = useStore();
+  const { user } = useAdminSession();
   const [now, setNow] = useState(() => new Date());
   const firstName = user?.trim().split(/\s+/)[0] || "there";
   const philippineHour = Number(

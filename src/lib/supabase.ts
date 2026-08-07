@@ -4,6 +4,12 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const cozyCraftPlatform =
   typeof window !== "undefined" && window.self !== window.top ? "mobile" : "web";
+const isAdminAuthRoute =
+  typeof window !== "undefined" &&
+  window.location.pathname.startsWith("/admin");
+
+export const customerAuthStorageKey = "cozycraft-customer-auth";
+export const adminAuthStorageKey = "cozycraft-admin-auth";
 
 if (!supabaseUrl || !supabasePublishableKey) {
   throw new Error(
@@ -11,16 +17,40 @@ if (!supabaseUrl || !supabasePublishableKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+const sharedOptions = {
   global: {
     headers: { "x-cozycraft-platform": cozyCraftPlatform },
   },
+} as const;
+
+/**
+ * Storefront and operations intentionally use different GoTrue storage keys.
+ * This lets a customer and an administrator use the same browser without one
+ * portal overwriting—or exposing—the other portal's authenticated session.
+ */
+export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+  ...sharedOptions,
   auth: {
+    storageKey: customerAuthStorageKey,
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: !isAdminAuthRoute,
   },
 });
+
+export const adminSupabase = createClient(
+  supabaseUrl,
+  supabasePublishableKey,
+  {
+    ...sharedOptions,
+    auth: {
+      storageKey: adminAuthStorageKey,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: isAdminAuthRoute,
+    },
+  },
+);
 
 export type DbRole = "customer" | "staff" | "admin" | "superadmin";
 

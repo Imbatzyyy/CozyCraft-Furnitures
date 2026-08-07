@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { isExistingAccountSignUpResult } from "./auth";
+import {
+  adminAuthStorageKey,
+  customerAuthStorageKey,
+} from "./supabase";
+
+describe("portal session isolation", () => {
+  it("uses independent browser storage for customers and administrators", () => {
+    expect(customerAuthStorageKey).not.toBe(adminAuthStorageKey);
+    expect(customerAuthStorageKey).toContain("customer");
+    expect(adminAuthStorageKey).toContain("admin");
+  });
+});
 
 describe("isExistingAccountSignUpResult", () => {
   it("detects Supabase's obfuscated duplicate signup response", () => {

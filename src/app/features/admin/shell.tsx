@@ -72,7 +72,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   isStaffRole,
   safeFileName,
-  supabase,
+  adminSupabase as supabase,
   type DbCustomerProfile,
   type DbOrder,
   type DbProduct,
@@ -113,7 +113,12 @@ import {
 
 export function AdminLogin() {
   const nav = useNavigate();
-  const { role, authReady, user, signOut } = useStore();
+  const {
+    databaseRole: role,
+    authReady,
+    user,
+    signOut,
+  } = useAdminSession();
   const [loading, setLoading] = useState(false);
   const [show, setShow] = useState(false);
   const [email, setEmail] = useState("");
@@ -431,7 +436,12 @@ export function AdminShell({
   const [mfaBusy, setMfaBusy] = useState(false);
   const [adminSecurity, setAdminSecurity] = useState({ require_admin_mfa: true, session_timeout_minutes: 480 });
   const { role } = useAdminSession();
-  const { role: databaseRole, authReady, signOut, user } = useStore();
+  const {
+    databaseRole,
+    authReady,
+    signOut,
+    user,
+  } = useAdminSession();
   const accountName = user?.trim() || "Team Member";
   const accountInitials = accountName
     .split(/\s+/)
@@ -676,7 +686,7 @@ export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const nav = useNavigate();
   const location = useLocation();
-  const { userId } = useStore();
+  const { userId } = useAdminSession();
   type NotificationItem = {
     id: number;
     kind: "order" | "review" | "support" | "inventory";
@@ -937,7 +947,11 @@ export function NotificationCenter() {
 
 export function AdminSetupAccount() {
   const navigate = useNavigate();
-  const { authReady, role, userEmail } = useStore();
+  const {
+    authReady,
+    databaseRole: role,
+    userEmail,
+  } = useAdminSession();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);

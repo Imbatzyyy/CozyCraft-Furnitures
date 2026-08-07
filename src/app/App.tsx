@@ -70,6 +70,7 @@ import { ResilientImage } from "@/app/components/media/ResilientImage";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
+  adminSupabase,
   isStaffRole,
   safeFileName,
   supabase,
@@ -124,17 +125,31 @@ function avatarObjectPath(value: string | null | undefined) {
   return /^https?:\/\//i.test(value) ? null : value;
 }
 
-async function privateAvatarUrl(value: string | null | undefined) {
+async function privateAvatarUrl(
+  value: string | null | undefined,
+  client: typeof supabase = supabase,
+) {
   if (!value) return null;
   const path = avatarObjectPath(value);
   if (!path) return value;
-  const { data, error } = await supabase.storage
+  const { data, error } = await client.storage
     .from("avatars")
     .createSignedUrl(path, 60 * 60);
   return error ? null : data.signedUrl;
 }
 
 function App() {
+  const [adminPortal, setAdminPortal] = useState(() =>
+    window.location.pathname.startsWith("/admin"),
+  );
+  useEffect(
+    () =>
+      router.subscribe((state) => {
+        setAdminPortal(state.location.pathname.startsWith("/admin"));
+      }),
+    [],
+  );
+  const portalSupabase = adminPortal ? adminSupabase : supabase;
   const [splash, setSplash] = useState(
     () => window.sessionStorage.getItem(splashSessionKey) !== "1",
   );
@@ -160,6 +175,12 @@ function App() {
   const [hasPassword, setHasPassword] = useState(false);
   const [role, setRole] = useState<DbRole | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [adminUserId, setAdminUserId] = useState<string | null>(null);
+  const [adminUser, setAdminUser] = useState<string | null>(null);
+  const [adminUserEmail, setAdminUserEmail] = useState<string | null>(null);
+  const [adminDatabaseRole, setAdminDatabaseRole] =
+    useState<DbRole | null>(null);
+  const [adminAuthReady, setAdminAuthReady] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -168,7 +189,6 @@ function App() {
     DbCustomerProfile[]
   >([]);
   const [supportTickets, setSupportTickets] = useState<DbSupportTicket[]>([]);
-  const [adminRole, setAdminRole] = useState<AdminRole>("Staff");
   const [shopPrompt, setShopPrompt] = useState(false);
   const [fly, setFly] = useState<FlyState | null>(null);
 
@@ -222,12 +242,12 @@ function App() {
 
   const refreshProducts = useCallback(async () => {
     const [productResult, categoryResult, settingResult] = await Promise.all([
-      supabase
+      portalSupabase
         .from("products")
         .select("*")
         .order("created_at", { ascending: false }),
-      supabase.from("categories").select("name,active"),
-      supabase
+      portalSupabase.from("categories").select("name,active"),
+      portalSupabase
         .from("store_settings")
         .select("*")
         .eq("id", true)
@@ -258,10 +278,10 @@ function App() {
             )),
       ),
     );
-  }, [mapProduct]);
+  }, [mapProduct, portalSupabase]);
 
   const refreshOrders = useCallback(async () => {
-    const loadOrders = () => supabase
+    const loadOrders = () => portalSupabase
       .from("orders")
       .select(
         "*, order_items(*), order_status_history(*), profiles!orders_user_id_fkey(full_name,email,phone)",
@@ -276,7 +296,7 @@ function App() {
       )
       .map((order) => order.id);
     if (!error && pendingOnlineOrderIds.length) {
-      const { data: syncResult } = await supabase.functions.invoke(
+      const { data: syncResult } = await portalSupabase.functions.invoke(
         "sync-paymongo-payments",
         { body: { orderIds: pendingOnlineOrderIds } },
       );
@@ -285,7 +305,7 @@ function App() {
       }
     }
     if (!error) setOrders((data ?? []) as DbOrder[]);
-  }, []);
+  }, [portalSupabase]);
 
   const refreshAccountCollections = useCallback(async (id: string) => {
     const [cartResult, wishlistResult] = await Promise.all([
@@ -315,7 +335,7 @@ function App() {
   }, []);
 
   const refreshCustomers = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await portalSupabase
       .from("profiles")
       .select(
         "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,created_at,addresses!addresses_user_id_fkey(*),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
@@ -326,22 +346,22 @@ function App() {
       const protectedProfiles = await Promise.all(
         ((data ?? []) as DbCustomerProfile[]).map(async (profile) => ({
           ...profile,
-          avatar_url: await privateAvatarUrl(profile.avatar_url),
+          avatar_url: await privateAvatarUrl(profile.avatar_url, portalSupabase),
         })),
       );
       setCustomerProfiles(protectedProfiles);
     }
-  }, []);
+  }, [portalSupabase]);
 
   const refreshTickets = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await portalSupabase
       .from("support_tickets")
       .select(
         "*, profiles!support_tickets_user_id_fkey(full_name,email)",
       )
       .order("created_at", { ascending: false });
     if (!error) setSupportTickets((data ?? []) as DbSupportTicket[]);
-  }, []);
+  }, [portalSupabase]);
 
   const loadAccount = useCallback(async (
     id: string,
@@ -391,7 +411,7 @@ function App() {
       return;
     }
     const accountRole = (profile.role as DbRole) ?? "customer";
-    if (isStaffRole(accountRole) && profile.staff_active === false) {
+    if (accountRole !== "customer") {
       await supabase.auth.signOut({ scope: "local" });
       return;
     }
@@ -435,9 +455,6 @@ function App() {
       refreshOrders(),
       refreshProducts(),
       refreshTickets(),
-      ...(accountRole === "admin" || accountRole === "superadmin"
-        ? [refreshCustomers()]
-        : []),
     ]);
   }, [refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
 
@@ -487,6 +504,145 @@ function App() {
     return () => subscription.unsubscribe();
   }, [loadAccount, refreshProducts]);
 
+  const clearAdminAccount = useCallback(() => {
+    setAdminUserId(null);
+    setAdminUser(null);
+    setAdminUserEmail(null);
+    setAdminDatabaseRole(null);
+  }, []);
+
+  const loadAdminAccount = useCallback(
+    async (id: string, email: string | null) => {
+      const { data: profile, error } = await adminSupabase
+        .from("profiles")
+        .select("full_name,email,role,staff_active")
+        .eq("id", id)
+        .single();
+      const {
+        data: { session },
+      } = await adminSupabase.auth.getSession();
+      if (session?.user.id !== id) return;
+      const databaseRole = profile?.role as DbRole | undefined;
+      if (
+        error ||
+        !databaseRole ||
+        !isStaffRole(databaseRole) ||
+        profile.staff_active === false
+      ) {
+        clearAdminAccount();
+        await adminSupabase.auth.signOut({ scope: "local" });
+        return;
+      }
+      setAdminUserId(id);
+      setAdminUserEmail(profile.email || email);
+      setAdminUser(
+        profile.full_name || profile.email?.split("@")[0] || "Team Member",
+      );
+      setAdminDatabaseRole(databaseRole);
+    },
+    [clearAdminAccount],
+  );
+
+  useEffect(() => {
+    const hydrateAdmin = async () => {
+      const {
+        data: { session },
+      } = await adminSupabase.auth.getSession();
+      if (session?.user) {
+        await loadAdminAccount(
+          session.user.id,
+          session.user.email ?? null,
+        );
+      } else {
+        clearAdminAccount();
+      }
+      setAdminAuthReady(true);
+    };
+    void hydrateAdmin();
+    const {
+      data: { subscription },
+    } = adminSupabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) setAdminAuthReady(false);
+      window.setTimeout(() => {
+        if (session?.user) {
+          void loadAdminAccount(
+            session.user.id,
+            session.user.email ?? null,
+          ).finally(() => setAdminAuthReady(true));
+        } else {
+          clearAdminAccount();
+          setAdminAuthReady(true);
+        }
+      }, 0);
+    });
+    return () => subscription.unsubscribe();
+  }, [clearAdminAccount, loadAdminAccount]);
+
+  useEffect(() => {
+    if (!adminUserId) return;
+    const refreshAdminAccess = () => {
+      void adminSupabase.auth.getUser().then(({ data }) => {
+        if (!data.user || data.user.id !== adminUserId) return;
+        void loadAdminAccount(
+          data.user.id,
+          data.user.email ?? null,
+        );
+      });
+    };
+    const channel = adminSupabase
+      .channel(`admin-profile-access-${adminUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${adminUserId}`,
+        },
+        refreshAdminAccess,
+      )
+      .subscribe();
+    window.addEventListener("focus", refreshAdminAccess);
+    return () => {
+      window.removeEventListener("focus", refreshAdminAccess);
+      void adminSupabase.removeChannel(channel);
+    };
+  }, [adminUserId, loadAdminAccount]);
+
+  useEffect(() => {
+    if (!adminPortal) {
+      setCustomerProfiles([]);
+      if (!userId) {
+        setOrders([]);
+        setSupportTickets([]);
+      }
+      void refreshProducts();
+      if (userId) {
+        void Promise.all([refreshOrders(), refreshTickets()]);
+      }
+      return;
+    }
+    setOrders([]);
+    setCustomerProfiles([]);
+    setSupportTickets([]);
+    if (adminUserId) {
+      void Promise.all([
+        refreshProducts(),
+        refreshOrders(),
+        refreshCustomers(),
+        refreshTickets(),
+      ]);
+    }
+  }, [
+    adminPortal,
+    adminUserId,
+    refreshCustomers,
+    refreshOrders,
+    refreshProducts,
+    refreshTickets,
+    userId,
+  ]);
+
   useEffect(() => {
     if (!userId) return;
     const refreshCurrentAccess = async () => {
@@ -525,15 +681,12 @@ function App() {
     };
   }, [loadAccount, userId]);
 
-  useEffect(() => {
-    setAdminRole(
-      role === "superadmin"
-        ? "Super Administrator"
-        : role === "admin"
-          ? "Administrator"
-          : "Staff",
-    );
-  }, [role]);
+  const adminRole: AdminRole =
+    adminDatabaseRole === "superadmin"
+      ? "Super Administrator"
+      : adminDatabaseRole === "admin"
+        ? "Administrator"
+        : "Staff";
 
   useEffect(() => {
     const timer = splash
@@ -542,7 +695,7 @@ function App() {
           setSplash(false);
         }, 1500)
       : undefined;
-    const channel = supabase
+    const channel = portalSupabase
       .channel("cozycraft-live-commerce")
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => void refreshProducts())
       .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, () => void refreshProducts())
@@ -562,9 +715,9 @@ function App() {
       .subscribe();
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);
-      void supabase.removeChannel(channel);
+      void portalSupabase.removeChannel(channel);
     };
-  }, [refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
+  }, [portalSupabase, refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
 
   useEffect(() => {
     if (!userId) return;
@@ -907,6 +1060,10 @@ function App() {
     await supabase.auth.signOut({ scope: "local" });
   };
 
+  const signOutAdmin = useCallback(async () => {
+    await adminSupabase.auth.signOut({ scope: "local" });
+  }, []);
+
   const placeOrder = async (
     addressId: string,
     paymentMethod: string,
@@ -1019,12 +1176,16 @@ function App() {
     if (status === "delivered" && order?.payment_method === "cod") {
       payload.payment_status = "paid";
     }
-    const { error } = await supabase.from("orders").update(payload).eq("id", id);
+    const { error } = await adminSupabase
+      .from("orders")
+      .update(payload)
+      .eq("id", id);
     if (!error) await refreshOrders();
     return error?.message ?? null;
   };
   const cancelOrder = async (id: string, reason: string) => {
-    const { data, error } = await supabase.functions.invoke("cancel-order", {
+    const client = adminPortal ? adminSupabase : supabase;
+    const { data, error } = await client.functions.invoke("cancel-order", {
       body: { orderId: id, reason },
     });
     if (error || data?.error) {
@@ -1035,18 +1196,18 @@ function App() {
   };
   const saveProduct = async (product: ManagedProduct) => {
     const id = product.id || product.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const { error } = await supabase.from("products").upsert({ id, name:product.name, description:product.description, category:product.category, subcategory:product.subcategory, price:product.price, stock_quantity:product.quantity, status:product.status.toLowerCase(), images:product.images, main_image_index:product.main, material:product.material, dimensions:product.dimensions }, { onConflict:"id" });
+    const { error } = await adminSupabase.from("products").upsert({ id, name:product.name, description:product.description, category:product.category, subcategory:product.subcategory, price:product.price, stock_quantity:product.quantity, status:product.status.toLowerCase(), images:product.images, main_image_index:product.main, material:product.material, dimensions:product.dimensions }, { onConflict:"id" });
     if (!error) await refreshProducts();
     return error?.message ?? null;
   };
-  const deleteProduct = async (id: string) => { const { error } = await supabase.from("products").delete().eq("id", id); if (!error) await refreshProducts(); return error?.message ?? null; };
+  const deleteProduct = async (id: string) => { const { error } = await adminSupabase.from("products").delete().eq("id", id); if (!error) await refreshProducts(); return error?.message ?? null; };
   const uploadProductImages = async (files: File[]) => {
     const urls: string[] = [];
     for (const file of files) {
       const path = Date.now() + "-" + crypto.randomUUID() + "-" + safeFileName(file.name);
-      const { error } = await supabase.storage.from("product-images").upload(path, file);
+      const { error } = await adminSupabase.storage.from("product-images").upload(path, file);
       if (error) continue;
-      const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+      const { data } = adminSupabase.storage.from("product-images").getPublicUrl(path);
       urls.push(data.publicUrl);
     }
     return urls;
@@ -1152,7 +1313,7 @@ function App() {
     reply: string,
     status: DbSupportTicket["status"] = "in_progress",
   ) => {
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from("support_tickets")
       .update({ admin_reply: reply, status })
       .eq("id", id);
@@ -1165,7 +1326,7 @@ function App() {
     id: string,
     status: DbSupportTicket["status"],
   ) => {
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from("support_tickets")
       .update({ status })
       .eq("id", id);
@@ -1329,7 +1490,15 @@ function App() {
   return (
     <StoreContext.Provider value={store}>
       <AdminSessionContext.Provider
-        value={{ role: adminRole, setRole: setAdminRole }}
+        value={{
+          role: adminRole,
+          databaseRole: adminDatabaseRole,
+          authReady: adminAuthReady,
+          userId: adminUserId,
+          user: adminUser,
+          userEmail: adminUserEmail,
+          signOut: signOutAdmin,
+        }}
       >
         {splash ? <Splash /> : <RouterProvider router={router} />}
         {!splash && <UsernameSetupGate />}

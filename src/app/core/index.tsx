@@ -395,7 +395,15 @@ export const StoreContext = createContext<Store | null>(null);
 
 export type AdminRole = "Super Administrator" | "Administrator" | "Staff";
 
-export type AdminSession = { role: AdminRole; setRole: (role: AdminRole) => void };
+export type AdminSession = {
+  role: AdminRole;
+  databaseRole: DbRole | null;
+  authReady: boolean;
+  userId: string | null;
+  user: string | null;
+  userEmail: string | null;
+  signOut: () => Promise<void>;
+};
 
 export const AdminSessionContext = createContext<AdminSession | null>(null);
 
