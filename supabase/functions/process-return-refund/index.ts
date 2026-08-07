@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 
 const canonicalOrigin="https://www.cozycraftfurnitures.com";
 const allowedOrigins=new Set([canonicalOrigin,"https://cozycraftfurnitures.com"]);
-const cors=(r:Request)=>({"Access-Control-Allow-Origin":allowedOrigins.has(r.headers.get("Origin")??"")?r.headers.get("Origin")!:canonicalOrigin,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS","Vary":"Origin"});
+const cors=(r:Request)=>({"Access-Control-Allow-Origin":allowedOrigins.has(r.headers.get("Origin")??"")?r.headers.get("Origin")!:canonicalOrigin,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-cozycraft-platform","Access-Control-Allow-Methods":"POST, OPTIONS","Vary":"Origin"});
 const json=(r:Request,b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors(r),"Content-Type":"application/json"}});
 
 Deno.serve(async(request)=>{

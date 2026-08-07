@@ -116,6 +116,7 @@ import {
   type AdminSecuritySettings,
   type PublicStoreSettings,
 } from "@/lib/store-settings";
+import { functionErrorMessage } from "@/lib/function-error";
 
 export type TeamMember = {
   id: string;
@@ -202,7 +203,13 @@ export function TeamAccessPage() {
       },
     );
     if (invokeError || data?.error) {
-      setError(data?.error ?? invokeError?.message ?? "Unable to invite member.");
+      setError(
+        data?.error ??
+          (await functionErrorMessage(
+            invokeError,
+            "Unable to send the invitation. Please try again.",
+          )),
+      );
     } else {
       setNotice(data.message);
       setFullName("");
@@ -226,7 +233,13 @@ export function TeamAccessPage() {
       },
     );
     if (invokeError || data?.error) {
-      setError(data?.error ?? invokeError?.message ?? "Unable to update role.");
+      setError(
+        data?.error ??
+          (await functionErrorMessage(
+            invokeError,
+            "Unable to update the team member's role.",
+          )),
+      );
       return;
     }
     setNotice(data.message);
@@ -258,7 +271,11 @@ export function TeamAccessPage() {
     );
     if (invokeError || data?.error) {
       setError(
-        data?.error ?? invokeError?.message ?? "Unable to update account status.",
+        data?.error ??
+          (await functionErrorMessage(
+            invokeError,
+            "Unable to update the team member's access.",
+          )),
       );
       return;
     }
