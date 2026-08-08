@@ -536,52 +536,54 @@ export function ProductManager() {
         />
       )}{" "}
       {notice && <Toast message={notice} close={() => setNotice("")} />}
-      {duplicateWarning && (
-        <div
-          className="fixed inset-0 z-[130] grid place-items-center bg-black/45 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="duplicate-product-title"
-        >
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
-                  DUPLICATE PRODUCT
-                </p>
-                <h3
-                  id="duplicate-product-title"
-                  className="mt-2 font-serif text-3xl"
+      {duplicateWarning &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[200] grid place-items-center bg-black/60 p-4 backdrop-blur-[2px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="duplicate-product-title"
+          >
+            <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                    DUPLICATE PRODUCT
+                  </p>
+                  <h3
+                    id="duplicate-product-title"
+                    className="mt-2 font-serif text-3xl"
+                  >
+                    This product already exists.
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateWarning(null)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border"
+                  aria-label="Close duplicate product warning"
                 >
-                  This product already exists.
-                </h3>
+                  <X size={17} />
+                </button>
               </div>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                <b className="text-foreground">{duplicateWarning.name}</b> is
+                already saved in {duplicateWarning.category} →{" "}
+                {duplicateWarning.subcategory}. A different category or
+                subcategory may use the same name, but this exact catalog
+                placement cannot contain another copy.
+              </p>
               <button
                 type="button"
                 onClick={() => setDuplicateWarning(null)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border"
-                aria-label="Close duplicate product warning"
+                className="mt-6 w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
               >
-                <X size={17} />
+                Return to product editor
               </button>
             </div>
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              <b className="text-foreground">{duplicateWarning.name}</b> is
-              already saved in {duplicateWarning.category} →{" "}
-              {duplicateWarning.subcategory}. A different category or
-              subcategory may use the same name, but this exact catalog
-              placement cannot contain another copy.
-            </p>
-            <button
-              type="button"
-              onClick={() => setDuplicateWarning(null)}
-              className="mt-6 w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
-            >
-              Return to product editor
-            </button>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </AdminShell>
   );
 }
