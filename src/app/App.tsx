@@ -1194,9 +1194,31 @@ function App() {
     await Promise.all([refreshOrders(), refreshProducts()]);
     return null;
   };
-  const saveProduct = async (product: ManagedProduct) => {
-    const id = product.id || product.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const { error } = await adminSupabase.from("products").upsert({ id, name:product.name, description:product.description, category:product.category, subcategory:product.subcategory, price:product.price, stock_quantity:product.quantity, status:product.status.toLowerCase(), images:product.images, main_image_index:product.main, material:product.material, dimensions:product.dimensions }, { onConflict:"id" });
+  const saveProduct = async (
+    product: ManagedProduct,
+    options: { create?: boolean } = {},
+  ) => {
+    const payload = {
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      category: product.category,
+      subcategory: product.subcategory,
+      price: product.price,
+      stock_quantity: product.quantity,
+      status: product.status.toLowerCase(),
+      images: product.images,
+      main_image_index: product.main,
+      material: product.material,
+      dimensions: product.dimensions,
+    };
+    const result = options.create
+      ? await adminSupabase.from("products").insert(payload)
+      : await adminSupabase.from("products").update(payload).eq("id", product.id);
+    const { error } = result;
+    if (error?.code === "23505") {
+      return `A product named “${product.name}” already exists in ${product.category} → ${product.subcategory}. Choose another name or product type.`;
+    }
     if (!error) await refreshProducts();
     return error?.message ?? null;
   };

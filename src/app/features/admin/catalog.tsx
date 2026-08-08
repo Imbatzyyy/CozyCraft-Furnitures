@@ -86,6 +86,10 @@ import {
   type DimensionSpec,
   type MaterialSpec,
 } from "@/lib/product-specs";
+import {
+  createProductId,
+  productsShareCatalogIdentity,
+} from "@/lib/product-identity";
 
 import {
   Product,
@@ -242,6 +246,8 @@ export function ProductManager() {
   const [menu, setMenu] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [duplicateWarning, setDuplicateWarning] =
+    useState<ManagedProduct | null>(null);
   const showForm = (item?: ManagedProduct) => {
     setEditing(
       item
@@ -270,18 +276,37 @@ export function ProductManager() {
       setError("Choose a valid room category and product subcategory.");
       return;
     }
+    const duplicate = items.find(
+      (item) =>
+        item.id !== editing.id &&
+        productsShareCatalogIdentity(item, editing),
+    );
+    if (duplicate) {
+      setError("");
+      setDuplicateWarning(duplicate);
+      return;
+    }
+    const isCreating = !editing.id;
     const result = {
       ...editing,
       id:
         editing.id ||
-        editing.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-"),
+        createProductId(editing, crypto.randomUUID()),
       name: editing.name.trim(),
       description: editing.description.trim(),
       material: serializeMaterialSpecs(parseMaterialSpecs(editing.material)),
       dimensions: serializeDimensionSpecs(parseDimensionSpecs(editing.dimensions)),
     };
-    const saveError = await saveProduct(result);
-    if (saveError) { setError(saveError); return; }
+    const saveError = await saveProduct(result, { create: isCreating });
+    if (saveError) {
+      if (saveError.includes("already exists")) {
+        setError("");
+        setDuplicateWarning(result);
+      } else {
+        setError(saveError);
+      }
+      return;
+    }
     setItems((current) => current.some(i=>i.id===result.id) ? current.map(i=>i.id===result.id?result:i) : [result,...current]);
     setEditing(null); setNotice(result.name + (editing.id ? " updated." : " created."));
   };
@@ -511,6 +536,52 @@ export function ProductManager() {
         />
       )}{" "}
       {notice && <Toast message={notice} close={() => setNotice("")} />}
+      {duplicateWarning && (
+        <div
+          className="fixed inset-0 z-[130] grid place-items-center bg-black/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="duplicate-product-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                  DUPLICATE PRODUCT
+                </p>
+                <h3
+                  id="duplicate-product-title"
+                  className="mt-2 font-serif text-3xl"
+                >
+                  This product already exists.
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateWarning(null)}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border"
+                aria-label="Close duplicate product warning"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              <b className="text-foreground">{duplicateWarning.name}</b> is
+              already saved in {duplicateWarning.category} →{" "}
+              {duplicateWarning.subcategory}. A different category or
+              subcategory may use the same name, but this exact catalog
+              placement cannot contain another copy.
+            </p>
+            <button
+              type="button"
+              onClick={() => setDuplicateWarning(null)}
+              className="mt-6 w-full rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+            >
+              Return to product editor
+            </button>
+          </div>
+        </div>
+      )}
     </AdminShell>
   );
 }

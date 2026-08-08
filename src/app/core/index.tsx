@@ -356,7 +356,10 @@ export type Store = {
     status: DbOrder["status"],
   ) => Promise<string | null>;
   cancelOrder: (id: string, reason: string) => Promise<string | null>;
-  saveProduct: (product: ManagedProduct) => Promise<string | null>;
+  saveProduct: (
+    product: ManagedProduct,
+    options?: { create?: boolean },
+  ) => Promise<string | null>;
   deleteProduct: (id: string) => Promise<string | null>;
   uploadProductImages: (files: File[]) => Promise<string[]>;
   uploadAvatar: (file: File) => Promise<{
