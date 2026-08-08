@@ -81,6 +81,7 @@ import {
 } from "@/lib/supabase";
 import { adminPathsForRole, canAccessAdminPath } from "@/lib/admin-access";
 import { signInForPortal } from "@/lib/auth";
+import { recordAuthActivity } from "@/lib/auth-activity";
 
 import {
   Product,
@@ -113,6 +114,7 @@ import {
 
 export function AdminLogin() {
   const nav = useNavigate();
+  const idleLogout = new URLSearchParams(window.location.search).get("reason") === "idle";
   const {
     databaseRole: role,
     authReady,
@@ -163,7 +165,7 @@ export function AdminLogin() {
   };
   return <main className="min-h-dvh overflow-y-auto bg-[#e9e5de] p-3 sm:p-5 lg:h-dvh lg:overflow-hidden"><div className="mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1500px] overflow-hidden rounded-[1.5rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.14)] sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] lg:h-full lg:min-h-0 lg:grid-cols-[1.1fr_.9fr]">
     <section className="relative hidden overflow-hidden bg-[#201e1b] p-10 text-[#f4f2ee] lg:flex lg:flex-col lg:justify-between"><ResilientImage src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1400&q=80" alt="CozyCraft operations environment" className="absolute inset-0 h-full w-full object-cover opacity-25"/><div className="absolute inset-0 bg-[#171614]/75"/><div className="relative flex items-center justify-between"><Logo light/><span className="rounded-full border border-white/20 px-3 py-1.5 text-[10px] font-bold tracking-[.16em] text-white/70">SECURE WORKSPACE</span></div><div className="relative max-w-lg"><p className="text-[10px] font-bold tracking-[.22em] text-[#d8c7b0]">COZYCRAFT / OPERATIONS</p><h1 className="mt-6 font-[Playfair_Display] text-6xl leading-[.98] tracking-[-.04em]">Care for every detail behind the scenes.</h1><p className="mt-7 max-w-sm text-sm leading-7 text-white/70">One live workspace for catalog, inventory, customers, and every storefront order.</p></div><p className="relative text-xs text-white/60">Protected by Supabase Auth and role-based database policies.</p></section>
-    <section className="flex min-h-0 items-center justify-center overflow-hidden px-5 py-5 sm:px-10"><form onSubmit={submit} className="auth-fixed-form w-full max-w-sm"><div className="mb-5 lg:hidden"><Logo/></div><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-secondary"><LockKeyhole size={15}/></span><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">RESTRICTED ACCESS</p></div><h2 className="mt-4 font-[Playfair_Display] text-4xl tracking-[-.04em] sm:text-5xl">Administrator sign in.</h2><p className="mt-2 text-sm leading-5 text-muted-foreground">Use an approved staff or administrator account.</p><div className="mt-6 grid gap-3"><label className="grid gap-2 text-sm font-semibold">Work email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={loading} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:opacity-60" placeholder="you@cozycraft.com"/></label><label className="grid gap-2 text-sm font-semibold">Password<div className="relative"><input required type={show?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} disabled={loading} className="h-11 w-full rounded-xl border border-border bg-[#fcfbf8] px-4 pr-14 font-normal outline-none disabled:opacity-60" placeholder="••••••••"/><button type="button" onClick={()=>setShow(!show)} disabled={loading} className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground disabled:opacity-50">{show?"Hide":"Show"}</button></div></label></div>{error&&<p className="mt-3 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">{error}</p>}<button disabled={loading} className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-60">{awaitingAccess?"Opening secure workspace…":loading?"Checking access…":"Enter operations"}<ArrowRight size={16}/></button><div className="mt-4 flex items-start gap-3 rounded-2xl bg-secondary p-3 text-xs leading-5 text-muted-foreground"><ShieldCheck className="mt-0.5 shrink-0 text-[#6d8065]" size={16}/>Only accounts marked as staff or admin in Supabase can enter.</div><p className="mt-4 text-center text-sm text-muted-foreground">Looking for the storefront? <Link to="/login" className="font-semibold text-foreground underline underline-offset-4">Customer sign in</Link></p></form></section>
+    <section className="flex min-h-0 items-center justify-center overflow-hidden px-5 py-5 sm:px-10"><form onSubmit={submit} className="auth-fixed-form w-full max-w-sm"><div className="mb-5 lg:hidden"><Logo/></div><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-secondary"><LockKeyhole size={15}/></span><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">RESTRICTED ACCESS</p></div><h2 className="mt-4 font-[Playfair_Display] text-4xl tracking-[-.04em] sm:text-5xl">Administrator sign in.</h2><p className="mt-2 text-sm leading-5 text-muted-foreground">Use an approved staff or administrator account.</p>{idleLogout&&<p className="mt-4 rounded-xl bg-[#e7eee3] p-3 text-xs font-semibold text-[#50664b]">Your administrator session ended after being inactive. Sign in again to continue securely.</p>}<div className="mt-6 grid gap-3"><label className="grid gap-2 text-sm font-semibold">Work email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={loading} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:opacity-60" placeholder="you@cozycraft.com"/></label><label className="grid gap-2 text-sm font-semibold">Password<div className="relative"><input required type={show?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} disabled={loading} className="h-11 w-full rounded-xl border border-border bg-[#fcfbf8] px-4 pr-14 font-normal outline-none disabled:opacity-60" placeholder="••••••••"/><button type="button" onClick={()=>setShow(!show)} disabled={loading} className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground disabled:opacity-50">{show?"Hide":"Show"}</button></div></label></div>{error&&<p className="mt-3 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">{error}</p>}<button disabled={loading} className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-60">{awaitingAccess?"Opening secure workspace…":loading?"Checking access…":"Enter operations"}<ArrowRight size={16}/></button><div className="mt-4 flex items-start gap-3 rounded-2xl bg-secondary p-3 text-xs leading-5 text-muted-foreground"><ShieldCheck className="mt-0.5 shrink-0 text-[#6d8065]" size={16}/>Only accounts marked as staff or admin in Supabase can enter.</div><p className="mt-4 text-center text-sm text-muted-foreground">Looking for the storefront? <Link to="/login" className="font-semibold text-foreground underline underline-offset-4">Customer sign in</Link></p></form></section>
   </div></main>;
 }
 
@@ -434,7 +436,8 @@ export function AdminShell({
   const [mfaCode, setMfaCode] = useState("");
   const [mfaError, setMfaError] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
-  const [adminSecurity, setAdminSecurity] = useState({ require_admin_mfa: true, session_timeout_minutes: 480 });
+  const [adminSecurity, setAdminSecurity] = useState({ require_admin_mfa: true, session_timeout_minutes: 30 });
+  const [idleSecondsLeft, setIdleSecondsLeft] = useState<number | null>(null);
   const { role } = useAdminSession();
   const {
     databaseRole,
@@ -463,7 +466,7 @@ export function AdminShell({
     if (!policyError && policy) {
       setAdminSecurity({
         require_admin_mfa: policy.require_admin_mfa !== false,
-        session_timeout_minutes: Math.max(5, Number(policy.session_timeout_minutes) || 480),
+        session_timeout_minutes: Math.max(5, Number(policy.session_timeout_minutes) || 30),
       });
       if (policy.require_admin_mfa === false) {
         setMfaRequired(false);
@@ -500,23 +503,50 @@ export function AdminShell({
     ).subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [checkMfa, databaseRole]);
+  const ADMIN_ACTIVITY_KEY = "cozycraft-admin-last-activity";
+  const continueAdminSession = useCallback(() => {
+    const now = Date.now();
+    window.localStorage.setItem(ADMIN_ACTIVITY_KEY, String(now));
+    setIdleSecondsLeft(null);
+  }, []);
   useEffect(() => {
     if (!authReady || !isStaffRole(databaseRole)) return;
-    let timer = 0;
-    const arm = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        void signOut().then(() => nav("/admin/login", { replace: true }));
-      }, adminSecurity.session_timeout_minutes * 60_000);
+    const timeoutMs = adminSecurity.session_timeout_minutes * 60_000;
+    let loggingOut = false;
+    if (!Number(window.localStorage.getItem(ADMIN_ACTIVITY_KEY))) continueAdminSession();
+    const noteActivity = () => continueAdminSession();
+    const check = () => {
+      const lastActivity = Number(window.localStorage.getItem(ADMIN_ACTIVITY_KEY)) || Date.now();
+      const remainingMs = timeoutMs - (Date.now() - lastActivity);
+      if (remainingMs <= 0 && !loggingOut) {
+        loggingOut = true;
+        setIdleSecondsLeft(0);
+        void recordAuthActivity(supabase, "admin_idle_logout", {
+          name: `${adminSecurity.session_timeout_minutes}-minute inactivity timeout`,
+          reason: "inactivity",
+          timeout_minutes: adminSecurity.session_timeout_minutes,
+        }).finally(async () => {
+          window.localStorage.removeItem(ADMIN_ACTIVITY_KEY);
+          await supabase.auth.signOut({ scope: "local" });
+          nav("/admin/login?reason=idle", { replace: true });
+        });
+        return;
+      }
+      setIdleSecondsLeft(remainingMs <= 120_000 ? Math.max(1, Math.ceil(remainingMs / 1000)) : null);
     };
     const events = ["pointerdown", "keydown", "scroll", "touchstart"] as const;
-    events.forEach((event) => window.addEventListener(event, arm, { passive: true }));
-    arm();
+    events.forEach((event) => window.addEventListener(event, noteActivity, { passive: true }));
+    window.addEventListener("focus", check);
+    window.addEventListener("storage", check);
+    const interval = window.setInterval(check, 1_000);
+    check();
     return () => {
-      window.clearTimeout(timer);
-      events.forEach((event) => window.removeEventListener(event, arm));
+      window.clearInterval(interval);
+      events.forEach((event) => window.removeEventListener(event, noteActivity));
+      window.removeEventListener("focus", check);
+      window.removeEventListener("storage", check);
     };
-  }, [adminSecurity.session_timeout_minutes, authReady, databaseRole, nav, signOut]);
+  }, [adminSecurity.session_timeout_minutes, authReady, continueAdminSession, databaseRole, nav]);
   const verifyMfa = async (event: FormEvent) => {
     event.preventDefault();
     if (!mfaFactorId || mfaCode.length !== 6) return;
@@ -677,6 +707,20 @@ export function AdminShell({
             nav("/home");
           }}
         />
+      )}
+      {idleSecondsLeft !== null && idleSecondsLeft > 0 && createPortal(
+        <div className="fixed inset-0 z-[250] grid place-items-center bg-[#211f1c]/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-warning-title">
+          <section className="w-full max-w-md rounded-[2rem] border border-border bg-card p-7 text-center shadow-2xl">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary"><LockKeyhole size={20}/></span>
+            <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">SESSION SECURITY</p>
+            <h2 id="idle-warning-title" className="mt-2 font-serif text-4xl">Still working?</h2>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">For your protection, this administrator session will sign out after {adminSecurity.session_timeout_minutes} minutes without activity.</p>
+            <p className="mt-5 text-2xl font-semibold tabular-nums">{Math.floor(idleSecondsLeft / 60)}:{String(idleSecondsLeft % 60).padStart(2, "0")}</p>
+            <button onClick={continueAdminSession} className="mt-5 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Continue session</button>
+            <button onClick={() => { setIdleSecondsLeft(null); void signOut().then(() => nav("/admin/login", { replace: true })); }} className="mt-3 text-sm font-semibold underline underline-offset-4">Sign out now</button>
+          </section>
+        </div>,
+        document.body,
       )}
     </div>
   );

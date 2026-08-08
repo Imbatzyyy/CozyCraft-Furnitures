@@ -4,6 +4,7 @@ import {
   supabase,
   type DbRole,
 } from "./supabase";
+import { recordAuthActivity } from "./auth-activity";
 
 export type AuthPortal = "customer" | "admin";
 
@@ -114,6 +115,15 @@ export async function signInForPortal(
           ? "Incorrect email or password. Please check your credentials."
           : "This account is not approved for administrator access.",
     };
+  }
+
+  await recordAuthActivity(
+    authClient,
+    portal === "admin" ? "admin_sign_in" : "customer_sign_in",
+    { name: "Password sign-in", provider: "email" },
+  );
+  if (portal === "admin") {
+    window.localStorage.setItem("cozycraft-admin-last-activity", String(Date.now()));
   }
 
   return { ok: true, role, error: null, reason: null };

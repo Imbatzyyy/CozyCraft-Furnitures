@@ -208,11 +208,15 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   };
   const google = async () => {
     setError("");
+    window.sessionStorage.setItem("cozycraft-google-sign-in-pending", "1");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin + "/home" },
     });
-    if (error) setError(error.message);
+    if (error) {
+      window.sessionStorage.removeItem("cozycraft-google-sign-in-pending");
+      setError(error.message);
+    }
   };
   if (view !== "auth")
     return (

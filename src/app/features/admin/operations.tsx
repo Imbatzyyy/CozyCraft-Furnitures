@@ -1815,6 +1815,7 @@ export function ActivityLogsPage() {
     ["cart", "Shopping carts"],
     ["wishlist", "Wishlists"],
     ["addresses", "Delivery addresses"],
+    ["authentication", "Authentication"],
     ["errors", "Application errors"],
   ] as const;
   const belongsToScope = (row: ActivityRow) => {
@@ -1852,7 +1853,15 @@ export function ActivityLogsPage() {
   const pageStart = (page - 1) * pageSize;
   const paginatedRows = filteredRows.slice(pageStart, pageStart + pageSize);
   const humanizeAction = (action: string) =>
-    action
+    ({
+      customer_account_created: "created a customer account",
+      admin_account_created: "received an administrator account",
+      customer_sign_in: "signed in to the storefront",
+      customer_sign_out: "signed out of the storefront",
+      admin_sign_in: "signed in to operations",
+      admin_sign_out: "signed out of operations",
+      admin_idle_logout: "was automatically signed out after inactivity",
+    } as Record<string, string>)[action] ?? action
       .replace(/^insert_/, "created ")
       .replace(/^update_/, "updated ")
       .replace(/^delete_/, "deleted ")

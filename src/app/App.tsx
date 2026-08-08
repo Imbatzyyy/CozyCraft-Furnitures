@@ -80,6 +80,7 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import { recordAuthActivity } from "@/lib/auth-activity";
 
 
 import {
@@ -483,6 +484,13 @@ function App() {
       if (session?.user) setAuthReady(false);
       window.setTimeout(() => {
         if (session?.user) {
+          if (window.sessionStorage.getItem("cozycraft-google-sign-in-pending") === "1") {
+            window.sessionStorage.removeItem("cozycraft-google-sign-in-pending");
+            void recordAuthActivity(supabase, "customer_sign_in", {
+              name: "Google sign-in",
+              provider: "google",
+            });
+          }
           void loadAccount(
             session.user.id,
             session.user.email ?? null,
@@ -1057,10 +1065,19 @@ function App() {
       }
       await Promise.allSettled(reconciliations.map((item) => Promise.resolve(item)));
     }
+    await recordAuthActivity(supabase, "customer_sign_out", {
+      name: "Manual sign-out",
+      reason: "user_requested",
+    });
     await supabase.auth.signOut({ scope: "local" });
   };
 
   const signOutAdmin = useCallback(async () => {
+    await recordAuthActivity(adminSupabase, "admin_sign_out", {
+      name: "Manual sign-out",
+      reason: "user_requested",
+    });
+    window.localStorage.removeItem("cozycraft-admin-last-activity");
     await adminSupabase.auth.signOut({ scope: "local" });
   }, []);
 
