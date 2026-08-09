@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createBrowserRouter,
   Link,
@@ -1421,134 +1422,96 @@ export function CustomersPage() {
 
 export function ReviewsPage() {
   type ReviewRow = {
-    id: string;
-    rating: number;
-    title: string;
-    body: string;
-    approved: boolean;
-    created_at: string;
+    id: string; rating: number; title: string; body: string; approved: boolean;
+    image_urls: string[]; created_at: string;
     profiles: { full_name: string | null; email: string | null } | null;
     products: { name: string } | null;
   };
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [notice, setNotice] = useState("");
+  const [filter, setFilter] = useState<"all" | "pending" | "published" | "photos">("all");
+  const [gallery, setGallery] = useState<{ reviewId: string; index: number } | null>(null);
   const loadReviews = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("reviews")
-      .select(
-        "id,rating,title,body,approved,created_at,profiles!reviews_user_id_fkey(full_name,email),products!reviews_product_id_fkey(name)",
-      )
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("reviews").select(
+      "id,rating,title,body,approved,image_urls,created_at,profiles!reviews_user_id_fkey(full_name,email),products!reviews_product_id_fkey(name)",
+    ).order("created_at", { ascending: false });
     if (error) setNotice(error.message);
     else setReviews((data ?? []).map((row) => ({
       ...row,
+      image_urls: Array.isArray(row.image_urls) ? row.image_urls.filter(Boolean) : [],
       profiles: Array.isArray(row.profiles) ? row.profiles[0] ?? null : row.profiles,
       products: Array.isArray(row.products) ? row.products[0] ?? null : row.products,
     })) as ReviewRow[]);
   }, []);
   useEffect(() => {
     void loadReviews();
-    const channel = supabase
-      .channel("admin-reviews")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "reviews" },
-        () => void loadReviews(),
-      )
-      .subscribe();
+    const channel = supabase.channel("admin-reviews").on(
+      "postgres_changes", { event: "*", schema: "public", table: "reviews" }, () => void loadReviews(),
+    ).subscribe();
     const interval = window.setInterval(() => void loadReviews(), 10_000);
-    return () => {
-      window.clearInterval(interval);
-      void supabase.removeChannel(channel);
-    };
+    return () => { window.clearInterval(interval); void supabase.removeChannel(channel); };
   }, [loadReviews]);
   const update = async (id: string, approved: boolean) => {
-    const { error } = await supabase
-      .from("reviews")
-      .update({ approved })
-      .eq("id", id);
-    setNotice(
-      error?.message ??
-        (approved
-          ? "Review published to the product page."
-          : "Review hidden from the customer storefront."),
-    );
+    const { error } = await supabase.from("reviews").update({ approved }).eq("id", id);
+    setNotice(error?.message ?? (approved ? "Review published to the product page." : "Review hidden from the customer storefront."));
     if (!error) await loadReviews();
   };
-  const average = reviews.length
-    ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
-    : 0;
+  const average = reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
+  const pendingCount = reviews.filter((review) => !review.approved).length;
+  const photoCount = reviews.filter((review) => review.image_urls.length > 0).length;
+  const visibleReviews = reviews.filter((review) => filter === "all" || (filter === "pending" && !review.approved) || (filter === "published" && review.approved) || (filter === "photos" && review.image_urls.length > 0));
+  const galleryReview = gallery ? reviews.find((review) => review.id === gallery.reviewId) ?? null : null;
+  useEffect(() => {
+    if (!gallery) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setGallery(null);
+      const count = galleryReview?.image_urls.length ?? 0;
+      if (!count) return;
+      if (event.key === "ArrowLeft") setGallery((current) => current && ({ ...current, index: (current.index - 1 + count) % count }));
+      if (event.key === "ArrowRight") setGallery((current) => current && ({ ...current, index: (current.index + 1) % count }));
+    };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKey);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", handleKey); };
+  }, [gallery, galleryReview]);
   return (
     <AdminShell title="Reviews">
-      <div className="flex justify-between">
-        <div>
-          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
-            MODERATION QUEUE
-          </p>
-          <h2 className="mt-2 text-3xl font-semibold">Reviews</h2>
-        </div>
-        <div className="rounded-xl bg-secondary px-3 py-2 text-xs">
-          Average rating <b className="ml-2">{average.toFixed(1)} / 5</b>
-        </div>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">MODERATION QUEUE</p><h2 className="mt-2 text-3xl font-semibold">Reviews</h2><p className="mt-2 text-sm text-muted-foreground">Inspect customer feedback and uploaded photos before publishing.</p></div>
+        <div className="self-start rounded-xl bg-secondary px-3 py-2 text-xs sm:self-auto">Average rating <b className="ml-2">{average.toFixed(1)} / 5</b></div>
+      </div>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[["All reviews", reviews.length, "all"], ["Awaiting approval", pendingCount, "pending"], ["Published", reviews.length - pendingCount, "published"], ["With customer photos", photoCount, "photos"]].map(([label, value, key]) => (
+          <button key={String(key)} onClick={() => setFilter(key as typeof filter)} className={`rounded-2xl border p-4 text-left transition ${filter === key ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-secondary"}`}><span className={`text-[10px] font-bold uppercase tracking-[.14em] ${filter === key ? "text-background/65" : "text-muted-foreground"}`}>{label}</span><strong className="mt-2 block text-2xl">{value}</strong></button>
+        ))}
       </div>
       <div className="mt-7 grid gap-4">
-        {reviews.map((review) => (
-          <article
-            key={review.id}
-            className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center"
-          >
-            <div>
-              <div className="flex items-center gap-2">
-                <b>{review.profiles?.full_name || review.profiles?.email || "Customer"}</b>
-                <span className="text-[#b8875c]">
-                  {"★".repeat(review.rating)}
-                </span>
+        {visibleReviews.map((review) => (
+          <article key={review.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_12px_30px_rgba(45,39,32,.04)]">
+            <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2"><b>{review.profiles?.full_name || review.profiles?.email || "Customer"}</b><span className="flex gap-0.5 text-[#a37b57]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={14} fill={index < review.rating ? "currentColor" : "none"}/>)}</span>{review.approved ? <Status>Published</Status> : <span className="rounded-full bg-[#f2e5d6] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.12em] text-[#885f46]">Awaiting approval</span>}</div>
+                <h3 className="mt-4 font-serif text-2xl">{review.title || "Customer feedback"}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">“{review.body || "No written feedback provided."}”</p>
+                <p className="mt-3 text-xs text-muted-foreground"><b className="text-foreground">{review.products?.name || "Product"}</b> · {new Date(review.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</p>
               </div>
-              <p className="mt-2 text-sm">
-                {review.title && <b>{review.title}: </b>}
-                “{review.body || "No written feedback provided."}”
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {review.products?.name || "Product"} · customer review
-              </p>
+              <div className="flex flex-wrap gap-2 lg:justify-end">{!review.approved && <button onClick={() => void update(review.id, true)} className="rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background">Approve and publish</button>}<button onClick={() => void update(review.id, false)} className="rounded-xl border border-border px-4 py-2.5 text-xs font-semibold">{review.approved ? "Hide review" : "Keep hidden"}</button></div>
             </div>
-            <div className="flex items-center gap-2">
-              {!review.approved ? (
-                <>
-                  <button
-                    onClick={() => void update(review.id, true)}
-                    className="rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => void update(review.id, false)}
-                    className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
-                  >
-                    Hide
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Status>Published</Status>
-                  <button
-                    onClick={() => void update(review.id, false)}
-                    className="rounded-xl border border-border px-3 py-2 text-xs font-semibold"
-                  >
-                    Hide
-                  </button>
-                </>
-              )}
-            </div>
+            {review.image_urls.length > 0 && <div className="border-t border-border bg-[#f5f1ea] p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">CUSTOMER PHOTOS</p><p className="mt-1 text-xs text-muted-foreground">Select an image to inspect it before approval.</p></div><span className="rounded-full bg-card px-3 py-1 text-[10px] font-semibold">{review.image_urls.length} photo{review.image_urls.length === 1 ? "" : "s"}</span></div><div className="mt-4 grid grid-cols-2 gap-3 sm:flex">{review.image_urls.map((url, index) => <button key={`${review.id}-${index}`} onClick={() => setGallery({ reviewId: review.id, index })} className="group relative aspect-square min-w-0 overflow-hidden rounded-2xl border border-border bg-card sm:h-32 sm:w-32" aria-label={`Open review photo ${index + 1}`}><ResilientImage src={url} alt={`${review.products?.name || "Product"} customer review photo ${index + 1}`} className="h-full w-full object-cover transition duration-300 group-hover:scale-105"/><span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/70 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100"><Eye size={11} className="mr-1 inline"/>View full size</span></button>)}</div></div>}
           </article>
         ))}
-        {!reviews.length && (
-          <p className="rounded-2xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">
-            No customer reviews have been submitted yet.
-          </p>
-        )}
+        {!visibleReviews.length && <p className="rounded-2xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">{reviews.length ? "No reviews match this moderation view." : "No customer reviews have been submitted yet. New reviews and photos will appear here in realtime."}</p>}
       </div>
       {notice && <Toast message={notice} close={() => setNotice("")} />}
+      {gallery && galleryReview?.image_urls[gallery.index] && createPortal(
+        <div className="fixed inset-0 z-[300] grid place-items-center bg-black/85 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label="Customer review photo viewer" onMouseDown={(event) => { if (event.target === event.currentTarget) setGallery(null); }}>
+          <section className="relative flex max-h-[95dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.5rem] bg-[#171614] text-white shadow-2xl sm:rounded-[2rem]">
+            <header className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-5"><div className="min-w-0"><p className="truncate text-sm font-semibold">{galleryReview.products?.name || "Product review"}</p><p className="mt-0.5 text-[10px] text-white/60">Photo {gallery.index + 1} of {galleryReview.image_urls.length} · {galleryReview.profiles?.full_name || "Customer"}</p></div><button onClick={() => setGallery(null)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Close photo viewer"><X size={18}/></button></header>
+            <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black p-3 sm:p-5"><ResilientImage src={galleryReview.image_urls[gallery.index]} alt={`${galleryReview.products?.name || "Product"} review photo ${gallery.index + 1}`} className="max-h-[70dvh] w-auto max-w-full object-contain"/>{galleryReview.image_urls.length > 1 && <><button onClick={() => setGallery((current) => current && ({ ...current, index: (current.index - 1 + galleryReview.image_urls.length) % galleryReview.image_urls.length }))} className="absolute left-3 grid h-11 w-11 place-items-center rounded-full bg-black/60 hover:bg-black/80" aria-label="Previous photo"><ChevronLeft/></button><button onClick={() => setGallery((current) => current && ({ ...current, index: (current.index + 1) % galleryReview.image_urls.length }))} className="absolute right-3 grid h-11 w-11 place-items-center rounded-full bg-black/60 hover:bg-black/80" aria-label="Next photo"><ChevronRight/></button></>}</div>
+            <footer className="flex flex-col justify-between gap-3 border-t border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:px-5"><p className="line-clamp-2 text-xs leading-5 text-white/70">{galleryReview.body}</p>{!galleryReview.approved && <button onClick={() => { void update(galleryReview.id, true); setGallery(null); }} className="shrink-0 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-black">Approve review</button>}</footer>
+          </section>
+        </div>, document.body,
+      )}
     </AdminShell>
   );
 }
