@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createBrowserRouter,
   Link,
@@ -1128,15 +1129,15 @@ type ProductReview = {
   rating: number;
   title: string;
   body: string;
+  reviewer_display_name: string;
+  image_urls: string[];
   created_at: string;
-  profiles: { full_name: string | null } | null;
 };
 
-const normalizeProductReviews = (
-  rows: Array<Omit<ProductReview, "profiles"> & { profiles: ProductReview["profiles"] | Array<NonNullable<ProductReview["profiles"]>> }>,
-): ProductReview[] => rows.map((row) => ({
+const normalizeProductReviews = (rows: ProductReview[]): ProductReview[] => rows.map((row) => ({
   ...row,
-  profiles: Array.isArray(row.profiles) ? row.profiles[0] ?? null : row.profiles,
+  reviewer_display_name: row.reviewer_display_name?.trim() || "CozyCraft customer",
+  image_urls: Array.isArray(row.image_urls) ? row.image_urls.filter(Boolean) : [],
 }));
 
 export function ProductPage() {
@@ -1153,6 +1154,7 @@ export function ProductPage() {
   const [reviewNotice, setReviewNotice] = useState("");
   const [existingReview, setExistingReview] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewGallery, setReviewGallery] = useState<{ reviewId: string; index: number } | null>(null);
   const [recentProductIds, setRecentProductIds] = useState<string[]>([]);
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
@@ -1198,13 +1200,13 @@ export function ProductPage() {
       void supabase
         .from("reviews")
         .select(
-          "id,rating,title,body,created_at,profiles!reviews_user_id_fkey(full_name)",
+          "id,rating,title,body,reviewer_display_name,image_urls,created_at",
         )
         .eq("product_id", product.id)
         .eq("approved", true)
         .order("created_at", { ascending: false })
         .then(({ data }) => {
-          if (active) setReviews(normalizeProductReviews(data ?? []));
+          if (active) setReviews(normalizeProductReviews((data ?? []) as ProductReview[]));
         });
     };
     loadReviews();
@@ -1307,16 +1309,36 @@ export function ProductPage() {
       const { data: refreshedReviews } = await supabase
         .from("reviews")
         .select(
-          "id,rating,title,body,created_at,profiles!reviews_user_id_fkey(full_name)",
+          "id,rating,title,body,reviewer_display_name,image_urls,created_at",
         )
         .eq("product_id", product.id)
         .eq("approved", true)
         .order("created_at", { ascending: false });
       if (refreshedReviews) {
-        setReviews(normalizeProductReviews(refreshedReviews));
+        setReviews(normalizeProductReviews(refreshedReviews as ProductReview[]));
       }
     }
   };
+  const reviewAverage = reviews.length
+    ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+    : 0;
+  const galleryReview = reviewGallery
+    ? reviews.find((review) => review.id === reviewGallery.reviewId) ?? null
+    : null;
+  useEffect(() => {
+    if (!reviewGallery) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReviewGallery(null);
+      const count = galleryReview?.image_urls.length ?? 0;
+      if (!count) return;
+      if (event.key === "ArrowLeft") setReviewGallery((current) => current && ({ ...current, index: (current.index - 1 + count) % count }));
+      if (event.key === "ArrowRight") setReviewGallery((current) => current && ({ ...current, index: (current.index + 1) % count }));
+    };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKey);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", handleKey); };
+  }, [galleryReview, reviewGallery]);
   return (
     <Layout>
       <main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-10 lg:py-10">
@@ -1498,7 +1520,9 @@ export function ProductPage() {
                 Loved in real homes.
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                {product.rating} average from {product.reviews} verified reviews
+                {reviews.length
+                  ? `${reviewAverage.toFixed(1)} average from ${reviews.length} verified review${reviews.length === 1 ? "" : "s"}`
+                  : "Approved customer reviews will appear here in realtime"}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1583,42 +1607,26 @@ export function ProductPage() {
             {visibleReviews.map((review) => (
               <article
                 key={review.id}
-                className="rounded-2xl border border-border bg-card p-5"
+                className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_12px_28px_rgba(45,39,32,.04)]"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {review.profiles?.full_name || "CozyCraft customer"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Verified customer ·{" "}
-                      {new Date(review.created_at).toLocaleDateString("en-PH", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </p>
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ded4c6] text-xs font-bold uppercase">{review.reviewer_display_name.slice(0, 2)}</span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">@{review.reviewer_display_name}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">Verified customer</p>
+                      </div>
+                    </div>
+                    <span className="flex shrink-0 gap-0.5 text-[#9d7b5b]" aria-label={`${review.rating} out of 5 stars`}>
+                      {Array.from({ length: 5 }, (_, index) => <Star key={index} size={13} fill={index < review.rating ? "currentColor" : "none"}/>) }
+                    </span>
                   </div>
-                  <span className="flex gap-0.5 text-[#9d7b5b]">
-                    {Array.from({ length: 5 }, (_, index) => (
-                      <Star
-                        key={index}
-                        size={13}
-                        fill={
-                          index < review.rating ? "currentColor" : "none"
-                        }
-                      />
-                    ))}
-                  </span>
+                  {review.title && <h3 className="mt-4 text-sm font-semibold">{review.title}</h3>}
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{review.body}</p>
+                  <time dateTime={review.created_at} className="mt-4 block border-t border-border pt-3 text-[11px] text-muted-foreground">Reviewed {new Date(review.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}</time>
                 </div>
-                {review.title && (
-                  <h3 className="mt-4 text-sm font-semibold">
-                    {review.title}
-                  </h3>
-                )}
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {review.body}
-                </p>
+                {review.image_urls.length > 0 && <div className="border-t border-border bg-[#f4f0e9] p-4"><p className="mb-3 text-[9px] font-bold uppercase tracking-[.14em] text-muted-foreground">Photos from this home</p><div className={`grid gap-2 ${review.image_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>{review.image_urls.map((url, index) => <button key={`${review.id}-${index}`} onClick={() => setReviewGallery({ reviewId: review.id, index })} className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-secondary" aria-label={`View photo ${index + 1} from ${review.reviewer_display_name}'s review`}><ResilientImage src={url} alt={`${review.reviewer_display_name}'s product review photo ${index + 1}`} className="h-full w-full object-cover transition duration-300 group-hover:scale-105"/><span className="absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-black/65 text-white"><Eye size={14}/></span></button>)}</div></div>}
               </article>
             ))}
           </div>
@@ -1630,6 +1638,7 @@ export function ProductPage() {
             </p>
           )}
         </section>
+        {reviewGallery && galleryReview?.image_urls[reviewGallery.index] && createPortal(<div className="fixed inset-0 z-[300] grid place-items-center bg-black/85 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label="Customer review photo" onMouseDown={(event) => { if (event.target === event.currentTarget) setReviewGallery(null); }}><section className="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.5rem] bg-[#171614] text-white shadow-2xl"><header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5"><div className="min-w-0"><p className="truncate text-sm font-semibold">@{galleryReview.reviewer_display_name}</p><p className="mt-0.5 text-[10px] text-white/60">Review photo {reviewGallery.index + 1} of {galleryReview.image_urls.length}</p></div><button onClick={() => setReviewGallery(null)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10" aria-label="Close review photo"><X size={18}/></button></header><div className="relative flex min-h-0 flex-1 items-center justify-center bg-black p-3 sm:p-5"><ResilientImage src={galleryReview.image_urls[reviewGallery.index]} alt={`${galleryReview.reviewer_display_name}'s review photo ${reviewGallery.index + 1}`} className="max-h-[76dvh] w-auto max-w-full object-contain"/>{galleryReview.image_urls.length > 1 && <><button onClick={() => setReviewGallery((current) => current && ({ ...current, index: (current.index - 1 + galleryReview.image_urls.length) % galleryReview.image_urls.length }))} className="absolute left-3 grid h-11 w-11 place-items-center rounded-full bg-black/65" aria-label="Previous review photo"><ChevronLeft/></button><button onClick={() => setReviewGallery((current) => current && ({ ...current, index: (current.index + 1) % galleryReview.image_urls.length }))} className="absolute right-3 grid h-11 w-11 place-items-center rounded-full bg-black/65" aria-label="Next review photo"><ChevronRight/></button></>}</div><footer className="border-t border-white/10 px-4 py-3 text-xs leading-5 text-white/70 sm:px-5">{galleryReview.body}</footer></section></div>, document.body)}
         {recentProducts.length>0&&<section className="mt-16 border-t border-border pt-10"><p className="text-[10px] font-bold tracking-[.17em] text-muted-foreground">CONTINUE BROWSING</p><div className="mt-3 flex items-end justify-between gap-4"><div><h2 className="font-serif text-4xl">Recently viewed.</h2><p className="mt-2 text-sm text-muted-foreground">Pick up where you left off on this or another signed-in device.</p></div><Link to="/home#shop" className="hidden text-xs font-semibold underline underline-offset-4 sm:block">Explore all products</Link></div><div className="mt-7 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{recentProducts.map((item)=><ProductCard key={item.id} product={item}/>)}</div></section>}
         <div className="fixed inset-x-0 bottom-16 z-30 flex items-center gap-3 border-t border-border bg-card/97 px-4 py-3 shadow-[0_-10px_30px_rgba(35,31,27,.12)] backdrop-blur md:hidden">
           <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{product.name}</p><p className="mt-0.5 text-sm font-bold">{money(product.price)}</p></div>
