@@ -30,6 +30,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Clock,
   ClipboardList,
   CreditCard,
   Download,
@@ -619,7 +620,11 @@ export function OrdersPage() {
 
 export function OrdersWorkspacePage() {
   const { orders, updateOrderStatus, cancelOrder, refreshOrders } = useStore();
-  const { role: workspaceRole } = useAdminSession();
+  const {
+    role: workspaceRole,
+    authReady: adminAuthReady,
+    userId: adminUserId,
+  } = useAdminSession();
   const canManageFinancials = canManageFinancialOperations(workspaceRole);
   const [selectedId, setSelectedId] = useState("");
   const [notice, setNotice] = useState("");
@@ -633,6 +638,8 @@ export function OrdersWorkspacePage() {
   const [processingReturnRefund, setProcessingReturnRefund] = useState(false);
   const [ordersLive, setOrdersLive] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersLoadError, setOrdersLoadError] = useState("");
+  const [ordersReloadKey, setOrdersReloadKey] = useState(0);
   const ordersPerPage = 8;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
@@ -643,14 +650,40 @@ export function OrdersWorkspacePage() {
   ];
 
   useEffect(() => {
+    if (!adminAuthReady) {
+      setOrdersLoading(true);
+      return;
+    }
+    if (!adminUserId) {
+      setOrdersLoading(false);
+      setOrdersLoadError("Your administrator session is not available. Please sign in again.");
+      return;
+    }
     let active = true;
     setOrdersLoading(true);
+    setOrdersLoadError("");
+    const timeout = window.setTimeout(() => {
+      if (!active) return;
+      setOrdersLoading(false);
+      setOrdersLoadError("Orders are taking longer than expected. Check your connection and try again.");
+    }, 8_000);
     void refreshOrders().finally(() => {
-      if (active) setOrdersLoading(false);
+      window.clearTimeout(timeout);
+      if (active) {
+        setOrdersLoading(false);
+        setOrdersLoadError("");
+      }
     });
-    return () => { active = false; };
-  }, [refreshOrders]);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [adminAuthReady, adminUserId, ordersReloadKey, refreshOrders]);
   useEffect(() => {
+    if (!adminAuthReady || !adminUserId) {
+      setOrdersLive(false);
+      return;
+    }
     let active = true;
     const refreshVisible = () => {
       if (document.visibilityState === "visible") void refreshOrders();
@@ -689,7 +722,7 @@ export function OrdersWorkspacePage() {
       document.removeEventListener("visibilitychange", refreshVisible);
       void supabase.removeChannel(channel);
     };
-  }, [refreshOrders]);
+  }, [adminAuthReady, adminUserId, refreshOrders]);
   useEffect(() => {
     const refresh = async () => { const { data } = await supabase.from("return_requests").select("*").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
     void refresh();
@@ -879,8 +912,21 @@ export function OrdersWorkspacePage() {
           <p className="mt-5 text-center text-xs text-muted-foreground">Loading live customer orders…</p>
         </div>
       ) : !selected ? (
-        <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
-          No customer orders yet. New storefront orders will appear here automatically.
+        <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-8 text-center sm:p-12">
+          {ordersLoadError ? (
+            <>
+              <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#f2e8d7] text-[#765d3c]"><Clock size={20}/></span>
+              <p className="mt-4 text-sm font-semibold text-foreground">We couldn’t finish loading the order desk.</p>
+              <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-muted-foreground">{ordersLoadError}</p>
+              <button type="button" onClick={() => setOrdersReloadKey((current) => current + 1)} className="mt-5 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background">Retry orders</button>
+            </>
+          ) : (
+            <>
+              <Package className="mx-auto text-muted-foreground" size={24}/>
+              <p className="mt-4 text-sm font-semibold text-foreground">No customer orders yet.</p>
+              <p className="mt-2 text-xs text-muted-foreground">New storefront and mobile orders will appear here automatically.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(280px,.78fr)_minmax(400px,1.2fr)_minmax(260px,.7fr)]">
