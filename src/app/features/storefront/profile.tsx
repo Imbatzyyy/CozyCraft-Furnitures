@@ -1692,12 +1692,25 @@ export function Profile() {
                           {selectedOrder.cancellation_reason && <span className="mt-1 block">Reason: {selectedOrder.cancellation_reason}</span>}
                         </div>
                       ) : (
-                        <div className="border-b border-border p-5">
-                          <p className="text-xs font-semibold">Delivery progress</p>
-                          <div className="mt-4 grid gap-3 sm:flex sm:items-start sm:gap-0">
+                        <div className="border-b border-border bg-gradient-to-b from-[#fcfbf8] to-[#f7f3ec] p-4 sm:p-6">
+                          <div className="flex flex-wrap items-end justify-between gap-2">
+                            <div>
+                              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LIVE ORDER TRACKING</p>
+                              <h4 className="mt-1 text-base font-semibold">Delivery progress</h4>
+                            </div>
+                            <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] font-semibold capitalize text-muted-foreground">Current: {selectedOrder.status}</span>
+                          </div>
+                          <div className="relative mt-5 grid gap-0 md:grid-cols-5 md:gap-3">
+                            <span className="absolute left-[10%] right-[10%] top-6 hidden h-0.5 bg-[#ddd6cc] md:block" aria-hidden="true" />
+                            <span
+                              className="absolute left-[10%] top-6 hidden h-0.5 bg-foreground transition-[width] duration-500 md:block"
+                              style={{ width: `${Math.max(0, ["pending", "processing", "packed", "shipped", "delivered"].indexOf(selectedOrder.status)) * 20}%` }}
+                              aria-hidden="true"
+                            />
                             {["pending", "processing", "packed", "shipped", "delivered"].map((step, index, steps) => {
                               const current = steps.indexOf(selectedOrder.status);
                               const complete = index <= current;
+                              const active = index === current;
                               const history = selectedOrder.order_status_history
                                 ?.filter((entry) => entry.status === step)
                                 .reduce((latest, entry) =>
@@ -1706,37 +1719,31 @@ export function Profile() {
                                     : latest,
                                 undefined as (typeof selectedOrder.order_status_history)[number] | undefined);
                               const statusTime = history
-                                ? new Date(history.changed_at).toLocaleString("en-PH", {
-                                    timeZone: "Asia/Manila",
-                                    dateStyle: "medium",
-                                    timeStyle: "short",
-                                  })
+                                ? new Date(history.changed_at)
                                 : null;
                               return (
-                                <div key={step} className="relative flex min-w-0 items-start gap-3 sm:flex-1 sm:gap-0 sm:last:flex-none">
+                                <div key={step} className={`relative flex min-w-0 gap-3 pb-5 last:pb-0 md:flex-col md:items-center md:gap-0 md:pb-0 md:text-center ${active ? "text-foreground" : "text-muted-foreground"}`}>
                                   {index < steps.length - 1 && (
-                                    <span className={`absolute left-[13px] top-7 h-[calc(100%+0.75rem)] w-px sm:hidden ${index < current ? "bg-foreground" : "bg-border"}`} aria-hidden="true" />
+                                    <span className={`absolute left-[23px] top-12 h-[calc(100%-1.25rem)] w-0.5 md:hidden ${index < current ? "bg-foreground" : "bg-[#ddd6cc]"}`} aria-hidden="true" />
                                   )}
-                                  <span className={`relative z-[1] grid h-7 w-7 shrink-0 place-items-center rounded-full ${complete ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>
-                                    {complete ? <Check size={13} /> : index + 1}
+                                  <span className={`relative z-[1] grid h-12 w-12 shrink-0 place-items-center rounded-full border-4 border-[#f9f6f0] text-sm font-semibold shadow-sm transition ${complete ? "bg-foreground text-background" : "bg-[#e8e2d9] text-muted-foreground"} ${active ? "ring-4 ring-[#d9cdbc]" : ""}`}>
+                                    {complete ? <Check size={18} strokeWidth={2.4} /> : index + 1}
                                   </span>
-                                  <div className="min-w-0 flex-1 pb-1 sm:text-center">
-                                    <span className="block text-sm capitalize text-muted-foreground sm:mt-2 sm:text-[9px]">
-                                      <b className={complete ? "text-foreground" : ""}>{step}</b>
+                                  <div className={`min-w-0 flex-1 rounded-xl px-1 md:mt-3 md:w-full ${active ? "md:bg-card md:px-2 md:py-2 md:shadow-sm" : ""}`}>
+                                    <span className="block text-sm capitalize">
+                                      <b className={complete ? "text-foreground" : "text-muted-foreground"}>{step}</b>
                                       {statusTime ? (
-                                        <time className="mt-0.5 block text-[10px] normal-case leading-4 text-muted-foreground sm:text-[8px] sm:leading-3" dateTime={history!.changed_at}>
-                                          {statusTime}
+                                        <time className="mt-1 block text-[11px] normal-case leading-4 text-muted-foreground" dateTime={history!.changed_at}>
+                                          <span className="block">{statusTime.toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" })}</span>
+                                          <span className="block">{statusTime.toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" })}</span>
                                         </time>
                                       ) : (
-                                        <span className="mt-0.5 block text-[10px] normal-case leading-4 text-muted-foreground/70 sm:text-[8px] sm:leading-3">
+                                        <span className="mt-1 block text-[11px] normal-case leading-4 text-muted-foreground/70">
                                           Awaiting update
                                         </span>
                                       )}
                                     </span>
                                   </div>
-                                  {index < steps.length - 1 && (
-                                    <span className={`mt-3.5 hidden h-px flex-1 sm:block ${index < current ? "bg-foreground" : "bg-border"}`} aria-hidden="true" />
-                                  )}
                                 </div>
                               );
                             })}
