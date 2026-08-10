@@ -819,13 +819,9 @@ export function NotificationCenter() {
         () => void loadNotifications(),
       )
       .subscribe();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadNotifications();
-    }, 10_000);
     const refreshOnFocus = () => void loadNotifications();
     window.addEventListener("focus", refreshOnFocus);
     return () => {
-      window.clearInterval(interval);
       window.removeEventListener("focus", refreshOnFocus);
       void supabase.removeChannel(channel);
     };

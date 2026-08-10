@@ -619,7 +619,13 @@ export function OrdersPage() {
 }
 
 export function OrdersWorkspacePage() {
-  const { orders, updateOrderStatus, cancelOrder, refreshOrders } = useStore();
+  const {
+    orders,
+    ordersRealtimeConnected,
+    updateOrderStatus,
+    cancelOrder,
+    refreshOrders,
+  } = useStore();
   const {
     role: workspaceRole,
     authReady: adminAuthReady,
@@ -636,7 +642,6 @@ export function OrdersWorkspacePage() {
   const [returnRequests, setReturnRequests] = useState<Array<{id:string;order_id:string;return_number:string;reason:string;details:string;status:string;admin_note:string|null;evidence_paths:string[];created_at:string}>>([]);
   const [returnNote, setReturnNote] = useState("");
   const [processingReturnRefund, setProcessingReturnRefund] = useState(false);
-  const [ordersLive, setOrdersLive] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersLoadError, setOrdersLoadError] = useState("");
   const [ordersReloadKey, setOrdersReloadKey] = useState(0);
@@ -686,54 +691,20 @@ export function OrdersWorkspacePage() {
     };
   }, [adminAuthReady, adminUserId, ordersReloadKey, refreshOrders]);
   useEffect(() => {
-    if (!adminAuthReady || !adminUserId) {
-      setOrdersLive(false);
-      return;
-    }
-    let active = true;
-    const refreshVisible = () => {
-      if (document.visibilityState === "visible") void refreshOrders();
+    const selectNewOrder = (event: Event) => {
+      const orderId = (event as CustomEvent<{ orderId?: string }>).detail?.orderId;
+      if (!orderId) return;
+      setOrderPage(1);
+      setSelectedId(orderId);
     };
-    const channel = supabase
-      .channel(`admin-orders-workspace-${crypto.randomUUID()}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
-        (payload) => {
-          const newOrderId = typeof payload.new?.id === "string" ? payload.new.id : null;
-          void refreshOrders().then(() => {
-            if (!active || !newOrderId) return;
-            setOrderPage(1);
-            setSelectedId(newOrderId);
-          });
-        },
-      )
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, () => void refreshOrders())
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "orders" }, () => void refreshOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refreshOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_status_history" }, () => void refreshOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "payment_transactions" }, () => void refreshOrders())
-      .subscribe((status) => {
-        if (!active) return;
-        setOrdersLive(status === "SUBSCRIBED");
-        if (status === "SUBSCRIBED") void refreshOrders();
-      });
-    const interval = window.setInterval(refreshVisible, 5_000);
-    window.addEventListener("focus", refreshVisible);
-    document.addEventListener("visibilitychange", refreshVisible);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshVisible);
-      document.removeEventListener("visibilitychange", refreshVisible);
-      void supabase.removeChannel(channel);
-    };
-  }, [adminAuthReady, adminUserId, refreshOrders]);
+    window.addEventListener("cozycraft:new-order", selectNewOrder);
+    return () => window.removeEventListener("cozycraft:new-order", selectNewOrder);
+  }, []);
   useEffect(() => {
-    const refresh = async () => { const { data } = await supabase.from("return_requests").select("*").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
+    const refresh = async () => { const { data } = await supabase.from("return_requests").select("id,order_id,return_number,reason,details,status,admin_note,evidence_paths,created_at").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
     void refresh();
     const refreshVisible = () => { if (document.visibilityState === "visible") void refresh(); };
-    const channel = supabase.channel("admin-return-requests").on("postgres_changes", {event:"*",schema:"public",table:"return_requests"}, refresh).subscribe((status) => { if (status === "SUBSCRIBED") void refresh(); });
+    const channel = supabase.channel("admin-return-requests").on("postgres_changes", {event:"*",schema:"public",table:"return_requests"}, refresh).subscribe();
     window.addEventListener("focus", refreshVisible);
     document.addEventListener("visibilitychange", refreshVisible);
     return () => { window.removeEventListener("focus", refreshVisible); document.removeEventListener("visibilitychange", refreshVisible); void supabase.removeChannel(channel); };
@@ -903,9 +874,9 @@ export function OrdersWorkspacePage() {
           <Download size={15} />
           Print packing list
         </button>
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${ordersLive ? "bg-[#e5eee1] text-[#45603f]" : "bg-[#f2e8d7] text-[#765d3c]"}`} aria-live="polite">
-          <span className={`h-2 w-2 rounded-full ${ordersLive ? "bg-[#5f7d57]" : "animate-pulse bg-[#a87943]"}`} />
-          {ordersLive ? "Live order updates" : "Reconnecting…"}
+        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${ordersRealtimeConnected ? "bg-[#e5eee1] text-[#45603f]" : "bg-[#f2e8d7] text-[#765d3c]"}`} aria-live="polite">
+          <span className={`h-2 w-2 rounded-full ${ordersRealtimeConnected ? "bg-[#5f7d57]" : "animate-pulse bg-[#a87943]"}`} />
+          {ordersRealtimeConnected ? "Live order updates" : "Reconnecting…"}
         </span>
       </div>
 
@@ -1617,8 +1588,9 @@ export function ReviewsPage() {
     const channel = supabase.channel("admin-reviews").on(
       "postgres_changes", { event: "*", schema: "public", table: "reviews" }, () => void loadReviews(),
     ).subscribe();
-    const interval = window.setInterval(() => void loadReviews(), 10_000);
-    return () => { window.clearInterval(interval); void supabase.removeChannel(channel); };
+    const refreshOnFocus = () => void loadReviews();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => { window.removeEventListener("focus", refreshOnFocus); void supabase.removeChannel(channel); };
   }, [loadReviews]);
   const update = async (id: string, approved: boolean) => {
     const { error } = await supabase.from("reviews").update({ approved }).eq("id", id);
@@ -1929,9 +1901,10 @@ export function ActivityLogsPage() {
       )
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "client_error_events" }, () => void loadActivity())
       .subscribe();
-    const interval = window.setInterval(() => void loadActivity(), 30_000);
+    const refreshOnFocus = () => void loadActivity();
+    window.addEventListener("focus", refreshOnFocus);
     return () => {
-      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
       void supabase.removeChannel(channel);
     };
   }, [loadActivity]);

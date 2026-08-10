@@ -328,6 +328,7 @@ export type Store = {
   avatar: string | null;
   addresses: Address[];
   orders: DbOrder[];
+  ordersRealtimeConnected: boolean;
   customerProfiles: DbCustomerProfile[];
   supportTickets: DbSupportTicket[];
   saveAddress: (address: Address) => Promise<string | null>;
@@ -518,7 +519,12 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
       return;
     }
     const refresh = async () => {
-      const { data, error } = await supabase.from("customer_notifications").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20);
+      const { data, error } = await supabase
+        .from("customer_notifications")
+        .select("id,user_id,kind,title,message,entity_type,entity_id,read_at,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(20);
       if (!error) setCustomerNotifications((data ?? []) as DbCustomerNotification[]);
     };
     void refresh();

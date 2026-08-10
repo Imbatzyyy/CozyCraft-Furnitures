@@ -1191,9 +1191,10 @@ export function CategoriesPage() {
         () => void loadCategories(),
       )
       .subscribe();
-    const interval = window.setInterval(() => void loadCategories(), 10_000);
+    const refreshOnFocus = () => void loadCategories();
+    window.addEventListener("focus", refreshOnFocus);
     return () => {
-      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
       void supabase.removeChannel(channel);
     };
   }, [loadCategories]);

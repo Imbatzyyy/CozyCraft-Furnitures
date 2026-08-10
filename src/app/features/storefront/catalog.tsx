@@ -1234,10 +1234,10 @@ export function ProductPage() {
         loadReviews,
       )
       .subscribe();
-    const interval = window.setInterval(loadReviews, 10_000);
+    window.addEventListener("focus", loadReviews);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      window.removeEventListener("focus", loadReviews);
       void supabase.removeChannel(channel);
     };
   }, [product.id]);

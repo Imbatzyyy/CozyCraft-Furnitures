@@ -67,6 +67,11 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/app/components/media/ResilientImage";
+import {
+  orderRealtimeTarget,
+  type OrderRealtimeChange,
+} from "@/lib/realtime-orders";
+import { optimizeImageUpload } from "@/lib/image-upload";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -115,6 +120,35 @@ import {
 
 const splashSessionKey = "cozycraft-welcome-seen";
 const publicAvatarPathMarker = "/storage/v1/object/public/avatars/";
+const orderGraphSelect = [
+  "id",
+  "order_number",
+  "user_id",
+  "status",
+  "payment_method",
+  "payment_status",
+  "cancellation_reason",
+  "cancellation_requested_at",
+  "cancellation_status",
+  "cancellation_reviewed_at",
+  "cancellation_reviewed_by",
+  "cancellation_decision_note",
+  "refund_status",
+  "provider_refund_id",
+  "refunded_at",
+  "refund_email_sent_at",
+  "refund_email_id",
+  "refund_email_error",
+  "subtotal",
+  "delivery_fee",
+  "total",
+  "shipping_address",
+  "created_at",
+  "order_items(id,product_id,product_name,unit_price,quantity,image_url)",
+  "order_status_history(id,order_id,status,changed_at,changed_by)",
+  "payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,created_at,updated_at)",
+  "profiles!orders_user_id_fkey(full_name,email,phone)",
+].join(",");
 
 function avatarObjectPath(value: string | null | undefined) {
   if (!value) return null;
@@ -187,6 +221,7 @@ function App() {
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [orders, setOrders] = useState<DbOrder[]>([]);
+  const [ordersRealtimeConnected, setOrdersRealtimeConnected] = useState(false);
   const [customerProfiles, setCustomerProfiles] = useState<
     DbCustomerProfile[]
   >([]);
@@ -202,7 +237,9 @@ function App() {
   }, [userId]);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
-  const paymentReconciliationInFlight = useRef(false);
+  const productsRefreshInFlight = useRef<Promise<void> | null>(null);
+  const ordersRefreshInFlight = useRef<Promise<string | null> | null>(null);
+  const singleOrderRefreshes = useRef(new Map<string, Promise<string | null>>());
 
   const queueAccountWrite = useCallback((request: PromiseLike<unknown>) => {
     const pending = Promise.resolve(request);
@@ -243,77 +280,111 @@ function App() {
     createdAt: row.created_at,
   }), []);
 
-  const refreshProducts = useCallback(async () => {
-    const [productResult, categoryResult, settingResult] = await Promise.all([
-      portalSupabase
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      portalSupabase.from("categories").select("name,active"),
-      portalSupabase
-        .from("store_settings")
-        .select("*")
-        .eq("id", true)
-        .single(),
-    ]);
-    if (productResult.error || !productResult.data) return;
-    const normalizedSettings = normalizeStoreSettings(
-      settingResult.data as Partial<PublicStoreSettings> | null,
+  const refreshProducts = useCallback(() => {
+    if (productsRefreshInFlight.current) return productsRefreshInFlight.current;
+    const request = (async () => {
+      const [productResult, categoryResult, settingResult] = await Promise.all([
+        portalSupabase
+          .from("products")
+          .select(
+            "id,name,category,subcategory,price,stock_quantity,status,color,material,dimensions,description,images,main_image_index,rating,review_count,created_at",
+          )
+          .order("created_at", { ascending: false }),
+        portalSupabase.from("categories").select("name,active"),
+        portalSupabase
+          .from("store_settings")
+          .select(
+            "id,store_name,store_description,contact_email,support_phone,business_address,delivery_area,low_stock_threshold,inventory_alerts,weekly_report_enabled,social_links,announcement_enabled,announcement_text,announcement_link,maintenance_mode,checkout_settings,fulfillment_settings,review_settings,account_settings,email_event_settings,report_settings,updated_at",
+          )
+          .eq("id", true)
+          .single(),
+      ]);
+      if (productResult.error || !productResult.data) return;
+      const normalizedSettings = normalizeStoreSettings(
+        settingResult.data as Partial<PublicStoreSettings> | null,
+      );
+      setStoreSettings(normalizedSettings);
+      const threshold = normalizedSettings.low_stock_threshold;
+      const mapped = (productResult.data as DbProduct[]).map((row) =>
+        mapProduct(row, threshold),
+      );
+      const activeCategories = new Set(
+        (categoryResult.data ?? [])
+          .filter((category) => category.active)
+          .map((category) => normalizeCatalogValue(category.name)),
+      );
+      setAdminProducts(mapped);
+      setProducts(
+        mapped.filter(
+          (item) =>
+            item.status === "active" &&
+            (!activeCategories.size ||
+              [...activeCategories].some((category) =>
+                catalogValuesMatch(category, item.category),
+              )),
+        ),
+      );
+    })();
+    productsRefreshInFlight.current = request;
+    void request.then(
+      () => {
+        if (productsRefreshInFlight.current === request) productsRefreshInFlight.current = null;
+      },
+      () => {
+        if (productsRefreshInFlight.current === request) productsRefreshInFlight.current = null;
+      },
     );
-    setStoreSettings(normalizedSettings);
-    const threshold = normalizedSettings.low_stock_threshold;
-    const mapped = (productResult.data as DbProduct[]).map((row) =>
-      mapProduct(row, threshold),
-    );
-    const activeCategories = new Set(
-      (categoryResult.data ?? [])
-        .filter((category) => category.active)
-        .map((category) => normalizeCatalogValue(category.name)),
-    );
-    setAdminProducts(mapped);
-    setProducts(
-      mapped.filter(
-        (item) =>
-          item.status === "active" &&
-          (!activeCategories.size ||
-            [...activeCategories].some((category) =>
-              catalogValuesMatch(category, item.category),
-            )),
-      ),
-    );
+    return request;
   }, [mapProduct, portalSupabase]);
 
-  const refreshOrders = useCallback(async () => {
-    const loadOrders = () => portalSupabase
-      .from("orders")
-      .select(
-        "*, order_items(*), order_status_history(*), payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,created_at,updated_at), profiles!orders_user_id_fkey(full_name,email,phone)",
-      )
-      .order("created_at", { ascending: false });
-    const { data, error } = await loadOrders();
-    if (error) return error.message;
-    setOrders((data ?? []) as DbOrder[]);
-    const pendingOnlineOrderIds = (data ?? [])
-      .filter(
-        (order) =>
-          order.payment_status === "pending" &&
-          ["card", "gcash"].includes(order.payment_method),
-      )
-      .map((order) => order.id);
-    if (!error && pendingOnlineOrderIds.length && !paymentReconciliationInFlight.current) {
-      paymentReconciliationInFlight.current = true;
-      void portalSupabase.functions
-        .invoke("sync-paymongo-payments", {
-          body: { orderIds: pendingOnlineOrderIds },
-        })
-        .then(({ data: syncResult }) => {
-          if (Number(syncResult?.synchronized) > 0) void refreshOrders();
-        })
-        .finally(() => {
-          paymentReconciliationInFlight.current = false;
-        });
-    }
-    return null;
+  const refreshOrders = useCallback(() => {
+    if (ordersRefreshInFlight.current) return ordersRefreshInFlight.current;
+    const request = (async () => {
+      const { data, error } = await portalSupabase
+        .from("orders")
+        .select(orderGraphSelect)
+        .order("created_at", { ascending: false });
+      if (error) return error.message;
+      setOrders((data ?? []) as unknown as DbOrder[]);
+      return null;
+    })();
+    ordersRefreshInFlight.current = request;
+    void request.then(
+      () => {
+        if (ordersRefreshInFlight.current === request) ordersRefreshInFlight.current = null;
+      },
+      () => {
+        if (ordersRefreshInFlight.current === request) ordersRefreshInFlight.current = null;
+      },
+    );
+    return request;
+  }, [portalSupabase]);
+
+  const refreshOrder = useCallback((orderId: string) => {
+    const existing = singleOrderRefreshes.current.get(orderId);
+    if (existing) return existing;
+    const request = (async () => {
+      const { data, error } = await portalSupabase
+        .from("orders")
+        .select(orderGraphSelect)
+        .eq("id", orderId)
+        .maybeSingle();
+      if (error) return error.message;
+      if (!data) return null;
+      const refreshed = data as unknown as DbOrder;
+      setOrders((current) =>
+        [refreshed, ...current.filter((order) => order.id !== refreshed.id)].sort(
+          (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
+        ),
+      );
+      return null;
+    })();
+    singleOrderRefreshes.current.set(orderId, request);
+    void request.then(
+      () => singleOrderRefreshes.current.delete(orderId),
+      () => singleOrderRefreshes.current.delete(orderId),
+    );
+    return request;
   }, [portalSupabase]);
 
   const refreshAccountCollections = useCallback(async (id: string) => {
@@ -347,7 +418,7 @@ function App() {
     const { data, error } = await portalSupabase
       .from("profiles")
       .select(
-        "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,created_at,addresses!addresses_user_id_fkey(*),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
+        "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,created_at,addresses!addresses_user_id_fkey(id,user_id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
       )
       .eq("role", "customer")
       .order("created_at", { ascending: false });
@@ -366,10 +437,18 @@ function App() {
     const { data, error } = await portalSupabase
       .from("support_tickets")
       .select(
-        "*, profiles!support_tickets_user_id_fkey(full_name,email)",
+        "id,ticket_number,user_id,order_id,subject,message,status,category,priority,assigned_to,attachment_paths,admin_reply,created_at,updated_at,profiles!support_tickets_user_id_fkey(full_name,email)",
       )
       .order("created_at", { ascending: false });
-    if (!error) setSupportTickets((data ?? []) as DbSupportTicket[]);
+    if (!error) {
+      const tickets = (data ?? []).map((ticket) => ({
+        ...ticket,
+        profiles: Array.isArray(ticket.profiles)
+          ? ticket.profiles[0] ?? null
+          : ticket.profiles,
+      }));
+      setSupportTickets(tickets as unknown as DbSupportTicket[]);
+    }
   }, [portalSupabase]);
 
   const loadAccount = useCallback(async (
@@ -379,7 +458,7 @@ function App() {
   ) => {
     let profileResult = await supabase
       .from("profiles")
-      .select("*")
+      .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,created_at")
       .eq("id", id)
       .single();
     for (const retryDelay of [150, 350]) {
@@ -387,7 +466,7 @@ function App() {
       await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
       profileResult = await supabase
         .from("profiles")
-        .select("*")
+        .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,created_at")
         .eq("id", id)
         .single();
     }
@@ -402,7 +481,7 @@ function App() {
         .eq("user_id", id),
       supabase
         .from("addresses")
-        .select("*")
+        .select("id,user_id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary")
         .eq("user_id", id)
         .order("is_primary", { ascending: false }),
       supabase.rpc("current_user_has_password"),
@@ -460,12 +539,7 @@ function App() {
       note: item.delivery_note,
       primary: item.is_primary,
     })));
-    await Promise.all([
-      refreshOrders(),
-      refreshProducts(),
-      refreshTickets(),
-    ]);
-  }, [refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
+  }, []);
 
   useEffect(() => {
     const hydrate = async () => {
@@ -477,7 +551,6 @@ function App() {
           session.user.user_metadata ?? {},
         );
       }
-      else await refreshProducts();
       setAuthReady(true);
     };
     void hydrate();
@@ -512,13 +585,12 @@ function App() {
           setProfilePaymentMethod("cod");
           setCart([]); setSaved([]); setAddresses([]); setOrders([]);
           setCustomerProfiles([]); setSupportTickets([]);
-          void refreshProducts();
           setAuthReady(true);
         }
       }, 0);
     });
     return () => subscription.unsubscribe();
-  }, [loadAccount, refreshProducts]);
+  }, [loadAccount]);
 
   const clearAdminAccount = useCallback(() => {
     setAdminUserId(null);
@@ -626,51 +698,69 @@ function App() {
   }, [adminUserId, loadAdminAccount]);
 
   useEffect(() => {
-    if (!adminPortal) {
-      setCustomerProfiles([]);
-      if (!userId) {
-        setOrders([]);
-        setSupportTickets([]);
-      }
-      void refreshProducts();
-      if (userId) {
-        void Promise.all([refreshOrders(), refreshTickets()]);
-      }
-      return;
-    }
+    void refreshProducts();
+  }, [refreshProducts]);
+
+  useEffect(() => {
     setOrders([]);
     setCustomerProfiles([]);
     setSupportTickets([]);
-    if (adminUserId) {
-      void Promise.all([
-        refreshProducts(),
-        refreshOrders(),
-        refreshCustomers(),
-        refreshTickets(),
-      ]);
+    if (adminPortal) {
+      if (adminUserId) {
+        void Promise.all([refreshOrders(), refreshCustomers(), refreshTickets()]);
+      }
+      return;
     }
-  }, [
-    adminPortal,
-    adminUserId,
-    refreshCustomers,
-    refreshOrders,
-    refreshProducts,
-    refreshTickets,
-    userId,
-  ]);
+    if (userId) void Promise.all([refreshOrders(), refreshTickets()]);
+  }, [adminPortal, adminUserId, refreshCustomers, refreshOrders, refreshTickets, userId]);
 
   useEffect(() => {
     if (!userId) return;
-    const refreshCurrentAccess = async () => {
-      const {
-        data: { user: currentUser },
-      } = await supabase.auth.getUser();
-      if (!currentUser || currentUser.id !== userId) return;
-      await loadAccount(
-        currentUser.id,
-        currentUser.email ?? null,
-        currentUser.user_metadata ?? {},
-      );
+    type CurrentProfileSnapshot = {
+      id: string;
+      full_name: string | null;
+      email: string | null;
+      phone: string | null;
+      avatar_url: string | null;
+      username: string | null;
+      gender: string | null;
+      date_of_birth: string | null;
+      preferred_payment_method: string | null;
+      role: string | null;
+    };
+    const applyCurrentProfile = async (profile: CurrentProfileSnapshot) => {
+      if (profile.role !== "customer") {
+        await supabase.auth.signOut({ scope: "local" });
+        return;
+      }
+      setUser(profile.full_name || profile.email?.split("@")[0] || "Member");
+      setUserEmail(profile.email);
+      setRole(profile.role as DbRole);
+      setProfilePhone(profile.phone ?? "");
+      setProfileUsername(profile.username ?? "");
+      setProfileGender(profile.gender ?? "");
+      setProfileBirth(profile.date_of_birth ?? "");
+      setProfilePaymentMethod("cod");
+      if (profile.avatar_url !== avatarPath) {
+        setAvatarPath(profile.avatar_url ?? null);
+        setAvatar(await privateAvatarUrl(profile.avatar_url));
+      }
+    };
+    const refreshCurrentProfile = async () => {
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select(
+          "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role",
+        )
+        .eq("id", userId)
+        .single();
+      if (error || !profile || profile.role !== "customer") {
+        if (error?.code === "PGRST116" || (profile && profile.role !== "customer")) {
+          await supabase.auth.signOut({ scope: "local" });
+        }
+        return;
+      }
+      await applyCurrentProfile(profile as CurrentProfileSnapshot);
     };
     const channel = supabase
       .channel(`current-profile-access-${userId}`)
@@ -682,20 +772,17 @@ function App() {
           table: "profiles",
           filter: `id=eq.${userId}`,
         },
-        () => void refreshCurrentAccess(),
+        (payload) =>
+          void applyCurrentProfile(payload.new as CurrentProfileSnapshot),
       )
       .subscribe();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshCurrentAccess();
-    }, 10_000);
-    const refreshOnFocus = () => void refreshCurrentAccess();
+    const refreshOnFocus = () => void refreshCurrentProfile();
     window.addEventListener("focus", refreshOnFocus);
     return () => {
-      window.clearInterval(interval);
       window.removeEventListener("focus", refreshOnFocus);
       void supabase.removeChannel(channel);
     };
-  }, [loadAccount, userId]);
+  }, [avatarPath, userId]);
 
   const adminRole: AdminRole =
     adminDatabaseRole === "superadmin"
@@ -711,57 +798,105 @@ function App() {
           setSplash(false);
         }, 1500)
       : undefined;
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [splash]);
+
+  useEffect(() => {
     const channel = portalSupabase
-      .channel("cozycraft-live-commerce")
+      .channel(`cozycraft-live-catalog-${adminPortal ? "admin" : "storefront"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => void refreshProducts())
       .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, () => void refreshProducts())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, () => void refreshProducts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, (payload) => {
-        if (payload.eventType === "DELETE" && typeof payload.old?.id === "string") {
-          setOrders((current) => current.filter((order) => order.id !== payload.old.id));
-          return;
-        }
-        void refreshOrders();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refreshOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_status_history" }, () => void refreshOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "payment_transactions" }, () => void refreshOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => void refreshCustomers())
-      .on("postgres_changes", { event: "*", schema: "public", table: "addresses" }, () => void refreshCustomers())
-      .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, () => { void refreshTickets(); void refreshCustomers(); })
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          void Promise.all([
-            refreshProducts(),
-            refreshOrders(),
-            ...(adminPortal ? [refreshCustomers(), refreshTickets()] : []),
-          ]);
-        }
-      });
+      .subscribe();
     return () => {
-      if (timer !== undefined) window.clearTimeout(timer);
       void portalSupabase.removeChannel(channel);
     };
-  }, [adminPortal, portalSupabase, refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
+  }, [adminPortal, portalSupabase, refreshProducts]);
 
   useEffect(() => {
-    if (!userId && !adminUserId) return;
+    const activeUserId = adminPortal ? adminUserId : userId;
+    if (!activeUserId) {
+      setOrdersRealtimeConnected(false);
+      return;
+    }
 
-    const syncOrders = () => void refreshOrders();
-    const syncVisibleOrders = () => {
-      if (document.visibilityState === "visible") syncOrders();
+    const refreshChangedOrder = (payload: OrderRealtimeChange) => {
+      const target = orderRealtimeTarget(payload);
+      if (target.removeOrder && target.orderId) {
+        setOrders((current) =>
+          current.filter((order) => order.id !== target.orderId),
+        );
+        return;
+      }
+      if (!target.orderId) {
+        void refreshOrders();
+        return;
+      }
+      void refreshOrder(target.orderId);
+      if (target.announceNewOrder) {
+        window.dispatchEvent(
+          new CustomEvent("cozycraft:new-order", {
+            detail: { orderId: target.orderId },
+          }),
+        );
+      }
     };
-    const interval = window.setInterval(syncVisibleOrders, 15_000);
 
-    window.addEventListener("focus", syncOrders);
+    let channel = portalSupabase.channel(
+      `cozycraft-live-orders-${adminPortal ? "admin" : activeUserId}`,
+    );
+    channel = channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "orders",
+        ...(adminPortal ? {} : { filter: `user_id=eq.${activeUserId}` }),
+      },
+      refreshChangedOrder,
+    );
+    channel = channel
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, refreshChangedOrder)
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_status_history" }, refreshChangedOrder)
+      .on("postgres_changes", { event: "*", schema: "public", table: "payment_transactions" }, refreshChangedOrder);
+    channel = channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "support_tickets",
+        ...(adminPortal ? {} : { filter: `user_id=eq.${activeUserId}` }),
+      },
+      (payload) => {
+        void refreshTickets();
+        const changedTicket = payload.new as Record<string, unknown>;
+        if (adminPortal && typeof changedTicket.user_id === "string") void refreshCustomers();
+      },
+    );
+    if (adminPortal) {
+      channel = channel
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => void refreshCustomers())
+        .on("postgres_changes", { event: "*", schema: "public", table: "addresses" }, () => void refreshCustomers());
+    }
+    channel.subscribe((status) => {
+      setOrdersRealtimeConnected(status === "SUBSCRIBED");
+    });
+
+    const syncVisibleOrders = () => {
+      if (document.visibilityState === "visible") void refreshOrders();
+    };
+    window.addEventListener("focus", syncVisibleOrders);
     document.addEventListener("visibilitychange", syncVisibleOrders);
 
     return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", syncOrders);
+      setOrdersRealtimeConnected(false);
+      window.removeEventListener("focus", syncVisibleOrders);
       document.removeEventListener("visibilitychange", syncVisibleOrders);
+      void portalSupabase.removeChannel(channel);
     };
-  }, [adminUserId, refreshOrders, userId]);
+  }, [adminPortal, adminUserId, portalSupabase, refreshCustomers, refreshOrder, refreshOrders, refreshTickets, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -794,16 +929,12 @@ function App() {
         },
         syncCollections,
       )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") syncCollections();
-      });
-    const interval = window.setInterval(syncVisibleCollections, 10_000);
+      .subscribe();
 
     window.addEventListener("focus", syncCollections);
     document.addEventListener("visibilitychange", syncVisibleCollections);
 
     return () => {
-      window.clearInterval(interval);
       window.removeEventListener("focus", syncCollections);
       document.removeEventListener("visibilitychange", syncVisibleCollections);
       void supabase.removeChannel(channel);
@@ -863,7 +994,12 @@ function App() {
   }, [adminProducts, queueAccountWrite, userId]);
 
   const reloadAddresses = async () => {
-    const { data } = await supabase.from("addresses").select("*").order("is_primary", { ascending: false });
+    if (!userId) return;
+    const { data } = await supabase
+      .from("addresses")
+      .select("id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary")
+      .eq("user_id", userId)
+      .order("is_primary", { ascending: false });
     setAddresses((data ?? []).map((item) => ({ id:item.id, label:item.label, name:item.recipient_name, mobile:item.mobile, email:item.email, line:item.address_line, barangay:item.barangay, city:item.city, province:item.province, postal:item.postal_code, note:item.delivery_note, primary:item.is_primary })));
   };
 
@@ -1269,8 +1405,23 @@ function App() {
   const uploadProductImages = async (files: File[]) => {
     const urls: string[] = [];
     for (const file of files) {
-      const path = Date.now() + "-" + crypto.randomUUID() + "-" + safeFileName(file.name);
-      const { error } = await adminSupabase.storage.from("product-images").upload(path, file);
+      const optimized = await optimizeImageUpload(file, {
+        maxDimension: 2000,
+        quality: 0.88,
+      });
+      const path =
+        Date.now() +
+        "-" +
+        crypto.randomUUID() +
+        "-" +
+        safeFileName(optimized.name);
+      const { error } = await adminSupabase.storage
+        .from("product-images")
+        .upload(path, optimized, {
+          cacheControl: "31536000",
+          contentType: optimized.type,
+          upsert: false,
+        });
       if (error) continue;
       const { data } = adminSupabase.storage.from("product-images").getPublicUrl(path);
       urls.push(data.publicUrl);
@@ -1291,6 +1442,10 @@ function App() {
       };
     }
 
+    const optimized = await optimizeImageUpload(file, {
+      maxDimension: 1000,
+      quality: 0.86,
+    });
     const path =
       userId +
       "/avatar-" +
@@ -1298,12 +1453,12 @@ function App() {
       "-" +
       crypto.randomUUID() +
       "-" +
-      safeFileName(file.name);
+      safeFileName(optimized.name);
     const { data: uploaded, error: uploadError } = await supabase.storage
       .from("avatars")
-      .upload(path, file, {
-        cacheControl: "3600",
-        contentType: file.type,
+      .upload(path, optimized, {
+        cacheControl: "31536000",
+        contentType: optimized.type,
         upsert: false,
       });
     if (uploadError) {
@@ -1519,6 +1674,7 @@ function App() {
     avatar,
     addresses,
     orders,
+    ordersRealtimeConnected,
     customerProfiles,
     supportTickets,
     saveAddress,

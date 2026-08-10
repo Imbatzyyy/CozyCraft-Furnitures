@@ -79,6 +79,7 @@ import {
   type DbRole,
   type DbSupportTicket,
 } from "@/lib/supabase";
+import { optimizeImageUpload } from "@/lib/image-upload";
 
 import {
   Product,
@@ -687,7 +688,11 @@ export function Profile() {
   useEffect(() => {
     if (!userId) return;
     const refresh = async () => {
-      const { data } = await supabase.from("return_requests").select("*").eq("user_id", userId).order("created_at", { ascending: false });
+      const { data } = await supabase
+        .from("return_requests")
+        .select("id,order_id,user_id,return_number,reason,details,status,admin_note,evidence_paths,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
       setReturnRequests((data ?? []) as typeof returnRequests);
     };
     void refresh();
@@ -781,10 +786,18 @@ export function Profile() {
     const uploadedPaths: string[] = [];
     const imageUrls: string[] = [];
     for (const photo of reviewPhotos) {
-      const path = `${userId}/${reviewTarget.item.id}/${crypto.randomUUID()}-${safeFileName(photo.file.name)}`;
+      const optimized = await optimizeImageUpload(photo.file, {
+        maxDimension: 1600,
+        quality: 0.86,
+      });
+      const path = `${userId}/${reviewTarget.item.id}/${crypto.randomUUID()}-${safeFileName(optimized.name)}`;
       const { error: uploadError } = await supabase.storage
         .from("review-images")
-        .upload(path, photo.file, { cacheControl: "3600", upsert: false });
+        .upload(path, optimized, {
+          cacheControl: "31536000",
+          contentType: optimized.type,
+          upsert: false,
+        });
       if (uploadError) {
         if (uploadedPaths.length) await supabase.storage.from("review-images").remove(uploadedPaths);
         setReviewSubmitting(false);

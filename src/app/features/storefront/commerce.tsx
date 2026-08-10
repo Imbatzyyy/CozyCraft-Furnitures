@@ -696,6 +696,12 @@ export function Checkout() {
         });
       return;
     }
+    if (paymentReturn === "success") {
+      void supabase.functions
+        .invoke("sync-paymongo-payments", { body: { orderIds: [returnOrderId] } })
+        .finally(() => void refreshOrders());
+      return;
+    }
     void refreshOrders();
   }, [paymentReturn, refreshOrders, returnOrderId]);
   useEffect(() => {

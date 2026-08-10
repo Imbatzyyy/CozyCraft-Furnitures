@@ -172,14 +172,12 @@ export function TeamAccessPage() {
         () => void loadMembers(),
       )
       .subscribe();
-    const interval = window.setInterval(() => void loadMembers(), 10_000);
     const refreshVisible = () => {
       if (document.visibilityState === "visible") void loadMembers();
     };
     window.addEventListener("focus", refreshVisible);
     document.addEventListener("visibilitychange", refreshVisible);
     return () => {
-      window.clearInterval(interval);
       window.removeEventListener("focus", refreshVisible);
       document.removeEventListener("visibilitychange", refreshVisible);
       void supabase.removeChannel(channel);
