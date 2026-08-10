@@ -342,7 +342,7 @@ export type Store = {
   signOut: () => Promise<void>;
   setAvatar: (value: string | null) => void;
   clearCart: () => void;
-  refreshOrders: () => Promise<void>;
+  refreshOrders: () => Promise<string | null>;
   refreshCustomers: () => Promise<void>;
   refreshTickets: () => Promise<void>;
   placeOrder: (

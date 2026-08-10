@@ -202,7 +202,6 @@ function App() {
   }, [userId]);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
-  const orderRefreshSequence = useRef(0);
   const paymentReconciliationInFlight = useRef(false);
 
   const queueAccountWrite = useCallback((request: PromiseLike<unknown>) => {
@@ -285,7 +284,6 @@ function App() {
   }, [mapProduct, portalSupabase]);
 
   const refreshOrders = useCallback(async () => {
-    const refreshSequence = ++orderRefreshSequence.current;
     const loadOrders = () => portalSupabase
       .from("orders")
       .select(
@@ -293,9 +291,8 @@ function App() {
       )
       .order("created_at", { ascending: false });
     const { data, error } = await loadOrders();
-    if (!error && refreshSequence === orderRefreshSequence.current) {
-      setOrders((data ?? []) as DbOrder[]);
-    }
+    if (error) return error.message;
+    setOrders((data ?? []) as DbOrder[]);
     const pendingOnlineOrderIds = (data ?? [])
       .filter(
         (order) =>
@@ -316,6 +313,7 @@ function App() {
           paymentReconciliationInFlight.current = false;
         });
     }
+    return null;
   }, [portalSupabase]);
 
   const refreshAccountCollections = useCallback(async (id: string) => {

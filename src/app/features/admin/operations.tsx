@@ -667,13 +667,19 @@ export function OrdersWorkspacePage() {
       setOrdersLoading(false);
       setOrdersLoadError("Orders are taking longer than expected. Check your connection and try again.");
     }, 8_000);
-    void refreshOrders().finally(() => {
-      window.clearTimeout(timeout);
-      if (active) {
-        setOrdersLoading(false);
-        setOrdersLoadError("");
-      }
-    });
+    void refreshOrders()
+      .then((issue) => {
+        if (!active) return;
+        setOrdersLoadError(issue ?? "");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setOrdersLoadError(error instanceof Error ? error.message : "Orders could not be loaded.");
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
+        if (active) setOrdersLoading(false);
+      });
     return () => {
       active = false;
       window.clearTimeout(timeout);
