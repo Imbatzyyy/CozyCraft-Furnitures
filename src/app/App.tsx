@@ -66,13 +66,13 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ResilientImage } from "@/app/components/media/ResilientImage";
+import { ResilientImage } from "@/components/media/ResilientImage";
 import {
   orderRealtimeTarget,
   type OrderRealtimeChange,
-} from "@/lib/realtime-orders";
-import { optimizeImageUpload } from "@/lib/image-upload";
-import cozyCraftLogo from "@/imports/COZy.png";
+} from "@/lib/commerce/realtime-orders";
+import { optimizeImageUpload } from "@/lib/shared/image-upload";
+import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   adminSupabase,
@@ -84,9 +84,9 @@ import {
   type DbProduct,
   type DbRole,
   type DbSupportTicket,
-} from "@/lib/supabase";
-import { recordAuthActivity } from "@/lib/auth-activity";
-import { canonicalProductImages } from "@/lib/product-images";
+} from "@/services/supabase/client";
+import { recordAuthActivity } from "@/services/auth/activity.service";
+import { canonicalProductImages } from "@/lib/catalog/product-images";
 
 
 import {
@@ -103,20 +103,20 @@ import {
   useStore,
   fallbackProducts,
 } from "./core";
-import { checkoutSignature, selectCheckoutLines } from "../lib/checkout";
+import { checkoutSignature, selectCheckoutLines } from "@/lib/commerce/checkout";
 import {
   functionErrorMessage,
   isHandledFunctionResponse,
-} from "../lib/function-error";
+} from "@/lib/shared/function-error";
 import {
   defaultStoreSettings,
   normalizeStoreSettings,
   type PublicStoreSettings,
-} from "@/lib/store-settings";
+} from "@/lib/settings/store-settings";
 import {
   catalogValuesMatch,
   normalizeCatalogValue,
-} from "@/lib/catalog-discovery";
+} from "@/lib/catalog/discovery";
 
 const splashSessionKey = "cozycraft-welcome-seen";
 const publicAvatarPathMarker = "/storage/v1/object/public/avatars/";
@@ -1808,42 +1808,42 @@ function FlyToNav({ fly, done }: { fly: FlyState; done: () => void }) {
 }
 
 const storefrontCatalogRoute = async (name: string) => {
-  const pages = await import("./features/storefront/catalog");
+  const pages = await import("./features/storefront/catalog/StorefrontCatalog");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const storefrontCommerceRoute = async (name: string) => {
-  const pages = await import("./features/storefront/commerce");
+  const pages = await import("./features/storefront/commerce/ShoppingAndCheckout");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const storefrontAuthRoute = async (name: string) => {
-  const pages = await import("./features/storefront/auth");
+  const pages = await import("./features/storefront/authentication/CustomerAuth");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const storefrontProfileRoute = async (name: string) => {
-  const pages = await import("./features/storefront/profile");
+  const pages = await import("./features/storefront/account/CustomerAccount");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminShellRoute = async (name: string) => {
-  const pages = await import("./features/admin/shell");
+  const pages = await import("./features/admin/shell/AdminShell");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminCatalogRoute = async (name: string) => {
-  const pages = await import("./features/admin/catalog");
+  const pages = await import("./features/admin/catalog/CatalogManagement");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminOperationsRoute = async (name: string) => {
-  const pages = await import("./features/admin/operations");
+  const pages = await import("./features/admin/operations/OperationsManagement");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminTeamRoute = async (name: string) => {
-  const pages = await import("./features/admin/team-settings");
+  const pages = await import("./features/admin/team-settings/TeamAndSettings");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
@@ -1918,7 +1918,7 @@ const router = createBrowserRouter([
     path: "/checkout",
     lazy: async () => {
       const { Checkout, CheckoutErrorBoundary } = await import(
-        "./features/storefront/commerce"
+        "./features/storefront/commerce/ShoppingAndCheckout"
       );
       return {
         Component: Checkout,
@@ -1931,14 +1931,18 @@ const router = createBrowserRouter([
   {
     path: "/login",
     lazy: async () => {
-      const { Account } = await import("./features/storefront/auth");
+      const { Account } = await import(
+        "./features/storefront/authentication/CustomerAuth"
+      );
       return { Component: () => <Account mode="login" /> };
     },
   },
   {
     path: "/signup",
     lazy: async () => {
-      const { Account } = await import("./features/storefront/auth");
+      const { Account } = await import(
+        "./features/storefront/authentication/CustomerAuth"
+      );
       return { Component: () => <Account mode="signup" /> };
     },
   },

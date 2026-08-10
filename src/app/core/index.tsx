@@ -66,8 +66,8 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
-import { ResilientImage } from "@/app/components/media/ResilientImage";
-import cozyCraftLogo from "@/imports/COZy.png";
+import { ResilientImage } from "@/components/media/ResilientImage";
+import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   isStaffRole,
@@ -79,14 +79,14 @@ import {
   type DbProduct,
   type DbRole,
   type DbSupportTicket,
-} from "@/lib/supabase";
-import type { PublicStoreSettings } from "@/lib/store-settings";
-import { functionErrorMessage } from "@/lib/function-error";
-import { matchesCatalogSearch } from "@/lib/catalog-discovery";
+} from "@/services/supabase/client";
+import type { PublicStoreSettings } from "@/lib/settings/store-settings";
+import { functionErrorMessage } from "@/lib/shared/function-error";
+import { matchesCatalogSearch } from "@/lib/catalog/discovery";
 import {
   primaryProductImage,
   productMainImageIndex,
-} from "@/lib/product-images";
+} from "@/lib/catalog/product-images";
 
 
 export type Product = {
