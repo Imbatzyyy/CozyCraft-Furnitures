@@ -631,6 +631,7 @@ export function OrdersWorkspacePage() {
   const [returnNote, setReturnNote] = useState("");
   const [processingReturnRefund, setProcessingReturnRefund] = useState(false);
   const [ordersLive, setOrdersLive] = useState(false);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const ordersPerPage = 8;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
@@ -641,7 +642,12 @@ export function OrdersWorkspacePage() {
   ];
 
   useEffect(() => {
-    void refreshOrders();
+    let active = true;
+    setOrdersLoading(true);
+    void refreshOrders().finally(() => {
+      if (active) setOrdersLoading(false);
+    });
+    return () => { active = false; };
   }, [refreshOrders]);
   useEffect(() => {
     let active = true;
@@ -863,7 +869,15 @@ export function OrdersWorkspacePage() {
         </span>
       </div>
 
-      {!selected ? (
+      {ordersLoading && !selected ? (
+        <div className="mt-7 overflow-hidden rounded-2xl border border-border bg-card p-6" role="status" aria-live="polite">
+          <div className="h-4 w-40 animate-pulse rounded-full bg-secondary" />
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {[0, 1, 2].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-secondary/70" />)}
+          </div>
+          <p className="mt-5 text-center text-xs text-muted-foreground">Loading live customer orders…</p>
+        </div>
+      ) : !selected ? (
         <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
           No customer orders yet. New storefront orders will appear here automatically.
         </div>

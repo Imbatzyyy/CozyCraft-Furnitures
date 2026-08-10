@@ -202,6 +202,7 @@ function App() {
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
   const orderRefreshSequence = useRef(0);
+  const paymentReconciliationInFlight = useRef(false);
 
   const queueAccountWrite = useCallback((request: PromiseLike<unknown>) => {
     const pending = Promise.resolve(request);
@@ -290,7 +291,10 @@ function App() {
         "*, order_items(*), order_status_history(*), payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,created_at,updated_at), profiles!orders_user_id_fkey(full_name,email,phone)",
       )
       .order("created_at", { ascending: false });
-    let { data, error } = await loadOrders();
+    const { data, error } = await loadOrders();
+    if (!error && refreshSequence === orderRefreshSequence.current) {
+      setOrders((data ?? []) as DbOrder[]);
+    }
     const pendingOnlineOrderIds = (data ?? [])
       .filter(
         (order) =>
@@ -298,17 +302,18 @@ function App() {
           ["card", "gcash"].includes(order.payment_method),
       )
       .map((order) => order.id);
-    if (!error && pendingOnlineOrderIds.length) {
-      const { data: syncResult } = await portalSupabase.functions.invoke(
-        "sync-paymongo-payments",
-        { body: { orderIds: pendingOnlineOrderIds } },
-      );
-      if (Number(syncResult?.synchronized) > 0) {
-        ({ data, error } = await loadOrders());
-      }
-    }
-    if (!error && refreshSequence === orderRefreshSequence.current) {
-      setOrders((data ?? []) as DbOrder[]);
+    if (!error && pendingOnlineOrderIds.length && !paymentReconciliationInFlight.current) {
+      paymentReconciliationInFlight.current = true;
+      void portalSupabase.functions
+        .invoke("sync-paymongo-payments", {
+          body: { orderIds: pendingOnlineOrderIds },
+        })
+        .then(({ data: syncResult }) => {
+          if (Number(syncResult?.synchronized) > 0) void refreshOrders();
+        })
+        .finally(() => {
+          paymentReconciliationInFlight.current = false;
+        });
     }
   }, [portalSupabase]);
 
