@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createBrowserRouter,
   Link,
@@ -128,6 +129,16 @@ type PsgcMunicipality = {
   provCode: string;
   munCityCode: string;
   munCityName: string;
+};
+
+type OrderReviewTarget = {
+  orderNumber: string;
+  item: DbOrder["order_items"][number];
+};
+
+type ReviewPhotoDraft = {
+  file: File;
+  preview: string;
 };
 
 type PsgcBarangay = {
@@ -654,6 +665,15 @@ export function Profile() {
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [reviewedOrderItemIds, setReviewedOrderItemIds] = useState<Set<number>>(new Set());
+  const [reviewTarget, setReviewTarget] = useState<OrderReviewTarget | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewBody, setReviewBody] = useState("");
+  const [reviewPhotos, setReviewPhotos] = useState<ReviewPhotoDraft[]>([]);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSuccess, setReviewSuccess] = useState<{ productName: string; published: boolean } | null>(null);
   const [securityView, setSecurityView] = useState<"home" | "setup" | "change">(
     "home",
   );
@@ -674,6 +694,126 @@ export function Profile() {
     const channel = supabase.channel(`customer-returns-${userId}`).on("postgres_changes", { event:"*", schema:"public", table:"return_requests", filter:`user_id=eq.${userId}` }, refresh).subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [userId]);
+  const refreshReviewedOrderItems = useCallback(async () => {
+    if (!userId) {
+      setReviewedOrderItemIds(new Set());
+      return;
+    }
+    const { data } = await supabase
+      .from("reviews")
+      .select("order_item_id")
+      .eq("user_id", userId);
+    setReviewedOrderItemIds(
+      new Set(
+        (data ?? [])
+          .map((row) => Number(row.order_item_id))
+          .filter((id) => Number.isInteger(id)),
+      ),
+    );
+  }, [userId]);
+  useEffect(() => {
+    void refreshReviewedOrderItems();
+    if (!userId) return;
+    const channel = supabase
+      .channel(`customer-order-reviews-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "reviews", filter: `user_id=eq.${userId}` },
+        () => void refreshReviewedOrderItems(),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [refreshReviewedOrderItems, userId]);
+  const clearReviewDraft = useCallback(() => {
+    setReviewPhotos((current) => {
+      current.forEach((photo) => URL.revokeObjectURL(photo.preview));
+      return [];
+    });
+    setReviewTarget(null);
+    setReviewRating(0);
+    setReviewTitle("");
+    setReviewBody("");
+    setReviewError("");
+  }, []);
+  const openReview = (target: OrderReviewTarget) => {
+    clearReviewDraft();
+    setReviewTarget(target);
+  };
+  const addReviewPhotos = (files: FileList | null) => {
+    if (!files) return;
+    const available = 2 - reviewPhotos.length;
+    const selected = Array.from(files).slice(0, available);
+    const invalid = selected.find(
+      (file) =>
+        file.size > 5 * 1024 * 1024 ||
+        !["image/jpeg", "image/png", "image/webp"].includes(file.type),
+    );
+    if (invalid) {
+      setReviewError("Review photos must be JPG, PNG, or WebP files no larger than 5 MB each.");
+      return;
+    }
+    setReviewError("");
+    setReviewPhotos((current) => [
+      ...current,
+      ...selected.map((file) => ({ file, preview: URL.createObjectURL(file) })),
+    ]);
+  };
+  const removeReviewPhoto = (index: number) => {
+    setReviewPhotos((current) => {
+      URL.revokeObjectURL(current[index].preview);
+      return current.filter((_, photoIndex) => photoIndex !== index);
+    });
+  };
+  const submitOrderReview = async () => {
+    if (!userId || !reviewTarget || reviewSubmitting) return;
+    if (reviewRating < 1) {
+      setReviewError("Choose a star rating before submitting your review.");
+      return;
+    }
+    if (reviewBody.trim().length < 5) {
+      setReviewError("Tell other shoppers about the product in at least 5 characters.");
+      return;
+    }
+    setReviewSubmitting(true);
+    setReviewError("");
+    const uploadedPaths: string[] = [];
+    const imageUrls: string[] = [];
+    for (const photo of reviewPhotos) {
+      const path = `${userId}/${reviewTarget.item.id}/${crypto.randomUUID()}-${safeFileName(photo.file.name)}`;
+      const { error: uploadError } = await supabase.storage
+        .from("review-images")
+        .upload(path, photo.file, { cacheControl: "3600", upsert: false });
+      if (uploadError) {
+        if (uploadedPaths.length) await supabase.storage.from("review-images").remove(uploadedPaths);
+        setReviewSubmitting(false);
+        setReviewError(`We could not upload ${photo.file.name}. ${uploadError.message}`);
+        return;
+      }
+      uploadedPaths.push(path);
+      imageUrls.push(supabase.storage.from("review-images").getPublicUrl(path).data.publicUrl);
+    }
+    const { data, error } = await supabase.rpc("submit_order_item_review", {
+      p_order_item_id: reviewTarget.item.id,
+      p_rating: reviewRating,
+      p_title: reviewTitle.trim(),
+      p_body: reviewBody.trim(),
+      p_image_urls: imageUrls,
+    });
+    if (error) {
+      if (uploadedPaths.length) await supabase.storage.from("review-images").remove(uploadedPaths);
+      setReviewSubmitting(false);
+      setReviewError(error.message);
+      return;
+    }
+    const result = Array.isArray(data) ? data[0] : data;
+    const productName = reviewTarget.item.product_name;
+    setReviewSubmitting(false);
+    await refreshReviewedOrderItems();
+    clearReviewDraft();
+    setReviewSuccess({ productName, published: Boolean(result?.approved) });
+  };
   const loadMfaFactors = useCallback(async () => {
     if (!userId) { setMfaFactors([]); return; }
     const { data, error } = await supabase.auth.mfa.listFactors();
@@ -1623,13 +1763,21 @@ export function Profile() {
                                     product.name.trim().toLowerCase() ===
                                     item.product_name.trim().toLowerCase(),
                                 )?.id;
-                              return reviewProductId ? (
+                              return reviewedOrderItemIds.has(item.id) ? (
                                 <Link
-                                  to={`/products/${reviewProductId}#reviews`}
-                                  className="flex items-center gap-1.5 rounded-lg border border-foreground bg-foreground px-3 py-2 text-[10px] font-semibold text-background transition hover:opacity-85"
+                                  to={reviewProductId ? `/products/${reviewProductId}#reviews` : "#"}
+                                  className="flex items-center gap-1.5 rounded-xl border border-[#78906f]/35 bg-[#e6eee2] px-3 py-2 text-[10px] font-semibold text-[#4e6848] transition hover:bg-[#dce8d7]"
                                 >
-                                  <Star size={12} /> Review product
+                                  <Check size={12} /> Review submitted
                                 </Link>
+                              ) : reviewProductId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openReview({ orderNumber: selectedOrder.order_number, item })}
+                                  className="flex items-center gap-1.5 rounded-xl border border-foreground bg-foreground px-3 py-2 text-[10px] font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                                >
+                                  <Star size={12} /> Write a review
+                                </button>
                               ) : (
                                 <span className="rounded-lg bg-secondary px-3 py-2 text-[10px] text-muted-foreground">
                                   Product unavailable
@@ -2048,6 +2196,65 @@ export function Profile() {
           </section>
         </div>
       )}
+      {reviewTarget && createPortal(
+        <div className="fixed inset-0 z-[320] overflow-y-auto bg-[#171614]/70 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-labelledby="order-review-title" onMouseDown={(event) => { if (event.target === event.currentTarget && !reviewSubmitting) clearReviewDraft(); }}>
+          <section className="mx-auto my-auto grid min-h-full w-full max-w-4xl place-items-center py-3">
+            <div className="w-full overflow-hidden rounded-[1.75rem] bg-[#fbfaf7] shadow-[0_30px_90px_rgba(0,0,0,.28)]">
+              <header className="flex items-start justify-between gap-4 border-b border-border bg-[#eee8de] p-5 sm:p-7">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">DELIVERED PURCHASE · #{reviewTarget.orderNumber}</p>
+                  <h2 id="order-review-title" className="mt-2 font-serif text-3xl sm:text-4xl">How does it feel at home?</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">Your experience helps another customer choose confidently.</p>
+                </div>
+                <button type="button" onClick={clearReviewDraft} disabled={reviewSubmitting} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary disabled:opacity-50" aria-label="Close review form"><X size={18}/></button>
+              </header>
+              <div className="grid lg:grid-cols-[.68fr_1.32fr]">
+                <aside className="border-b border-border bg-[#f3efe8] p-5 lg:border-b-0 lg:border-r lg:p-7">
+                  <div className="flex items-center gap-4 lg:block">
+                    {reviewTarget.item.image_url ? <ResilientImage src={reviewTarget.item.image_url} alt={reviewTarget.item.product_name} className="h-24 w-24 shrink-0 rounded-2xl object-cover lg:h-auto lg:w-full lg:aspect-square"/> : <span className="grid h-24 w-24 shrink-0 place-items-center rounded-2xl bg-card lg:aspect-square lg:h-auto lg:w-full"><Package size={28}/></span>}
+                    <div className="min-w-0 lg:mt-5">
+                      <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">YOUR PURCHASE</p>
+                      <h3 className="mt-1 truncate text-base font-semibold lg:whitespace-normal">{reviewTarget.item.product_name}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">Quantity {reviewTarget.item.quantity}</p>
+                    </div>
+                  </div>
+                  <div className="mt-5 rounded-2xl border border-border bg-card p-4">
+                    <p className="text-xs font-semibold">Review quality check</p>
+                    <ul className="mt-3 space-y-2 text-[11px] text-muted-foreground">
+                      <li className="flex items-center gap-2"><span className={`grid h-5 w-5 place-items-center rounded-full ${reviewRating > 0 ? "bg-[#dfeadb] text-[#4d6847]" : "bg-secondary"}`}>{reviewRating > 0 ? <Check size={11}/> : "1"}</span> Add an honest star rating</li>
+                      <li className="flex items-center gap-2"><span className={`grid h-5 w-5 place-items-center rounded-full ${reviewBody.trim().length >= 5 ? "bg-[#dfeadb] text-[#4d6847]" : "bg-secondary"}`}>{reviewBody.trim().length >= 5 ? <Check size={11}/> : "2"}</span> Describe quality, comfort, or fit</li>
+                      <li className="flex items-center gap-2"><span className={`grid h-5 w-5 place-items-center rounded-full ${reviewPhotos.length ? "bg-[#dfeadb] text-[#4d6847]" : "bg-secondary"}`}>{reviewPhotos.length ? <Check size={11}/> : "3"}</span> Photos are optional, up to two</li>
+                    </ul>
+                  </div>
+                </aside>
+                <div className="p-5 sm:p-7">
+                  <fieldset>
+                    <legend className="text-sm font-semibold">Your overall rating <span className="text-[#9d5f49]">*</span></legend>
+                    <div className="mt-3 flex gap-2" aria-label="Product rating">
+                      {[1,2,3,4,5].map((rating) => <button type="button" key={rating} onClick={() => setReviewRating(rating)} className={`grid h-12 w-12 place-items-center rounded-xl border transition ${rating <= reviewRating ? "border-[#9d7b5b] bg-[#efe1cd] text-[#9d6e43]" : "border-border bg-card text-muted-foreground hover:bg-secondary"}`} aria-label={`${rating} star${rating === 1 ? "" : "s"}`}><Star size={22} fill={rating <= reviewRating ? "currentColor" : "none"}/></button>)}
+                    </div>
+                  </fieldset>
+                  <label className="mt-6 grid gap-2 text-sm font-semibold">Review title <span className="text-xs font-normal text-muted-foreground">Optional</span><input value={reviewTitle} onChange={(event)=>setReviewTitle(event.target.value.slice(0,120))} className="h-12 rounded-xl border border-border bg-card px-4 font-normal outline-none focus:border-foreground" placeholder="e.g. Beautiful and comfortable"/></label>
+                  <label className="mt-5 grid gap-2 text-sm font-semibold">Your review <span className="text-[#9d5f49]">*</span><textarea value={reviewBody} onChange={(event)=>setReviewBody(event.target.value.slice(0,1200))} className="min-h-32 resize-y rounded-xl border border-border bg-card p-4 font-normal leading-6 outline-none focus:border-foreground" placeholder="How was the quality, comfort, size, assembly, or delivery experience?"/><span className="text-right text-[10px] font-normal text-muted-foreground">{reviewBody.length}/1200</span></label>
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Add real-life photos</p><p className="mt-1 text-xs text-muted-foreground">Up to 2 JPG, PNG, or WebP images · 5 MB each</p></div><span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-semibold">{reviewPhotos.length}/2</span></div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 sm:flex">
+                      {reviewPhotos.map((photo,index)=><div key={photo.preview} className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-secondary sm:h-28 sm:w-28"><img src={photo.preview} alt={`Review upload preview ${index+1}`} className="h-full w-full object-cover"/><button type="button" onClick={()=>removeReviewPhoto(index)} className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-white" aria-label={`Remove review photo ${index+1}`}><Trash2 size={14}/></button></div>)}
+                      {reviewPhotos.length < 2 && <label className="grid aspect-square cursor-pointer place-items-center rounded-2xl border border-dashed border-[#9f978a] bg-card text-center transition hover:bg-secondary sm:h-28 sm:w-28"><span><ImagePlus className="mx-auto" size={22}/><span className="mt-2 block text-[10px] font-semibold">Add photo</span></span><input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(event)=>{addReviewPhotos(event.target.files);event.target.value="";}}/></label>}
+                    </div>
+                  </div>
+                  {reviewError && <div className="mt-5 rounded-xl bg-[#f4e3d5] px-4 py-3 text-xs font-medium text-[#895b45]" role="alert">{reviewError}</div>}
+                  <div className="mt-7 grid gap-3 min-[420px]:grid-cols-[1fr_auto]">
+                    <button type="button" onClick={()=>void submitOrderReview()} disabled={reviewSubmitting || reviewRating < 1 || reviewBody.trim().length < 5} className="min-h-12 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45">{reviewSubmitting ? "Publishing your review…" : "Submit review"}</button>
+                    <button type="button" onClick={clearReviewDraft} disabled={reviewSubmitting} className="min-h-12 rounded-xl border border-border px-5 text-sm font-semibold disabled:opacity-50">Cancel</button>
+                  </div>
+                  <p className="mt-4 text-[10px] leading-5 text-muted-foreground">Only delivered purchases can be reviewed. Reviews may be checked by CozyCraft before appearing publicly.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>, document.body)}
+      {reviewSuccess && createPortal(<div className="fixed inset-0 z-[330] grid place-items-center bg-[#171614]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="review-success-title"><section className="w-full max-w-md rounded-[1.75rem] bg-[#fbfaf7] p-7 text-center shadow-2xl sm:p-9"><span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e1ecdd] text-[#4e6848]"><Check size={30}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">REVIEW RECEIVED</p><h2 id="review-success-title" className="mt-2 font-serif text-3xl">Thank you for sharing.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Your review for <b className="text-foreground">{reviewSuccess.productName}</b> was submitted successfully. {reviewSuccess.published ? "It is now visible to other shoppers." : "Our team will check it before it appears publicly."}</p><button type="button" onClick={()=>setReviewSuccess(null)} className="mt-7 min-h-12 w-full rounded-xl bg-foreground px-5 text-sm font-semibold text-background">Back to my order</button></section></div>, document.body)}
       {cancelOrderId && <div className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-cancel-title"><section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">CANCELLATION REQUEST</p><h2 id="customer-cancel-title" className="mt-2 font-serif text-3xl">Request a review.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Requests are accepted within {storeSettings.fulfillment_settings.cancellation_window_hours} hours of ordering. Your order remains active until an administrator approves it; approved paid orders are safely refunded.</p><label className="mt-5 grid gap-2 text-sm font-semibold">Reason<textarea value={cancelReason} onChange={(event)=>setCancelReason(event.target.value)} minLength={5} maxLength={500} className="min-h-24 rounded-xl border border-border bg-background p-3 font-normal" placeholder="Tell us why you need to cancel" /></label><div className="mt-5 grid gap-3 min-[390px]:grid-cols-2"><button disabled={cancelSubmitting || cancelReason.trim().length < 5} onClick={()=>void submitCancellation()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{cancelSubmitting ? "Sending request…" : "Submit request"}</button><button disabled={cancelSubmitting} onClick={()=>{setCancelOrderId(null);setCancelReason("");}} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button></div></section></div>}
       {confirmSignOut && (
         <ConfirmSignOut
