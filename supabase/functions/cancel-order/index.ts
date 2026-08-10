@@ -51,7 +51,7 @@ Deno.serve(async (request) => {
   const publishableKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY");
   const paymongoSecretKey = Deno.env.get("PAYMONGO_SECRET_KEY");
-  if (!supabaseUrl || !publishableKey || !serviceRoleKey || !paymongoSecretKey) {
+  if (!supabaseUrl || !publishableKey || !serviceRoleKey) {
     return json(request, { error: "Cancellation service is not configured." }, 503);
   }
 
@@ -65,48 +65,71 @@ Deno.serve(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired." }, 401);
   const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["customer", "admin", "superadmin"].includes(profile.role)) {
-    return json(request, { error: "This account cannot cancel orders." }, 403);
+  if (!profile || !["admin", "superadmin"].includes(profile.role)) {
+    return json(request, { error: "An administrator must approve or reject cancellation requests." }, 403);
   }
 
   const body = await request.json().catch(() => ({}));
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
-  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
-  if (!orderId || reason.length < 5) return json(request, { error: "Provide a cancellation reason." }, 400);
+  const action = body.action === "reject" ? "reject" : "approve";
+  const suppliedReason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
+  const decisionNote = typeof body.note === "string" ? body.note.trim().slice(0, 500) : "";
+  if (!orderId) return json(request, { error: "Order is required." }, 400);
 
   const { data: order, error: orderError } = await adminClient
     .from("orders")
-    .select("id,order_number,user_id,status,payment_method,payment_status,total,created_at,profiles(email),payment_transactions(id,status,provider_payment_id,livemode)")
+    .select("id,order_number,user_id,status,payment_method,payment_status,total,created_at,cancellation_status,cancellation_reason,cancellation_requested_at,profiles(email),payment_transactions(id,status,provider_payment_id,livemode,paid_at,updated_at)")
     .eq("id", orderId)
     .single();
   if (orderError || !order) return json(request, { error: "Order not found." }, 404);
-  const customerRequest = profile.role === "customer";
-  if (customerRequest && order.user_id !== user.id) {
-    return json(request, { error: "You can only cancel your own order." }, 403);
-  }
+  const reason = suppliedReason || String(order.cancellation_reason ?? "").trim();
+  if (reason.length < 5) return json(request, { error: "Provide a cancellation reason." }, 400);
   const { data: settings } = await adminClient
     .from("store_settings")
     .select("fulfillment_settings,email_event_settings")
     .eq("id", true)
     .single();
-  if (customerRequest) {
-    const cancellationHours = Math.max(0, Number(settings?.fulfillment_settings?.cancellation_window_hours) || 0);
-    const deadline = new Date(order.created_at).getTime() + cancellationHours * 3_600_000;
-    if (!["pending", "processing", "packed"].includes(order.status) || cancellationHours === 0 || Date.now() > deadline) {
-      return json(request, { error: `The ${cancellationHours}-hour cancellation window has closed. Contact support for assistance.` }, 409);
-    }
-  }
   if (["shipped", "delivered"].includes(order.status)) {
-    return json(request, { error: "Shipped or delivered orders require a return workflow." }, 409);
+    return json(request, { error: "This order has already shipped and can no longer be cancelled." }, 409);
   }
   if (order.status === "cancelled") return json(request, { error: "This order is already cancelled." }, 409);
 
-  const transaction = Array.isArray(order.payment_transactions)
-    ? order.payment_transactions[0]
-    : order.payment_transactions;
+  if (action === "reject") {
+    if (order.cancellation_status !== "pending") {
+      return json(request, { error: "There is no pending cancellation request to reject." }, 409);
+    }
+    const reviewedAt = new Date().toISOString();
+    const { error } = await adminClient.from("orders").update({
+      cancellation_status: "rejected",
+      cancellation_reviewed_at: reviewedAt,
+      cancellation_reviewed_by: user.id,
+      cancellation_decision_note: decisionNote || "The order is continuing through fulfillment.",
+    }).eq("id", order.id).eq("cancellation_status", "pending");
+    if (error) return json(request, { error: error.message }, 500);
+    await adminClient.from("customer_notifications").insert({
+      user_id: order.user_id,
+      kind: "cancellation_rejected",
+      title: `Cancellation request reviewed for ${order.order_number}`,
+      message: decisionNote || "Your cancellation request was not approved. The order will continue through fulfillment.",
+      entity_type: "orders",
+      entity_id: order.id,
+    });
+    return json(request, { reviewed: true, cancellationStatus: "rejected" });
+  }
+
+  const transactions = Array.isArray(order.payment_transactions)
+    ? order.payment_transactions
+    : order.payment_transactions ? [order.payment_transactions] : [];
+  const transaction = [...transactions]
+    .filter((candidate) => candidate.status === "paid" && candidate.provider_payment_id)
+    .sort((left, right) => Date.parse(right.paid_at ?? right.updated_at) - Date.parse(left.paid_at ?? left.updated_at))[0];
   const commonUpdate = {
     cancellation_reason: reason,
-    cancellation_requested_at: new Date().toISOString(),
+    cancellation_requested_at: order.cancellation_requested_at ?? new Date().toISOString(),
+    cancellation_status: "approved",
+    cancellation_reviewed_at: new Date().toISOString(),
+    cancellation_reviewed_by: user.id,
+    cancellation_decision_note: decisionNote || null,
     cancelled_by: user.id,
   };
 
@@ -131,12 +154,16 @@ Deno.serve(async (request) => {
   if (!transaction?.provider_payment_id) {
     return json(request, { error: "The settled PayMongo payment reference is missing. Cancellation was not applied." }, 409);
   }
-  await adminClient.from("orders").update({ ...commonUpdate, refund_status: "processing" }).eq("id", order.id);
+  await adminClient.from("orders").update({ refund_status: "processing" }).eq("id", order.id);
 
   let refundId = `demo_refund_${crypto.randomUUID()}`;
   let demo = !transaction.livemode;
   let refundPayload: Record<string, unknown> = { demo: true };
   if (!demo) {
+    if (!paymongoSecretKey) {
+      await adminClient.from("orders").update({ refund_status: "failed" }).eq("id", order.id);
+      return json(request, { error: "PayMongo refunds are not configured. The order remains active." }, 503);
+    }
     const response = await fetch("https://api.paymongo.com/v1/refunds", {
       method: "POST",
       headers: {
@@ -168,6 +195,7 @@ Deno.serve(async (request) => {
 
   const timestamp = new Date().toISOString();
   const { error: finalizeError } = await adminClient.from("orders").update({
+    ...commonUpdate,
     status: "cancelled",
     payment_status: "refunded",
     refund_status: demo ? "demo_succeeded" : "succeeded",

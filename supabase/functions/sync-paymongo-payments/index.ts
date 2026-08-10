@@ -50,7 +50,7 @@ Deno.serve(async (request) => {
 
   const { data: visibleOrders, error: orderError } = await userClient
     .from("orders")
-    .select("id,order_number,payment_status,payment_method,payment_transactions(id,provider_session_id,status)")
+    .select("id,order_number,payment_status,payment_method,payment_transactions(id,provider_session_id,status,updated_at)")
     .in("id", orderIds)
     .in("payment_method", ["card", "gcash"])
     .eq("payment_status", "pending");
@@ -58,9 +58,12 @@ Deno.serve(async (request) => {
 
   let synchronized = 0;
   for (const order of visibleOrders ?? []) {
-    const transaction = Array.isArray(order.payment_transactions)
-      ? order.payment_transactions[0]
-      : order.payment_transactions;
+    const transactions = Array.isArray(order.payment_transactions)
+      ? order.payment_transactions
+      : order.payment_transactions ? [order.payment_transactions] : [];
+    const transaction = [...transactions]
+      .filter((candidate) => candidate.status === "pending" && candidate.provider_session_id)
+      .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))[0];
     if (!transaction?.provider_session_id) continue;
 
     const response = await fetch(

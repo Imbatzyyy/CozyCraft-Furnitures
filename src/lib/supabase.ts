@@ -142,6 +142,22 @@ export type DbOrderStatusHistory = {
   changed_by: string | null;
 };
 
+export type DbPaymentTransaction = {
+  id: string;
+  order_id: string;
+  provider: "paymongo";
+  provider_session_id: string | null;
+  provider_payment_id: string | null;
+  status: "pending" | "paid" | "failed" | "expired" | "refunded";
+  amount: number;
+  currency: "PHP";
+  livemode: boolean;
+  failure_reason: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type DbCustomerNotification = {
   id: number;
   user_id: string;
@@ -169,6 +185,10 @@ export type DbOrder = {
   payment_status: "pending" | "paid" | "failed" | "refunded";
   cancellation_reason?: string | null;
   cancellation_requested_at?: string | null;
+  cancellation_status?: "pending" | "approved" | "rejected" | null;
+  cancellation_reviewed_at?: string | null;
+  cancellation_reviewed_by?: string | null;
+  cancellation_decision_note?: string | null;
   refund_status?: "processing" | "succeeded" | "failed" | "demo_succeeded" | null;
   provider_refund_id?: string | null;
   refunded_at?: string | null;
@@ -182,6 +202,7 @@ export type DbOrder = {
   created_at: string;
   order_items: DbOrderItem[];
   order_status_history: DbOrderStatusHistory[];
+  payment_transactions?: DbPaymentTransaction[];
   profiles?: {
     full_name: string;
     email: string | null;

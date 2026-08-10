@@ -110,7 +110,7 @@ import {
 } from "../../core";
 
 import { AdminShell } from "./shell";
-import { allowedFulfillmentStatuses } from "@/lib/order-workflow";
+import { allowedFulfillmentStatuses, currentPaymentTransaction } from "@/lib/order-workflow";
 import { allowedReturnStatuses, type ReturnStatus } from "@/lib/return-workflow";
 import {
   customerLifetimeValue,
@@ -645,8 +645,11 @@ export function OrdersWorkspacePage() {
   useEffect(() => {
     const refresh = async () => { const { data } = await supabase.from("return_requests").select("*").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
     void refresh();
-    const channel = supabase.channel("admin-return-requests").on("postgres_changes", {event:"*",schema:"public",table:"return_requests"}, refresh).subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    const refreshVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    const channel = supabase.channel("admin-return-requests").on("postgres_changes", {event:"*",schema:"public",table:"return_requests"}, refresh).subscribe((status) => { if (status === "SUBSCRIBED") void refresh(); });
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => { window.removeEventListener("focus", refreshVisible); document.removeEventListener("visibilitychange", refreshVisible); void supabase.removeChannel(channel); };
   }, []);
   useEffect(() => {
     if (!orders.length) {
@@ -674,6 +677,7 @@ export function OrdersWorkspacePage() {
   };
 
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
+  const selectedPayment = currentPaymentTransaction(selected?.payment_transactions);
   const selectedReturn = selected ? returnRequests.find((request) => request.order_id === selected.id) : undefined;
   const updateReturn = async (status:string) => {
     if (!selectedReturn) return;
@@ -742,6 +746,30 @@ export function OrdersWorkspacePage() {
         ? `Order ${selected.order_number} was safely cancelled and its ${selected.payment_method.toUpperCase()} refund was recorded.`
         : `Order ${selected.order_number} was cancelled and its inventory was restored.`,
     );
+  };
+  const rejectCancellationRequest = async () => {
+    if (!selected || selected.cancellation_status !== "pending") return;
+    if (!canManageFinancials) {
+      setNotice("An administrator must review cancellation requests.");
+      return;
+    }
+    setCancelling(true);
+    const { data, error } = await supabase.functions.invoke("cancel-order", {
+      body: {
+        orderId: selected.id,
+        action: "reject",
+        reason: selected.cancellation_reason,
+        note: cancellationReason.trim() || "The order is continuing through fulfillment.",
+      },
+    });
+    setCancelling(false);
+    if (error || data?.error) {
+      setNotice(data?.error ?? error?.message ?? "The request could not be reviewed.");
+      return;
+    }
+    setCancellationReason("");
+    await refreshOrders();
+    setNotice(`Cancellation request for ${selected.order_number} was not approved. The customer was notified.`);
   };
   const sendRefundEmail = async () => {
     if (!selected) return;
@@ -875,7 +903,7 @@ export function OrdersWorkspacePage() {
               <button
                 onClick={() => void update(nextStatus)}
                 disabled={
-                  selected.status === "delivered" || selected.status === "cancelled"
+                  selected.status === "delivered" || selected.status === "cancelled" || selected.cancellation_status === "pending"
                 }
                 className="rounded-xl bg-foreground px-3.5 py-2 text-xs font-semibold text-background disabled:opacity-40"
               >
@@ -894,6 +922,20 @@ export function OrdersWorkspacePage() {
             </div>
 
             <div className="p-5">
+              {selected.cancellation_status && (
+                <section className={`mb-5 rounded-2xl border p-4 ${selected.cancellation_status === "pending" ? "border-[#d6c09a] bg-[#f5ecdc] text-[#725a36]" : selected.cancellation_status === "approved" ? "border-[#aec0a7] bg-[#e6eee2] text-[#45603f]" : "border-border bg-secondary text-muted-foreground"}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold tracking-[.16em]">CANCELLATION {selected.cancellation_status.toUpperCase()}</p>
+                      <p className="mt-2 text-sm font-semibold">{selected.cancellation_reason || "No reason provided"}</p>
+                      {selected.cancellation_requested_at && <time className="mt-1 block text-[10px]" dateTime={selected.cancellation_requested_at}>Requested {new Date(selected.cancellation_requested_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time>}
+                      {selected.cancellation_decision_note && <p className="mt-2 text-xs">Decision note: {selected.cancellation_decision_note}</p>}
+                    </div>
+                    <span className="rounded-full border border-current px-3 py-1 text-[10px] font-bold uppercase">{selected.cancellation_status}</span>
+                  </div>
+                  {selected.cancellation_status === "pending" && canManageFinancials && <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"><label className="grid gap-1.5 text-xs font-semibold">Decision note <input value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} maxLength={500} placeholder="Optional note for the customer" className="h-10 rounded-xl border border-current/25 bg-white/70 px-3 text-foreground outline-none"/></label><button type="button" disabled={cancelling} onClick={() => void rejectCancellationRequest()} className="h-10 rounded-xl border border-current px-4 text-xs font-semibold disabled:opacity-50">Reject request</button><button type="button" disabled={cancelling} onClick={() => { setCancellationReason(selected.cancellation_reason || ""); setShowCancellation(true); }} className="h-10 rounded-xl bg-[#8f4f38] px-4 text-xs font-semibold text-white disabled:opacity-50">Approve &amp; cancel</button></div>}
+                </section>
+              )}
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
                 ORDERED ITEMS
               </p>
@@ -928,6 +970,7 @@ export function OrdersWorkspacePage() {
                   </div>
                   <select
                     value={selected.status}
+                    disabled={selected.cancellation_status === "pending"}
                     onChange={(event) =>
                       void update(event.target.value as DbOrder["status"])
                     }
@@ -935,6 +978,20 @@ export function OrdersWorkspacePage() {
                   >
                     {allowedFulfillmentStatuses(selected.status).filter(status => canManageFinancials || status !== "cancelled").map(status=><option key={status} value={status}>{status === "cancelled" ? "Cancel order…" : status[0].toUpperCase()+status.slice(1)}</option>)}
                   </select>
+                </div>
+                <div className="mt-4 grid gap-2 rounded-xl border border-border bg-secondary/45 p-3 text-xs sm:grid-cols-2">
+                  <div>
+                    <span className="block text-[10px] font-bold tracking-[.12em] text-muted-foreground">PAYMENT STATE</span>
+                    <b className="mt-1 block capitalize">{selected.payment_status}</b>
+                    {selectedPayment?.paid_at && <time className="mt-1 block text-[10px] text-muted-foreground" dateTime={selectedPayment.paid_at}>Paid {new Date(selectedPayment.paid_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time>}
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold tracking-[.12em] text-muted-foreground">PROVIDER RECORD</span>
+                    <b className="mt-1 block capitalize">{selected.payment_method === "cod" ? "Cash on delivery" : (selectedPayment?.status ?? "Awaiting provider")}</b>
+                    {selectedPayment?.updated_at && <time className="mt-1 block text-[10px] text-muted-foreground" dateTime={selectedPayment.updated_at}>Synced {new Date(selectedPayment.updated_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time>}
+                    {selectedPayment?.failure_reason && <span className="mt-1 block text-[10px] text-[#8f4f38]">{selectedPayment.failure_reason}</span>}
+                  </div>
+                  {selected.refunded_at && <div className="sm:col-span-2"><span className="font-semibold">Refund completed</span><time className="ml-1 text-muted-foreground" dateTime={selected.refunded_at}>{new Date(selected.refunded_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time></div>}
                 </div>
                 {selected.refund_status && (
                   <div className={`mt-4 rounded-xl border p-3 text-xs ${selected.refund_status === "failed" ? "border-[#bd8068] bg-[#f4e3dc] text-[#854b36]" : "border-[#afbea8] bg-[#e8efe5] text-[#486242]"}`}>

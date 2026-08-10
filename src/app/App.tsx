@@ -201,6 +201,7 @@ function App() {
   }, [userId]);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
+  const orderRefreshSequence = useRef(0);
 
   const queueAccountWrite = useCallback((request: PromiseLike<unknown>) => {
     const pending = Promise.resolve(request);
@@ -282,10 +283,11 @@ function App() {
   }, [mapProduct, portalSupabase]);
 
   const refreshOrders = useCallback(async () => {
+    const refreshSequence = ++orderRefreshSequence.current;
     const loadOrders = () => portalSupabase
       .from("orders")
       .select(
-        "*, order_items(*), order_status_history(*), profiles!orders_user_id_fkey(full_name,email,phone)",
+        "*, order_items(*), order_status_history(*), payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,created_at,updated_at), profiles!orders_user_id_fkey(full_name,email,phone)",
       )
       .order("created_at", { ascending: false });
     let { data, error } = await loadOrders();
@@ -305,7 +307,9 @@ function App() {
         ({ data, error } = await loadOrders());
       }
     }
-    if (!error) setOrders((data ?? []) as DbOrder[]);
+    if (!error && refreshSequence === orderRefreshSequence.current) {
+      setOrders((data ?? []) as DbOrder[]);
+    }
   }, [portalSupabase]);
 
   const refreshAccountCollections = useCallback(async (id: string) => {
@@ -717,18 +721,27 @@ function App() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refreshOrders())
       .on("postgres_changes", { event: "*", schema: "public", table: "order_status_history" }, () => void refreshOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "payment_transactions" }, () => void refreshOrders())
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => void refreshCustomers())
       .on("postgres_changes", { event: "*", schema: "public", table: "addresses" }, () => void refreshCustomers())
       .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, () => { void refreshTickets(); void refreshCustomers(); })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          void Promise.all([
+            refreshProducts(),
+            refreshOrders(),
+            ...(adminPortal ? [refreshCustomers(), refreshTickets()] : []),
+          ]);
+        }
+      });
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);
       void portalSupabase.removeChannel(channel);
     };
-  }, [portalSupabase, refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
+  }, [adminPortal, portalSupabase, refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId && !adminUserId) return;
 
     const syncOrders = () => void refreshOrders();
     const syncVisibleOrders = () => {
@@ -744,7 +757,7 @@ function App() {
       window.removeEventListener("focus", syncOrders);
       document.removeEventListener("visibilitychange", syncVisibleOrders);
     };
-  }, [refreshOrders, userId]);
+  }, [adminUserId, refreshOrders, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1201,9 +1214,17 @@ function App() {
     return error?.message ?? null;
   };
   const cancelOrder = async (id: string, reason: string) => {
+    if (!adminPortal) {
+      const { error } = await supabase.rpc("request_order_cancellation", {
+        p_order_id: id,
+        p_reason: reason,
+      });
+      if (!error) await refreshOrders();
+      return error?.message ?? null;
+    }
     const client = adminPortal ? adminSupabase : supabase;
     const { data, error } = await client.functions.invoke("cancel-order", {
-      body: { orderId: id, reason },
+      body: { orderId: id, reason, action: "approve" },
     });
     if (error || data?.error) {
       return data?.error ?? error?.message ?? "Unable to cancel this order safely.";

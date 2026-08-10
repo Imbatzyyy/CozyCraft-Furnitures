@@ -30,6 +30,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
+  Clock,
   CreditCard,
   Download,
   Eye,
@@ -746,7 +747,7 @@ export function Profile() {
     }
     setCancelOrderId(null);
     setCancelReason("");
-    setNotice("Your order was cancelled. Payment and refund updates are available in order tracking.");
+    setNotice("Your cancellation request is pending approval. We’ll update this order in real time after review.");
   };
   const [username, setUsername] = useState(defaultUsername);
   const [first, setFirst] = useState((user ?? "").split(" ")[0] ?? "");
@@ -1513,6 +1514,7 @@ export function Profile() {
                             {order.order_items.map((item) => item.product_name).join(" · ")}
                           </p>
                           <b className="mt-3 block text-sm">{money(Number(order.total))}</b>
+                          {order.cancellation_status && <span className={`mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${order.cancellation_status === "pending" ? "bg-[#f2e8d7] text-[#765d3c]" : order.cancellation_status === "approved" ? "bg-[#e5eee1] text-[#45603f]" : "bg-secondary text-muted-foreground"}`}><Clock size={11}/> Cancellation {order.cancellation_status}</span>}
                         </button>
                       ))}
                     </div>
@@ -1531,6 +1533,7 @@ export function Profile() {
                         </div>
                         <Status>{selectedOrder.status.replace(/_/g, " ")}</Status>
                       </div>
+                      {selectedOrder.cancellation_status && <div className={`border-b border-border p-4 text-xs ${selectedOrder.cancellation_status === "pending" ? "bg-[#f2e8d7] text-[#765d3c]" : selectedOrder.cancellation_status === "approved" ? "bg-[#e5eee1] text-[#45603f]" : "bg-secondary text-muted-foreground"}`}><b className="block">{selectedOrder.cancellation_status === "pending" ? "Cancellation pending approval" : selectedOrder.cancellation_status === "approved" ? "Cancellation approved" : "Cancellation request not approved"}</b><span className="mt-1 block">{selectedOrder.cancellation_decision_note || (selectedOrder.cancellation_status === "pending" ? "We’ll update this order in real time after an administrator reviews the request." : "The decision is reflected in this order’s current status.")}</span>{selectedOrder.cancellation_requested_at && <time className="mt-1 block" dateTime={selectedOrder.cancellation_requested_at}>Requested {new Date(selectedOrder.cancellation_requested_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time>}</div>}
                       {selectedOrder.status === "cancelled" ? (
                         <div className="border-b border-border bg-[#f3e5d4] p-4 text-xs text-[#8b5c46]">
                           <b className="block">This order was cancelled.</b>
@@ -1676,11 +1679,13 @@ export function Profile() {
                         <Link to="/orders" className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary min-[390px]:col-span-2 sm:col-auto">
                           <ArrowRight size={14} /> Full tracking
                         </Link>
-                        {["pending", "processing", "packed"].includes(selectedOrder.status) && isCancellationWindowOpen(selectedOrder.created_at, new Date(), storeSettings.fulfillment_settings.cancellation_window_hours) && (
+                        {["pending", "processing", "packed"].includes(selectedOrder.status) && !selectedOrder.cancellation_status && isCancellationWindowOpen(selectedOrder.created_at, new Date(), storeSettings.fulfillment_settings.cancellation_window_hours) && (
                           <button type="button" onClick={() => setCancelOrderId(selectedOrder.id)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4] min-[390px]:col-span-2 sm:col-auto">
                             <X size={14} /> Cancel order
                           </button>
                         )}
+                        {selectedOrder.cancellation_status === "pending" && <span className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#f2e8d7] px-4 py-2.5 text-xs font-semibold text-[#765d3c] min-[390px]:col-span-2 sm:col-auto"><Clock size={14}/> Cancellation pending approval</span>}
+                        {["shipped", "delivered"].includes(selectedOrder.status) && <span className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-secondary px-4 py-2.5 text-xs font-semibold text-muted-foreground min-[390px]:col-span-2 sm:col-auto"><Package size={14}/> Cancellation unavailable</span>}
                         {selectedOrder.status === "delivered" && isReturnWindowOpen(selectedOrder.order_status_history?.find((entry)=>entry.status==="delivered")?.changed_at, new Date(), storeSettings.fulfillment_settings.return_window_days) && !returnRequests.some((request) => request.order_id === selectedOrder.id) && (
                           <button type="button" onClick={() => setReturnOrderId(selectedOrder.id)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#9a654f] px-4 py-2.5 text-xs font-semibold text-[#8b533d] hover:bg-[#f3e5d4] min-[390px]:col-span-2 sm:col-auto">
                             <Archive size={14} /> Request return
@@ -2043,7 +2048,7 @@ export function Profile() {
           </section>
         </div>
       )}
-      {cancelOrderId && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-cancel-title"><section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">CANCEL ORDER</p><h2 id="customer-cancel-title" className="mt-2 font-serif text-3xl">Confirm cancellation.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Cancellation is available within {storeSettings.fulfillment_settings.cancellation_window_hours} hours of ordering. Paid orders are safely refunded to the original payment method.</p><label className="mt-5 grid gap-2 text-sm font-semibold">Reason<textarea value={cancelReason} onChange={(event)=>setCancelReason(event.target.value)} maxLength={500} className="min-h-24 rounded-xl border border-border bg-background p-3 font-normal" placeholder="Tell us why you need to cancel" /></label><div className="mt-5 flex gap-3"><button disabled={cancelSubmitting || cancelReason.trim().length < 5} onClick={()=>void submitCancellation()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{cancelSubmitting ? "Cancelling safely…" : "Confirm cancellation"}</button><button disabled={cancelSubmitting} onClick={()=>{setCancelOrderId(null);setCancelReason("");}} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button></div></section></div>}
+      {cancelOrderId && <div className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-cancel-title"><section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">CANCELLATION REQUEST</p><h2 id="customer-cancel-title" className="mt-2 font-serif text-3xl">Request a review.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Requests are accepted within {storeSettings.fulfillment_settings.cancellation_window_hours} hours of ordering. Your order remains active until an administrator approves it; approved paid orders are safely refunded.</p><label className="mt-5 grid gap-2 text-sm font-semibold">Reason<textarea value={cancelReason} onChange={(event)=>setCancelReason(event.target.value)} minLength={5} maxLength={500} className="min-h-24 rounded-xl border border-border bg-background p-3 font-normal" placeholder="Tell us why you need to cancel" /></label><div className="mt-5 grid gap-3 min-[390px]:grid-cols-2"><button disabled={cancelSubmitting || cancelReason.trim().length < 5} onClick={()=>void submitCancellation()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{cancelSubmitting ? "Sending request…" : "Submit request"}</button><button disabled={cancelSubmitting} onClick={()=>{setCancelOrderId(null);setCancelReason("");}} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button></div></section></div>}
       {confirmSignOut && (
         <ConfirmSignOut
           kind="customer"
