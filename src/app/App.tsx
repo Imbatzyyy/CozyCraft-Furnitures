@@ -81,6 +81,7 @@ import {
   type DbSupportTicket,
 } from "@/lib/supabase";
 import { recordAuthActivity } from "@/lib/auth-activity";
+import { canonicalProductImages } from "@/lib/product-images";
 
 
 import {
@@ -1241,6 +1242,7 @@ function App() {
     product: ManagedProduct,
     options: { create?: boolean } = {},
   ) => {
+    const canonicalImages = canonicalProductImages(product.images, product.main);
     const payload = {
       id: product.id,
       name: product.name,
@@ -1250,8 +1252,8 @@ function App() {
       price: product.price,
       stock_quantity: product.quantity,
       status: product.status.toLowerCase(),
-      images: product.images,
-      main_image_index: product.main,
+      images: canonicalImages.images,
+      main_image_index: canonicalImages.mainImageIndex,
       material: product.material,
       dimensions: product.dimensions,
     };

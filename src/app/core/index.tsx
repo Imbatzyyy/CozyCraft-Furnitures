@@ -83,6 +83,10 @@ import {
 import type { PublicStoreSettings } from "@/lib/store-settings";
 import { functionErrorMessage } from "@/lib/function-error";
 import { matchesCatalogSearch } from "@/lib/catalog-discovery";
+import {
+  primaryProductImage,
+  productMainImageIndex,
+} from "@/lib/product-images";
 
 
 export type Product = {
@@ -755,7 +759,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                         className="flex w-full items-center gap-3 rounded-2xl p-3 text-left hover:bg-secondary"
                       >
                         <ResilientImage
-                          src={product.images[0]}
+                          src={primaryProductImage(product)}
                           alt={product.name}
                           className="h-14 w-14 rounded-xl object-cover"
                         />
@@ -1139,11 +1143,12 @@ export function ProductCard({ product }: { product: Product }) {
   const { add, toggle, saved } = useStore();
   const savedNow = saved.includes(product.id);
   const [hovered, setHovered] = useState(false);
-  const [imageIndex, setImageIndex] = useState(0);
+  const mainImageIndex = productMainImageIndex(product);
+  const [imageIndex, setImageIndex] = useState(mainImageIndex);
   const outOfStock = product.stockQuantity === 0;
   useEffect(() => {
     if (!hovered) {
-      setImageIndex(0);
+      setImageIndex(mainImageIndex);
       return;
     }
     if (product.images.length < 2) return;
@@ -1152,7 +1157,7 @@ export function ProductCard({ product }: { product: Product }) {
       1100,
     );
     return () => window.clearInterval(timer);
-  }, [hovered, product.images.length]);
+  }, [hovered, mainImageIndex, product.images.length]);
   return (
     <article
       onMouseEnter={() => setHovered(true)}

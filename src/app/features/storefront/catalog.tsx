@@ -92,6 +92,7 @@ import {
   parseDimensionSpecs,
   parseMaterialSpecs,
 } from "@/lib/product-specs";
+import { productMainImageIndex } from "@/lib/product-images";
 
 import {
   Product,
@@ -1144,7 +1145,7 @@ export function ProductPage() {
   const { productId } = useParams();
   const { add, toggle, saved, products, userId, orders, storeSettings } = useStore();
   const product = products.find((p) => p.id === productId) ?? products[0];
-  const [photo, setPhoto] = useState(0);
+  const [photo, setPhoto] = useState(() => productMainImageIndex(product));
   const [quantity, setQuantity] = useState(1);
   const [reviewFilter, setReviewFilter] = useState("All");
   const [reviews, setReviews] = useState<ProductReview[]>([]);
@@ -1169,7 +1170,7 @@ export function ProductPage() {
   const atStockLimit = stockLimit !== null && quantity >= stockLimit;
   const outOfStock = stockLimit === 0;
   useEffect(() => {
-    setPhoto(0);
+    setPhoto(productMainImageIndex(product));
     setQuantity(1);
     setReviewFilter("All");
     window.scrollTo({ top: 0, behavior: "smooth" });

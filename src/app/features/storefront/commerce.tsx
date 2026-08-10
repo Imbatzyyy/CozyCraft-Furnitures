@@ -83,6 +83,7 @@ import {
   isPaymentMethodAvailable,
   validateCheckoutAmount,
 } from "@/lib/store-settings";
+import { primaryProductImage } from "@/lib/product-images";
 
 import {
   Product,
@@ -219,7 +220,7 @@ export function Cart() {
                     {isSelected && <Check size={12} />}
                   </button>
                   <ResilientImage
-                    src={item.images[0]}
+                    src={primaryProductImage(item)}
                     alt={item.name}
                     className="h-28 w-24 rounded-2xl object-cover"
                   />
@@ -420,7 +421,7 @@ export function Wishlist() {
                     className={`relative block overflow-hidden bg-secondary ${index === 0 ? "aspect-auto min-h-[340px]" : "aspect-[.82]"}`}
                 >
                   <ResilientImage
-                    src={p.images[0]}
+                    src={primaryProductImage(p)}
                     alt={p.name}
                       className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                   />
@@ -1014,7 +1015,7 @@ export function Checkout() {
                 {lines.map(({ item, quantity }) => (
                   <div className="flex gap-3 py-3 first:pt-0" key={item.id}>
                     <ResilientImage
-                      src={item.images[0]}
+                      src={primaryProductImage(item)}
                       alt={item.name}
                       className="h-14 w-12 rounded-lg object-cover"
                     />

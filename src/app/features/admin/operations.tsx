@@ -66,6 +66,7 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/app/components/media/ResilientImage";
+import { primaryProductImage } from "@/lib/product-images";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -337,7 +338,7 @@ export function AdminRecordList({ kind }: { kind: string }) {
           detail: `${p.category} · ${p.color}`,
           amount: money(p.price),
           state: i === 1 ? "Low stock" : "Active",
-          image: p.images[0],
+          image: primaryProductImage(p),
         }))
       : kind === "orders"
         ? [

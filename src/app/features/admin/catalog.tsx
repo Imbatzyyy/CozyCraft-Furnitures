@@ -66,6 +66,7 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/app/components/media/ResilientImage";
+import { primaryProductImage } from "@/lib/product-images";
 import cozyCraftLogo from "@/imports/COZy.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -1080,7 +1081,7 @@ export function CategoriesPage() {
       code: "01",
       description:
         "Anchor pieces for gathering, resting, and everyday rituals.",
-      image: products[0].images[0],
+      image: primaryProductImage(products[0]),
       count: 18,
       featured: true,
       live: true,
@@ -1098,7 +1099,7 @@ export function CategoriesPage() {
       code: "02",
       description:
         "Restful furniture designed around the quietest room at home.",
-      image: products[3].images[0],
+      image: primaryProductImage(products[3]),
       count: 15,
       featured: false,
       live: true,
@@ -1116,7 +1117,7 @@ export function CategoriesPage() {
       code: "03",
       description:
         "Pieces that make space for long meals and easy conversation.",
-      image: products[2].images[0],
+      image: primaryProductImage(products[2]),
       count: 12,
       featured: true,
       live: true,
@@ -1160,8 +1161,8 @@ export function CategoriesPage() {
           code: String(index + 1).padStart(2, "0"),
           description: `${row.name} products available in the customer storefront.`,
           image:
-            categoryProducts[0]?.images[0] ??
-            products[0]?.images[0] ??
+            (categoryProducts[0] ? primaryProductImage(categoryProducts[0]) : undefined) ??
+            (products[0] ? primaryProductImage(products[0]) : undefined) ??
             "",
           count: categoryProducts.length,
           featured: row.active,
