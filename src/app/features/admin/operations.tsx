@@ -630,6 +630,7 @@ export function OrdersWorkspacePage() {
   const [returnRequests, setReturnRequests] = useState<Array<{id:string;order_id:string;return_number:string;reason:string;details:string;status:string;admin_note:string|null;evidence_paths:string[];created_at:string}>>([]);
   const [returnNote, setReturnNote] = useState("");
   const [processingReturnRefund, setProcessingReturnRefund] = useState(false);
+  const [ordersLive, setOrdersLive] = useState(false);
   const ordersPerPage = 8;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
@@ -641,6 +642,46 @@ export function OrdersWorkspacePage() {
 
   useEffect(() => {
     void refreshOrders();
+  }, [refreshOrders]);
+  useEffect(() => {
+    let active = true;
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") void refreshOrders();
+    };
+    const channel = supabase
+      .channel(`admin-orders-workspace-${crypto.randomUUID()}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "orders" },
+        (payload) => {
+          const newOrderId = typeof payload.new?.id === "string" ? payload.new.id : null;
+          void refreshOrders().then(() => {
+            if (!active || !newOrderId) return;
+            setOrderPage(1);
+            setSelectedId(newOrderId);
+          });
+        },
+      )
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, () => void refreshOrders())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "orders" }, () => void refreshOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => void refreshOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_status_history" }, () => void refreshOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "payment_transactions" }, () => void refreshOrders())
+      .subscribe((status) => {
+        if (!active) return;
+        setOrdersLive(status === "SUBSCRIBED");
+        if (status === "SUBSCRIBED") void refreshOrders();
+      });
+    const interval = window.setInterval(refreshVisible, 5_000);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      void supabase.removeChannel(channel);
+    };
   }, [refreshOrders]);
   useEffect(() => {
     const refresh = async () => { const { data } = await supabase.from("return_requests").select("*").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
@@ -816,6 +857,10 @@ export function OrdersWorkspacePage() {
           <Download size={15} />
           Print packing list
         </button>
+        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${ordersLive ? "bg-[#e5eee1] text-[#45603f]" : "bg-[#f2e8d7] text-[#765d3c]"}`} aria-live="polite">
+          <span className={`h-2 w-2 rounded-full ${ordersLive ? "bg-[#5f7d57]" : "animate-pulse bg-[#a87943]"}`} />
+          {ordersLive ? "Live order updates" : "Reconnecting…"}
+        </span>
       </div>
 
       {!selected ? (
