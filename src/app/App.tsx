@@ -1847,6 +1847,11 @@ const adminTeamRoute = async (name: string) => {
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
+const adminLoyaltyRoute = async (name: string) => {
+  const pages = await import("./features/admin/loyalty/MemberTierMonitoring");
+  return { Component: pages[name as keyof typeof pages] as React.ComponentType };
+};
+
 function RouteErrorBoundary() {
   const error = useRouteError();
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -1959,6 +1964,7 @@ const router = createBrowserRouter([
   { path: "/admin/orders", lazy: () => adminOperationsRoute("OrdersWorkspacePage") },
   { path: "/admin/payments", lazy: () => adminOperationsRoute("PaymentsPage") },
   { path: "/admin/customers", lazy: () => adminOperationsRoute("CustomersPage") },
+  { path: "/admin/member-tiers", lazy: () => adminLoyaltyRoute("MemberTierMonitoringPage") },
   { path: "/admin/reviews", lazy: () => adminOperationsRoute("ReviewsPage") },
   { path: "/admin/reports", lazy: () => adminOperationsRoute("ReportsPage") },
   { path: "/admin/activity-logs", lazy: () => adminOperationsRoute("ActivityLogsPage") },

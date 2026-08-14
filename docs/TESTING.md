@@ -49,6 +49,7 @@ and output.
 | View own profile and orders | No | Own data | No | No | No |
 | Manage catalog and fulfillment | No | No | Assigned tools | Yes | Yes |
 | Manage customers, payments, reports | No | No | Restricted | Yes | Yes |
+| Monitor member points and tiers | No | No | Restricted | Yes | Yes |
 | Manage team roles and store security | No | No | No | Restricted | Yes |
 
 Test customer and admin sessions in separate browser profiles. Confirm that an

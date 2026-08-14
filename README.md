@@ -4,7 +4,7 @@ CozyCraft is a full-stack furniture commerce platform built for customers and
 store operations teams. The storefront supports catalog discovery, account
 management, carts, wishlists, checkout, order tracking, reviews, returns, and
 customer care. A separate role-protected administration workspace manages the
-catalog, inventory, orders, payments, customers, reviews, support, reports,
+catalog, inventory, orders, payments, customers, member tiers, reviews, support, reports,
 team access, activity logs, and store settings.
 
 Production: [www.cozycraftfurnitures.com](https://www.cozycraftfurnitures.com)

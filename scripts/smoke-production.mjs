@@ -12,6 +12,7 @@ const routes = [
   "/profile",
   "/admin",
   "/admin/login",
+  "/admin/member-tiers",
 ];
 const requiredSecurityHeaders = {
   "content-security-policy": "default-src",

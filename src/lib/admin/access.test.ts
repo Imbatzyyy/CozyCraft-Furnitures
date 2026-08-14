@@ -12,6 +12,7 @@ const allPaths = [
   "/admin/orders",
   "/admin/payments",
   "/admin/customers",
+  "/admin/member-tiers",
   "/admin/settings",
   "/admin/team-access",
 ];
@@ -31,6 +32,11 @@ describe("admin role permissions", () => {
     expect(canAccessAdminPath("Staff", "/admin/orders/ORDER-1", allPaths)).toBe(true);
     expect(canAccessAdminPath("Staff", "/admin/payments", allPaths)).toBe(false);
     expect(canAccessAdminPath("Staff", "/admin/customers", allPaths)).toBe(false);
+    expect(canAccessAdminPath("Staff", "/admin/member-tiers", allPaths)).toBe(false);
+  });
+
+  it("allows administrators to monitor member tiers", () => {
+    expect(canAccessAdminPath("Administrator", "/admin/member-tiers", allPaths)).toBe(true);
   });
 
   it.each<[WorkspaceRole, boolean]>([

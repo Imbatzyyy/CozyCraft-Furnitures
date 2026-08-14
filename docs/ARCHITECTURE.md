@@ -37,6 +37,7 @@ flowchart LR
 | `src/app/features/admin/shell/` | Admin sign-in, authorization gate, navigation shell, and shared workspace controls |
 | `src/app/features/admin/catalog/` | Products, categories, inventory, images, and product specifications |
 | `src/app/features/admin/operations/` | Orders, payments, customers, reviews, support, reports, notifications, and activity logs |
+| `src/app/features/admin/loyalty/` | Home Circle point balances, tier progress, and redemption monitoring |
 | `src/app/features/admin/team-settings/` | Team roles, invitations, permissions, and store settings |
 | `src/components/` | Reusable presentational primitives with no business ownership |
 | `src/lib/` | Pure business rules grouped into admin, catalog, commerce, integration, settings, and shared areas |
