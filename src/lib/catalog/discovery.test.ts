@@ -30,5 +30,6 @@ describe("catalog discovery", () => {
     expect(matchesCatalogSearch(champagne, "champagne")).toBe(true);
     expect(matchesCatalogSearch(champagne, "velvet dining")).toBe(true);
     expect(matchesCatalogSearch(champagne, "upholstered")).toBe(true);
+    expect(matchesCatalogSearch(champagne, "sofa|velvet")).toBe(true);
   });
 });

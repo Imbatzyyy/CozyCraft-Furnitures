@@ -33,9 +33,12 @@ export const matchesCatalogSearch = (
   product: CatalogProduct,
   query: string,
 ) => {
-  const needle = normalizeCatalogValue(query);
-  if (!needle) return true;
-  return normalizeCatalogValue(
+  const needles = query
+    .split("|")
+    .map(normalizeCatalogValue)
+    .filter(Boolean);
+  if (!needles.length) return true;
+  const haystack = normalizeCatalogValue(
     [
       product.name,
       product.category,
@@ -44,6 +47,6 @@ export const matchesCatalogSearch = (
       product.material,
       product.description,
     ].join(" "),
-  ).includes(needle);
+  );
+  return needles.some((needle) => haystack.includes(needle));
 };
-

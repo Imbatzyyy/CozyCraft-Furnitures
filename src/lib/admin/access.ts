@@ -9,6 +9,7 @@ const administratorPaths = [
   "/admin/payments",
   "/admin/customers",
   "/admin/member-tiers",
+  "/admin/experience",
   "/admin/reviews",
   "/admin/reports",
   "/admin/activity-logs",

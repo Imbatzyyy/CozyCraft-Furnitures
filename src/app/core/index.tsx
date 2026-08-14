@@ -53,6 +53,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Scale,
   Settings,
   ShieldCheck,
   ShoppingBag,
@@ -87,6 +88,11 @@ import {
   primaryProductImage,
   productMainImageIndex,
 } from "@/lib/catalog/product-images";
+import {
+  COMPARE_CHANGE_EVENT,
+  readComparedProductIds,
+  toggleComparedProduct,
+} from "@/lib/catalog/compare";
 
 
 export type Product = {
@@ -1152,6 +1158,19 @@ export function ProductCard({ product }: { product: Product }) {
   const mainImageIndex = productMainImageIndex(product);
   const [imageIndex, setImageIndex] = useState(mainImageIndex);
   const outOfStock = product.stockQuantity === 0;
+  const [compared, setCompared] = useState(() =>
+    readComparedProductIds().includes(product.id),
+  );
+  const [compareNotice, setCompareNotice] = useState("");
+  useEffect(() => {
+    const sync = () => setCompared(readComparedProductIds().includes(product.id));
+    window.addEventListener(COMPARE_CHANGE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(COMPARE_CHANGE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, [product.id]);
   useEffect(() => {
     if (!hovered) {
       setImageIndex(mainImageIndex);
@@ -1217,6 +1236,26 @@ export function ProductCard({ product }: { product: Product }) {
         </div>
         <div className="flex flex-col gap-1">
           <button
+            type="button"
+            onClick={() => {
+              const result = toggleComparedProduct(product.id);
+              setCompared(result.ids.includes(product.id));
+              setCompareNotice(
+                result.limitReached
+                  ? "Compare up to four products. Remove one first."
+                  : result.added
+                    ? "Added to comparison"
+                    : "Removed from comparison",
+              );
+              window.setTimeout(() => setCompareNotice(""), 2500);
+            }}
+            className={`grid h-8 w-8 place-items-center rounded-full border transition ${compared ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-secondary"}`}
+            aria-label={compared ? `Remove ${product.name} from comparison` : `Compare ${product.name}`}
+            title={compared ? "Remove from comparison" : "Compare product"}
+          >
+            <Scale size={14} />
+          </button>
+          <button
             onClick={() => toggle(product.id)}
             className="grid h-8 w-8 place-items-center rounded-full border border-border bg-card transition hover:bg-secondary"
             aria-label="Save product"
@@ -1234,6 +1273,11 @@ export function ProductCard({ product }: { product: Product }) {
           </button>
         </div>
       </div>
+      {compareNotice && (
+        <p className="px-1 pb-2 text-[10px] font-semibold text-muted-foreground" role="status">
+          {compareNotice}
+        </p>
+      )}
     </article>
   );
 }

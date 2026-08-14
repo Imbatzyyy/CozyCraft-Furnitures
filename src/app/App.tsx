@@ -1917,6 +1917,7 @@ const router = createBrowserRouter([
   { path: "/bedroom", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/dining-room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/new-arrivals", lazy: () => storefrontCatalogRoute("CollectionPage") },
+  { path: "/compare", lazy: () => storefrontCatalogRoute("ComparePage") },
   { path: "/products/:productId", lazy: () => storefrontCatalogRoute("ProductPage") },
   { path: "/cart", lazy: () => storefrontCommerceRoute("Cart") },
   {
@@ -1965,6 +1966,15 @@ const router = createBrowserRouter([
   { path: "/admin/payments", lazy: () => adminOperationsRoute("PaymentsPage") },
   { path: "/admin/customers", lazy: () => adminOperationsRoute("CustomersPage") },
   { path: "/admin/member-tiers", lazy: () => adminLoyaltyRoute("MemberTierMonitoringPage") },
+  {
+    path: "/admin/experience",
+    lazy: async () => {
+      const { MerchandisingExperiencePage } = await import(
+        "./features/admin/merchandising/MerchandisingExperience"
+      );
+      return { Component: MerchandisingExperiencePage };
+    },
+  },
   { path: "/admin/reviews", lazy: () => adminOperationsRoute("ReviewsPage") },
   { path: "/admin/reports", lazy: () => adminOperationsRoute("ReportsPage") },
   { path: "/admin/activity-logs", lazy: () => adminOperationsRoute("ActivityLogsPage") },

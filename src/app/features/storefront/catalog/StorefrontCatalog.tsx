@@ -52,12 +52,14 @@ import {
   Pencil,
   Plus,
   Search,
+  Scale,
   Settings,
   ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
   Star,
   Tag,
+  Truck,
   Trash2,
   Upload,
   UserRound,
@@ -93,6 +95,26 @@ import {
   parseMaterialSpecs,
 } from "@/lib/catalog/product-specs";
 import { productMainImageIndex } from "@/lib/catalog/product-images";
+import {
+  COMPARE_CHANGE_EVENT,
+  readComparedProductIds,
+  toggleComparedProduct,
+  writeComparedProductIds,
+} from "@/lib/catalog/compare";
+import {
+  deliveryDateRange,
+  deliveryFeeFor,
+  type DeliveryServiceArea,
+} from "@/lib/catalog/delivery";
+import {
+  expandCatalogQuery,
+  getDeliveryServiceAreas,
+  getProductAlerts,
+  getSearchSynonyms,
+  recordCatalogSearch,
+  setProductAlert,
+  type SearchSynonym,
+} from "@/services/catalog/experience.service";
 
 import {
   Product,
@@ -873,7 +895,7 @@ export const subcategoryProductMap: Record<string, string[]> = {
 };
 
 export function CollectionPage() {
-  const { products } = useStore();
+  const { products, userId } = useStore();
   const { room } = useParams();
   const current = room ?? useLocation().pathname.slice(1) ?? "living-room";
   const info =
@@ -890,6 +912,22 @@ export function CollectionPage() {
   const [maximumPrice, setMaximumPrice] = useState(STOREFRONT_MAX_PRICE);
   const [sort, setSort] = useState("featured");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [synonyms, setSynonyms] = useState<SearchSynonym[]>([]);
+  const [compareIds, setCompareIds] = useState<string[]>(() => readComparedProductIds());
+  useEffect(() => {
+    let active = true;
+    void getSearchSynonyms()
+      .then((rows) => { if (active) setSynonyms(rows); })
+      .catch(() => undefined);
+    const syncCompare = () => setCompareIds(readComparedProductIds());
+    window.addEventListener(COMPARE_CHANGE_EVENT, syncCompare);
+    window.addEventListener("storage", syncCompare);
+    return () => {
+      active = false;
+      window.removeEventListener(COMPARE_CHANGE_EVENT, syncCompare);
+      window.removeEventListener("storage", syncCompare);
+    };
+  }, []);
   useEffect(() => {
     setGroup("All");
     setSubcategory("");
@@ -910,10 +948,11 @@ export function CollectionPage() {
       value,
       subcategoryProductMap[value] ?? [],
     );
-  let items =
+  const collectionItems =
     info.match === "new"
       ? selectNewArrivals(products, group)
       : products.filter((p) => catalogValuesMatch(p.category, info.match));
+  let items = collectionItems;
   const searchActive = Boolean(query.trim());
   if (!searchActive && subcategory) {
     items = items.filter((product) =>
@@ -924,8 +963,9 @@ export function CollectionPage() {
       children.some((child) => matchesSubcategory(product, child)),
     );
   }
+  const expandedQuery = expandCatalogQuery(query, synonyms);
   if (query.trim()) {
-    items = items.filter((product) => matchesCatalogSearch(product, query));
+    items = items.filter((product) => matchesCatalogSearch(product, expandedQuery));
   }
   if (availability === "in-stock") items = items.filter((product) => (product.stockQuantity ?? 1) > 8);
   if (availability === "low-stock") items = items.filter((product) => (product.stockQuantity ?? 99) > 0 && (product.stockQuantity ?? 99) <= 8);
@@ -944,6 +984,16 @@ export function CollectionPage() {
   }
   items = filterByPriceRange(items, minimumPrice, maximumPrice);
   items = [...items].sort((a, b) => sort === "price-low" ? a.price - b.price : sort === "price-high" ? b.price - a.price : sort === "rating" ? Number(b.rating) - Number(a.rating) : 0);
+  const searchSuggestions = query.trim().length >= 2
+    ? collectionItems.filter((product) => matchesCatalogSearch(product, expandedQuery)).slice(0, 6)
+    : [];
+  useEffect(() => {
+    if (!userId || query.trim().length < 2) return;
+    const timeout = window.setTimeout(() => {
+      void recordCatalogSearch(query, items.length, current).catch(() => undefined);
+    }, 900);
+    return () => window.clearTimeout(timeout);
+  }, [current, items.length, query, userId]);
   const materialOptions = ["Wood", "Fabric", "Metal", "Stone", "Leather"];
   const priceRangeActive =
     minimumPrice > 0 || maximumPrice < STOREFRONT_MAX_PRICE;
@@ -1007,10 +1057,25 @@ export function CollectionPage() {
             </div>
             <div className="mt-5 border-t border-border pt-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-background px-4">
-                  <Search size={16} className="shrink-0 text-muted-foreground" />
-                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${info.title.toLowerCase()} pieces`} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
-                </label>
+                <div className="relative min-w-0 flex-1">
+                  <label className="flex h-11 min-w-0 items-center gap-3 rounded-xl border border-border bg-background px-4">
+                    <Search size={16} className="shrink-0 text-muted-foreground" />
+                    <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${info.title.toLowerCase()} pieces`} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+                  </label>
+                  {query.trim().length >= 2 && (
+                    <div className="absolute inset-x-0 top-[calc(100%+.35rem)] z-40 overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+                      {searchSuggestions.length ? searchSuggestions.map((suggestion) => (
+                        <Link key={suggestion.id} to={`/products/${suggestion.id}`} className="flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-0 hover:bg-secondary">
+                          <ResilientImage src={suggestion.images[productMainImageIndex(suggestion)]} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{suggestion.name}</span><span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{suggestion.subcategory || suggestion.category}</span></span>
+                          <span className="text-xs font-semibold">{money(suggestion.price)}</span>
+                        </Link>
+                      )) : (
+                        <div className="px-4 py-4 text-xs text-muted-foreground"><p className="font-semibold text-foreground">No exact match yet</p><p className="mt-1">Try a room, material, product type, or clear the filters.</p></div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setFiltersOpen((value) => !value)} aria-expanded={filtersOpen} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 text-xs font-semibold md:hidden"><SlidersHorizontal size={15} />Filters{activeFilterCount > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-foreground px-1 text-[9px] text-background">{activeFilterCount}</span>}</button>
                   <select aria-label="Sort products" value={sort} onChange={(event) => setSort(event.target.value)} className="h-11 flex-1 rounded-xl border border-border bg-background px-3 text-xs font-semibold md:w-44">
@@ -1120,9 +1185,46 @@ export function CollectionPage() {
             </div>
           )}
         </section>
+        {compareIds.length > 0 && (
+          <div className="fixed inset-x-3 bottom-20 z-40 mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-[#201f1d] px-4 py-3 text-white shadow-2xl md:bottom-5">
+            <Scale size={18} className="shrink-0" />
+            <div className="min-w-0 flex-1"><p className="text-xs font-semibold">Compare {compareIds.length} of 4 products</p><p className="mt-0.5 truncate text-[10px] text-white/60">Price, size, finish, ratings, and stock side by side.</p></div>
+            <Link to="/compare" className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-[#201f1d]">Compare</Link>
+            <button type="button" onClick={() => writeComparedProductIds([])} className="grid h-8 w-8 place-items-center rounded-full bg-white/10" aria-label="Clear comparison"><X size={14}/></button>
+          </div>
+        )}
       </main>
     </Layout>
   );
+}
+
+export function ComparePage() {
+  const { products } = useStore();
+  const [ids, setIds] = useState<string[]>(() => readComparedProductIds());
+  useEffect(() => {
+    const sync = () => setIds(readComparedProductIds());
+    window.addEventListener(COMPARE_CHANGE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(COMPARE_CHANGE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  const compared = ids.map((id) => products.find((product) => product.id === id)).filter((product): product is Product => Boolean(product));
+  const rows = [
+    ["Price", (product: Product) => money(product.price)],
+    ["Room", (product: Product) => product.category],
+    ["Product type", (product: Product) => product.subcategory || subcategoryFor(product.id)],
+    ["Finish", (product: Product) => product.color],
+    ["Materials", (product: Product) => parseMaterialSpecs(product.material || materialFor(product.id)).map((item) => `${item.type}: ${item.description}`).join(" · ")],
+    ["Dimensions", (product: Product) => parseDimensionSpecs(product.dimensions).map((item) => `${item.label}: ${item.value}${item.unit ? ` ${item.unit}` : ""}`).join(" · ") || "Details coming soon"],
+    ["Customer rating", (product: Product) => `${product.rating} / 5 (${product.reviews} reviews)`],
+    ["Availability", (product: Product) => `${product.stock}${typeof product.stockQuantity === "number" ? ` · ${product.stockQuantity} available` : ""}`],
+  ] as const;
+  return <Layout><main className="mx-auto max-w-[1440px] px-5 py-10 lg:px-10 lg:py-16">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">PRODUCT COMPARISON</p><h1 className="mt-3 font-serif text-4xl sm:text-6xl">Choose with confidence.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">Compare up to four pieces using the catalog data already loaded on this device.</p></div>{ids.length > 0 && <button type="button" onClick={() => writeComparedProductIds([])} className="text-xs font-semibold underline underline-offset-4">Clear comparison</button>}</div>
+    {compared.length ? <div className="mt-9 overflow-x-auto rounded-2xl border border-border bg-card"><table className="w-full min-w-[720px] border-collapse text-left"><thead><tr><th className="w-40 border-b border-r border-border bg-secondary/55 p-4 text-xs">Product</th>{compared.map((product) => <th key={product.id} className="min-w-[220px] border-b border-r border-border p-4 last:border-r-0"><div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-secondary"><ResilientImage src={product.images[productMainImageIndex(product)]} alt={product.name} className="h-full w-full object-cover"/><button type="button" onClick={() => toggleComparedProduct(product.id)} className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-card/95 shadow" aria-label={`Remove ${product.name}`}><X size={14}/></button></div><Link to={`/products/${product.id}`} className="mt-3 block text-sm font-semibold hover:underline">{product.name}</Link></th>)}</tr></thead><tbody>{rows.map(([label, value]) => <tr key={label}><th className="border-b border-r border-border bg-secondary/35 p-4 align-top text-xs">{label}</th>{compared.map((product) => <td key={product.id} className="border-b border-r border-border p-4 align-top text-xs leading-5 text-muted-foreground last:border-r-0">{value(product)}</td>)}</tr>)}</tbody></table></div> : <div className="mt-10 rounded-3xl border border-dashed border-border bg-card p-10 text-center"><Scale className="mx-auto text-muted-foreground"/><h2 className="mt-4 font-serif text-3xl">Your comparison is empty.</h2><p className="mt-2 text-sm text-muted-foreground">Use the scale icon on any product card to add a piece.</p><Link to="/living-room" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Browse products</Link></div>}
+  </main></Layout>;
 }
 
 type ProductReview = {
@@ -1157,6 +1259,14 @@ export function ProductPage() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewGallery, setReviewGallery] = useState<{ reviewId: string; index: number } | null>(null);
   const [recentProductIds, setRecentProductIds] = useState<string[]>([]);
+  const [deliveryAreas, setDeliveryAreas] = useState<DeliveryServiceArea[]>([]);
+  const [deliveryAreaCode, setDeliveryAreaCode] = useState("");
+  const [roomWidth, setRoomWidth] = useState("");
+  const [roomDepth, setRoomDepth] = useState("");
+  const [alerts, setAlerts] = useState<string[]>([]);
+  const [alertBusy, setAlertBusy] = useState("");
+  const [alertNotice, setAlertNotice] = useState("");
+  const [compared, setCompared] = useState(() => readComparedProductIds().includes(product.id));
   const nav = useNavigate();
   const isSaved = saved.includes(product.id);
   const materialItems = parseMaterialSpecs(
@@ -1169,6 +1279,49 @@ export function ProductPage() {
       : null;
   const atStockLimit = stockLimit !== null && quantity >= stockLimit;
   const outOfStock = stockLimit === 0;
+  const selectedDeliveryArea = deliveryAreas.find((area) => area.area_code === deliveryAreaCode) ?? null;
+  const deliveryWindow = selectedDeliveryArea ? deliveryDateRange(selectedDeliveryArea) : null;
+  const deliveryFee = selectedDeliveryArea ? deliveryFeeFor(selectedDeliveryArea, product.price * quantity) : null;
+  const dimensionNumber = (labels: string[]) => {
+    const item = dimensionItems.find((dimension) => {
+      const normalizedLabel = dimension.label.trim().toLocaleLowerCase();
+      return labels.some(
+        (label) => normalizedLabel === label || normalizedLabel.startsWith(`${label} `),
+      );
+    });
+    const firstNumber = item ? String(item.value).match(/-?\d+(?:\.\d+)?/)?.[0] : undefined;
+    return firstNumber ? Number(firstNumber) : Number.NaN;
+  };
+  const productWidth = dimensionNumber(["width", "w"]);
+  const productDepth = dimensionNumber(["depth", "length", "d"]);
+  const fitChecked = Number(roomWidth) > 0 && Number(roomDepth) > 0 && Number.isFinite(productWidth) && Number.isFinite(productDepth);
+  const fitsRoom = fitChecked && productWidth <= Number(roomWidth) && productDepth <= Number(roomDepth);
+  useEffect(() => {
+    let active = true;
+    void getDeliveryServiceAreas()
+      .then((areas) => {
+        if (!active) return;
+        setDeliveryAreas(areas);
+        setDeliveryAreaCode((current) => current || areas[0]?.area_code || "");
+      })
+      .catch(() => undefined);
+    const syncCompare = () => setCompared(readComparedProductIds().includes(product.id));
+    window.addEventListener(COMPARE_CHANGE_EVENT, syncCompare);
+    window.addEventListener("storage", syncCompare);
+    return () => {
+      active = false;
+      window.removeEventListener(COMPARE_CHANGE_EVENT, syncCompare);
+      window.removeEventListener("storage", syncCompare);
+    };
+  }, [product.id]);
+  useEffect(() => {
+    if (!userId) { setAlerts([]); return; }
+    let active = true;
+    void getProductAlerts(userId, product.id)
+      .then((types) => { if (active) setAlerts(types); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [product.id, userId]);
   useEffect(() => {
     setPhoto(productMainImageIndex(product));
     setQuantity(1);
@@ -1220,16 +1373,6 @@ export function ProductPage() {
           schema: "public",
           table: "reviews",
           filter: `product_id=eq.${product.id}`,
-        },
-        loadReviews,
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "products",
-          filter: `id=eq.${product.id}`,
         },
         loadReviews,
       )
@@ -1340,6 +1483,30 @@ export function ProductPage() {
     window.addEventListener("keydown", handleKey);
     return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", handleKey); };
   }, [galleryReview, reviewGallery]);
+  const toggleAlert = async (type: "back_in_stock" | "price_drop") => {
+    if (!userId) {
+      nav(`/login?next=${encodeURIComponent(`/products/${product.id}`)}`);
+      return;
+    }
+    const enabled = !alerts.includes(type);
+    setAlertBusy(type);
+    setAlertNotice("");
+    try {
+      await setProductAlert(
+        userId,
+        product.id,
+        type,
+        enabled,
+        type === "price_drop" ? Math.round(product.price * 0.9) : undefined,
+      );
+      setAlerts((current) => enabled ? [...new Set([...current, type])] : current.filter((value) => value !== type));
+      setAlertNotice(enabled ? "Alert saved to your account." : "Alert removed.");
+    } catch {
+      setAlertNotice("The alert could not be saved. Please try again.");
+    } finally {
+      setAlertBusy("");
+    }
+  };
   return (
     <Layout>
       <main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-10 lg:py-10">
@@ -1433,6 +1600,27 @@ export function ProductPage() {
                 <span className="text-[#62755a]">● {product.stock}</span>
               </div>
             </div>
+            <div className="mt-5 grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2">
+              <section>
+                <div className="flex items-center gap-2"><Truck size={16}/><h2 className="text-xs font-semibold">Delivery estimate</h2></div>
+                <select value={deliveryAreaCode} onChange={(event) => setDeliveryAreaCode(event.target.value)} className="mt-3 h-10 w-full rounded-xl border border-border bg-background px-3 text-xs" aria-label="Delivery area">
+                  {deliveryAreas.map((area) => <option key={area.id} value={area.area_code}>{area.name}</option>)}
+                </select>
+                {selectedDeliveryArea && deliveryWindow && <div className="mt-3 text-[11px] leading-5 text-muted-foreground"><p className="font-semibold text-foreground">{deliveryWindow.earliest.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}–{deliveryWindow.latest.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</p><p>{deliveryFee === 0 ? "Free delivery" : `${money(deliveryFee ?? 0)} estimated delivery`} · {selectedDeliveryArea.assembly_available ? "Assembly available" : "Assembly guidance included"}</p></div>}
+              </section>
+              <section className="border-t border-border pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <div className="flex items-center gap-2"><Scale size={16}/><h2 className="text-xs font-semibold">Will it fit?</h2></div>
+                <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-[9px] font-bold tracking-[.1em] text-muted-foreground">ROOM WIDTH (CM)<input inputMode="decimal" value={roomWidth} onChange={(event) => setRoomWidth(event.target.value.replace(/[^0-9.]/g, ""))} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-normal text-foreground" placeholder="e.g. 300"/></label><label className="text-[9px] font-bold tracking-[.1em] text-muted-foreground">ROOM DEPTH (CM)<input inputMode="decimal" value={roomDepth} onChange={(event) => setRoomDepth(event.target.value.replace(/[^0-9.]/g, ""))} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-normal text-foreground" placeholder="e.g. 250"/></label></div>
+                {fitChecked && <p className={`mt-3 text-[11px] font-semibold ${fitsRoom ? "text-[#56714f]" : "text-[#8b5c46]"}`}>{fitsRoom ? `Fits with about ${Math.round(Number(roomWidth) - productWidth)} cm width and ${Math.round(Number(roomDepth) - productDepth)} cm depth clearance.` : `This piece needs at least ${productWidth} × ${productDepth} cm. Recheck your room and access path.`}</p>}
+                {!Number.isFinite(productWidth) && <p className="mt-3 text-[10px] text-muted-foreground">Detailed width and depth measurements are still being prepared.</p>}
+              </section>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => { const result = toggleComparedProduct(product.id); setCompared(result.ids.includes(product.id)); setAlertNotice(result.limitReached ? "Compare up to four products. Remove one first." : result.added ? "Added to comparison." : "Removed from comparison."); }} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${compared ? "border-foreground bg-foreground text-background" : "border-border bg-card"}`}><Scale size={14}/>{compared ? "In comparison" : "Compare"}</button>
+              {outOfStock && <button type="button" disabled={alertBusy === "back_in_stock"} onClick={() => void toggleAlert("back_in_stock")} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${alerts.includes("back_in_stock") ? "border-[#6d8065] bg-[#e7eee3] text-[#50664b]" : "border-border bg-card"}`}><Bell size={14}/>{alerts.includes("back_in_stock") ? "Back-in-stock alert on" : "Notify when available"}</button>}
+              <button type="button" disabled={alertBusy === "price_drop"} onClick={() => void toggleAlert("price_drop")} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${alerts.includes("price_drop") ? "border-[#6d8065] bg-[#e7eee3] text-[#50664b]" : "border-border bg-card"}`}><Bell size={14}/>{alerts.includes("price_drop") ? "Price alert on" : "Alert me at 10% off"}</button>
+            </div>
+            {alertNotice && <p className="mt-2 text-[10px] font-semibold text-muted-foreground" role="status">{alertNotice}</p>}
             <div className="mt-7 flex gap-3">
               <div className="flex h-12 items-center border border-border bg-card">
                 <button
