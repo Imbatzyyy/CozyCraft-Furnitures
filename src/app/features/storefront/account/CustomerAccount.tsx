@@ -1817,7 +1817,11 @@ export function Profile() {
                         <div>
                           <p className="text-[10px] font-bold tracking-[.12em] text-muted-foreground">PAYMENT</p>
                           <p className="mt-2 text-xs capitalize">{selectedOrder.payment_method.replace(/_/g, " ")} · {selectedOrder.payment_status}</p>
-                          <p className="mt-2 text-lg font-semibold">{money(Number(selectedOrder.total))}</p>
+                          <dl className="mt-3 grid gap-1.5 text-xs">
+                            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Subtotal</dt><dd>{money(Number(selectedOrder.subtotal))}</dd></div>
+                            <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Delivery</dt><dd>{Number(selectedOrder.delivery_fee) > 0 ? money(Number(selectedOrder.delivery_fee)) : "Free"}</dd></div>
+                            <div className="flex justify-between gap-3 border-t border-border pt-2 text-sm font-semibold"><dt>Total</dt><dd>{money(Number(selectedOrder.total))}</dd></div>
+                          </dl>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 gap-2 border-t border-border p-5 min-[390px]:grid-cols-2 sm:flex sm:flex-wrap">

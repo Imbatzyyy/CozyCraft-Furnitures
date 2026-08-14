@@ -79,11 +79,17 @@ import {
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import {
-  calculateDeliveryFee,
   isPaymentMethodAvailable,
   validateCheckoutAmount,
 } from "@/lib/settings/store-settings";
 import { primaryProductImage } from "@/lib/catalog/product-images";
+import {
+  DEFAULT_DELIVERY_SERVICE_AREAS,
+  deliveryAreaForAddress,
+  deliveryFeeFor,
+  type DeliveryServiceArea,
+} from "@/lib/catalog/delivery";
+import { getDeliveryServiceAreas } from "@/services/catalog/experience.service";
 
 import {
   Product,
@@ -123,9 +129,24 @@ export function Cart() {
     remove,
     qty,
     products,
+    addresses,
     setCartSelection,
     setAllCartSelection,
   } = useStore();
+  const [deliveryAreas, setDeliveryAreas] = useState<DeliveryServiceArea[]>(
+    DEFAULT_DELIVERY_SERVICE_AREAS,
+  );
+  useEffect(() => {
+    let active = true;
+    void getDeliveryServiceAreas()
+      .then((areas) => {
+        if (active && areas.length) setDeliveryAreas(areas);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const lines = cart.flatMap((line) => {
     const item = products.find((product) => product.id === line.id);
     return item
@@ -138,10 +159,19 @@ export function Cart() {
   });
   const selectedLines = lines.filter((line) => line.selectedForCheckout);
   const selected = selectedLines.map((line) => line.item.id);
-  const total = selectedLines.reduce(
+  const subtotal = selectedLines.reduce(
     (n, x) => n + x.item.price * x.quantity,
     0,
   );
+  const deliveryAddress =
+    addresses.find((item) => item.primary) ?? addresses[0];
+  const deliveryArea = deliveryAddress
+    ? deliveryAreaForAddress(deliveryAreas, deliveryAddress)
+    : null;
+  const deliveryFee = deliveryArea
+    ? deliveryFeeFor(deliveryArea, subtotal)
+    : null;
+  const total = subtotal + (deliveryFee ?? 0);
   const allSelected =
     lines.length > 0 && selectedLines.length === lines.length;
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
@@ -300,12 +330,25 @@ export function Cart() {
               <div className="mt-5 space-y-3 border-y border-border py-4 text-sm">
                 <p className="flex justify-between">
                   <span>Subtotal</span>
-                  <span>{money(total)}</span>
+                  <span>{money(subtotal)}</span>
                 </p>
                 <p className="flex justify-between">
-                  <span className="text-muted-foreground">White-glove delivery</span>
-                  <span>Free</span>
+                  <span className="text-muted-foreground">
+                    Delivery{deliveryArea ? ` · ${deliveryArea.name}` : ""}
+                  </span>
+                  <span>
+                    {deliveryFee === null
+                      ? "At checkout"
+                      : deliveryFee > 0
+                        ? money(deliveryFee)
+                        : "Free"}
+                  </span>
                 </p>
+                {deliveryArea?.free_delivery_minimum !== null && deliveryArea && deliveryArea.free_delivery_minimum > subtotal && (
+                  <p className="text-[10px] leading-4 text-muted-foreground">
+                    Add {money(deliveryArea.free_delivery_minimum - subtotal)} more for free delivery to {deliveryArea.name}.
+                  </p>
+                )}
               </div>
               <p className="mt-5 flex justify-between font-semibold">
                 <span>Total</span>
@@ -642,6 +685,9 @@ export function Checkout() {
   const [payment, setPayment] = useState("cod");
   const [notice, setNotice] = useState("");
   const [placing, setPlacing] = useState(false);
+  const [deliveryAreas, setDeliveryAreas] = useState<DeliveryServiceArea[]>(
+    DEFAULT_DELIVERY_SERVICE_AREAS,
+  );
   const [completed, setCompleted] = useState<{
     id: string;
     orderNumber: string;
@@ -672,6 +718,19 @@ export function Checkout() {
       );
     }
   }, [address, addresses]);
+  useEffect(() => {
+    let active = true;
+    void getDeliveryServiceAreas(true)
+      .then((areas) => {
+        if (active && areas.length) setDeliveryAreas(areas);
+      })
+      .catch(() => {
+        // Keep the safe seeded values; the order RPC verifies the final fee.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     if (!returnOrderId || !paymentReturn) return;
     if (paymentReturn === "cancelled") {
@@ -718,7 +777,11 @@ export function Checkout() {
     (sum, line) => sum + line.item.price * line.quantity,
     0,
   );
-  const deliveryFee = calculateDeliveryFee(subtotal, storeSettings.checkout_settings);
+  const chosen = addresses.find((item) => item.id === address) ?? addresses[0];
+  const deliveryArea = chosen
+    ? deliveryAreaForAddress(deliveryAreas, chosen)
+    : null;
+  const deliveryFee = deliveryArea ? deliveryFeeFor(deliveryArea, subtotal) : 0;
   const total = subtotal + deliveryFee;
   const checkoutError = validateCheckoutAmount(subtotal, storeSettings.checkout_settings);
   const methods = [
@@ -750,7 +813,7 @@ export function Checkout() {
     if (methods.some((method) => method.id === payment && method.available)) return;
     setPayment(methods.find((method) => method.available)?.id ?? "");
   }, [payment, subtotal, storeSettings.checkout_settings.card_enabled, storeSettings.checkout_settings.cod_enabled, storeSettings.checkout_settings.cod_maximum_order, storeSettings.checkout_settings.gcash_enabled]);
-  const eta = new Date(Date.now() + storeSettings.fulfillment_settings.estimated_delivery_days_max * 86_400_000).toLocaleDateString(
+  const eta = new Date(Date.now() + (deliveryArea?.lead_time_max_days ?? storeSettings.fulfillment_settings.estimated_delivery_days_max) * 86_400_000).toLocaleDateString(
     "en-PH",
     { month: "long", day: "numeric", year: "numeric" },
   );
@@ -854,7 +917,6 @@ export function Checkout() {
         </main>
       </Layout>
     );
-  const chosen = addresses.find((item) => item.id === address) ?? addresses[0];
   return (
     <Layout>
       <main className="mx-auto max-w-[1240px] px-4 py-7 sm:px-5 sm:py-10">
@@ -870,7 +932,7 @@ export function Checkout() {
             </p>
             <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Bring it home.</h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              Delivery is currently available in {storeSettings.delivery_area}. A few final details, then we will take care of the rest.
+              Delivery fees, timing, and free-delivery eligibility are calculated from your saved Philippine address.
             </p>
           </div>
           <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-xs font-semibold text-[#56714f]">
@@ -967,6 +1029,19 @@ export function Checkout() {
                       {chosen.email}
                     </p>
                   </div>
+                  {deliveryArea && (
+                    <div className="rounded-xl bg-[#e3ecdf] p-4 sm:col-span-2">
+                      <p className="text-[10px] font-bold tracking-[.1em] text-[#56714f]">
+                        DELIVERY PROMISE · {deliveryArea.name.toUpperCase()}
+                      </p>
+                      <p className="mt-2 text-sm font-semibold">
+                        {deliveryArea.lead_time_min_days}–{deliveryArea.lead_time_max_days} days · {deliveryArea.assembly_available ? "Assembly available" : "Assembly not included"}
+                      </p>
+                      <p className="mt-1 text-xs text-[#56714f]">
+                        Free delivery from {money(deliveryArea.free_delivery_minimum ?? 0)}; otherwise {money(deliveryArea.delivery_fee)}.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="mt-5 rounded-xl bg-secondary p-4 text-sm text-muted-foreground">
@@ -1043,10 +1118,14 @@ export function Checkout() {
                   <span>{money(subtotal)}</span>
                 </p>
                 <p className="flex justify-between">
-                  <span>Delivery</span>
+                  <span>Delivery{deliveryArea ? ` · ${deliveryArea.name}` : ""}</span>
                   <span>{deliveryFee > 0 ? money(deliveryFee) : "Free"}</span>
                 </p>
-                {storeSettings.checkout_settings.free_delivery_minimum > subtotal && <p className="text-[10px] text-muted-foreground">Add {money(storeSettings.checkout_settings.free_delivery_minimum - subtotal)} more for free delivery.</p>}
+                {deliveryArea?.free_delivery_minimum !== null && deliveryArea && deliveryArea.free_delivery_minimum > subtotal && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Add {money(deliveryArea.free_delivery_minimum - subtotal)} more for free delivery to {deliveryArea.name}.
+                  </p>
+                )}
                 <p className="mt-2 flex justify-between text-base font-semibold">
                   <span>Total</span>
                   <span>{money(total)}</span>

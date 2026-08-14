@@ -1037,6 +1037,22 @@ export function OrdersWorkspacePage() {
                   </div>
                 ))}
               </div>
+              <dl className="mt-4 grid gap-2 rounded-xl border border-border bg-secondary/35 p-4 text-xs">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Merchandise subtotal</dt>
+                  <dd className="font-semibold">{money(Number(selected.subtotal))}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">
+                    Delivery{selected.shipping_address.delivery_area_name ? ` · ${selected.shipping_address.delivery_area_name}` : ""}
+                  </dt>
+                  <dd className="font-semibold">{Number(selected.delivery_fee) > 0 ? money(Number(selected.delivery_fee)) : "Free"}</dd>
+                </div>
+                <div className="flex justify-between gap-3 border-t border-border pt-2 text-sm">
+                  <dt className="font-semibold">Order total</dt>
+                  <dd className="font-bold">{money(Number(selected.total))}</dd>
+                </div>
+              </dl>
 
               <div className="mt-6 border-t border-border pt-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">

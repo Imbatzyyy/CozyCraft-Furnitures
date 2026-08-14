@@ -109,8 +109,8 @@ export const defaultStoreSettings: PublicStoreSettings = {
   announcement_link: "",
   maintenance_mode: false,
   checkout_settings: {
-    standard_delivery_fee: 0,
-    free_delivery_minimum: 0,
+    standard_delivery_fee: 650,
+    free_delivery_minimum: 50_000,
     minimum_order_amount: 0,
     maximum_order_amount: 0,
     cod_enabled: true,

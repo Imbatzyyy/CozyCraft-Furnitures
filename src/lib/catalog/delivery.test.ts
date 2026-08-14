@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deliveryDateRange, deliveryFeeFor, type DeliveryServiceArea } from "./delivery";
+import {
+  deliveryAreaCodeForAddress,
+  deliveryAreaForAddress,
+  deliveryDateRange,
+  deliveryFeeFor,
+  type DeliveryServiceArea,
+} from "./delivery";
 
 const area: DeliveryServiceArea = {
   id: 1,
@@ -25,5 +31,20 @@ describe("delivery estimates", () => {
     const result = deliveryDateRange(area, new Date("2026-08-14T00:00:00+08:00"));
     expect(result.earliest.getDate()).toBe(16);
     expect(result.latest.getDate()).toBe(18);
+  });
+
+  it.each([
+    ["Metro Manila (National Capital Region — NCR)", "Quezon City", "metro-manila"],
+    ["Bulacan", "Malolos", "greater-manila"],
+    ["Cebu", "Cebu City", "visayas"],
+    ["Davao del Sur", "Davao City", "mindanao"],
+    ["Pangasinan", "Dagupan", "luzon"],
+  ])("maps %s, %s to %s", (province, city, expected) => {
+    expect(deliveryAreaCodeForAddress({ province, city })).toBe(expected);
+  });
+
+  it("returns the matching active delivery row", () => {
+    expect(deliveryAreaForAddress([area], { province: "Metro Manila", city: "Manila" }))
+      .toEqual(area);
   });
 });
