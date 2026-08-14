@@ -19,6 +19,7 @@ import {
   loyaltyTierOrder,
   type LoyaltyTier,
 } from "@/lib/loyalty/member-tiers";
+import { privateAvatarUrls } from "@/lib/shared/avatar-url";
 import { adminSupabase as supabase } from "@/services/supabase/client";
 
 type CustomerProfile = {
@@ -99,11 +100,19 @@ function initials(member: CustomerProfile) {
 }
 
 function MemberAvatar({ member }: { member: CustomerProfile }) {
-  return member.avatar_url ? (
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [member.avatar_url]);
+
+  return member.avatar_url && !imageFailed ? (
     <img
       src={member.avatar_url}
-      alt=""
-      className="h-11 w-11 rounded-2xl border border-border object-cover"
+      alt={`${member.full_name || member.username || "Member"} profile`}
+      referrerPolicy="no-referrer"
+      onError={() => setImageFailed(true)}
+      className="h-11 w-11 shrink-0 rounded-2xl border border-border object-cover"
     />
   ) : (
     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#dfd2c0] text-xs font-bold">
@@ -167,19 +176,25 @@ export function MemberTierMonitoringPage() {
       ((accountsResult.data ?? []) as LoyaltyAccount[]).map((account) => [account.user_id, account]),
     );
     const now = new Date().toISOString();
-    const nextMembers = ((profilesResult.data ?? []) as CustomerProfile[]).map((profile) => {
-      const account = accounts.get(profile.id);
-      return {
-        ...profile,
-        user_id: profile.id,
-        points_balance: Number(account?.points_balance ?? 0),
-        lifetime_eligible_spend: Number(account?.lifetime_eligible_spend ?? 0),
-        tier: account?.tier ?? "member",
-        tier_valid_until: account?.tier_valid_until ?? null,
-        last_activity_at: account?.last_activity_at ?? null,
-        updated_at: account?.updated_at ?? now,
-      } satisfies LoyaltyMember;
-    });
+    const profiles = (profilesResult.data ?? []) as CustomerProfile[];
+    const signedAvatars = await privateAvatarUrls(
+      profiles.map((profile) => profile.avatar_url),
+      supabase,
+    );
+    const nextMembers = profiles.map((profile, index) => {
+        const account = accounts.get(profile.id);
+        return {
+          ...profile,
+          avatar_url: signedAvatars[index],
+          user_id: profile.id,
+          points_balance: Number(account?.points_balance ?? 0),
+          lifetime_eligible_spend: Number(account?.lifetime_eligible_spend ?? 0),
+          tier: account?.tier ?? "member",
+          tier_valid_until: account?.tier_valid_until ?? null,
+          last_activity_at: account?.last_activity_at ?? null,
+          updated_at: account?.updated_at ?? now,
+        } satisfies LoyaltyMember;
+      });
     setMembers(nextMembers);
     setSelectedId((current) =>
       current && nextMembers.some((member) => member.id === current)

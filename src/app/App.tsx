@@ -117,9 +117,13 @@ import {
   catalogValuesMatch,
   normalizeCatalogValue,
 } from "@/lib/catalog/discovery";
+import {
+  avatarObjectPath,
+  privateAvatarUrl,
+  privateAvatarUrls,
+} from "@/lib/shared/avatar-url";
 
 const splashSessionKey = "cozycraft-welcome-seen";
-const publicAvatarPathMarker = "/storage/v1/object/public/avatars/";
 const orderGraphSelect = [
   "id",
   "order_number",
@@ -149,30 +153,6 @@ const orderGraphSelect = [
   "payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,created_at,updated_at)",
   "profiles!orders_user_id_fkey(full_name,email,phone)",
 ].join(",");
-
-function avatarObjectPath(value: string | null | undefined) {
-  if (!value) return null;
-  const markerIndex = value.indexOf(publicAvatarPathMarker);
-  if (markerIndex >= 0) {
-    return decodeURIComponent(
-      value.slice(markerIndex + publicAvatarPathMarker.length).split("?")[0],
-    );
-  }
-  return /^https?:\/\//i.test(value) ? null : value;
-}
-
-async function privateAvatarUrl(
-  value: string | null | undefined,
-  client: typeof supabase = supabase,
-) {
-  if (!value) return null;
-  const path = avatarObjectPath(value);
-  if (!path) return value;
-  const { data, error } = await client.storage
-    .from("avatars")
-    .createSignedUrl(path, 60 * 60);
-  return error ? null : data.signedUrl;
-}
 
 function App() {
   const [adminPortal, setAdminPortal] = useState(() =>
@@ -424,12 +404,15 @@ function App() {
       .eq("role", "customer")
       .order("created_at", { ascending: false });
     if (!error) {
-      const protectedProfiles = await Promise.all(
-        ((data ?? []) as DbCustomerProfile[]).map(async (profile) => ({
-          ...profile,
-          avatar_url: await privateAvatarUrl(profile.avatar_url, portalSupabase),
-        })),
+      const profiles = (data ?? []) as DbCustomerProfile[];
+      const signedAvatars = await privateAvatarUrls(
+        profiles.map((profile) => profile.avatar_url),
+        portalSupabase,
       );
+      const protectedProfiles = profiles.map((profile, index) => ({
+          ...profile,
+          avatar_url: signedAvatars[index],
+        }));
       setCustomerProfiles(protectedProfiles);
     }
   }, [portalSupabase]);
@@ -509,7 +492,7 @@ function App() {
     setUser(profile?.full_name || email?.split("@")[0] || "Member");
     setRole((profile?.role as DbRole) ?? "customer");
     setAvatarPath(profile?.avatar_url ?? null);
-    setAvatar(await privateAvatarUrl(profile?.avatar_url));
+    setAvatar(await privateAvatarUrl(profile?.avatar_url, supabase));
     setProfilePhone(profile?.phone ?? "");
     setProfileUsername(profile?.username ?? String(metadata.username ?? ""));
     setProfileGender(profile?.gender ?? String(metadata.gender ?? ""));
@@ -760,7 +743,7 @@ function App() {
       setProfilePaymentMethod("cod");
       if (profile.avatar_url !== avatarPath) {
         setAvatarPath(profile.avatar_url ?? null);
-        setAvatar(await privateAvatarUrl(profile.avatar_url));
+        setAvatar(await privateAvatarUrl(profile.avatar_url, supabase));
       }
     };
     const refreshCurrentProfile = async () => {
@@ -1506,7 +1489,7 @@ function App() {
       void supabase.storage.from("avatars").remove([oldPath]);
     }
 
-    const signedUrl = await privateAvatarUrl(uploaded.path);
+    const signedUrl = await privateAvatarUrl(uploaded.path, supabase);
     if (!signedUrl) {
       return {
         url: null,
