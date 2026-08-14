@@ -740,14 +740,14 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
       {searchOpen && (
         <div className={`fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-5 backdrop-blur-sm ${announcementVisible ? "pt-36" : "pt-24"}`} role="dialog" aria-modal="true" aria-label="Search CozyCraft products">
           <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
-            <div className="flex items-center gap-3 border-b border-border px-5">
+            <div className="flex items-center gap-3 border-b border-border px-5 transition-shadow focus-within:border-[#b8a58d] focus-within:ring-2 focus-within:ring-inset focus-within:ring-[#b8a58d]/30">
               <Search size={18} className="text-muted-foreground" />
               <input
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search sofas, tables, bedroom pieces..."
-                className="h-16 flex-1 bg-transparent text-sm outline-none"
+                className="storefront-product-search-input h-16 min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
               <button
                 onClick={() => setSearchOpen(false)}

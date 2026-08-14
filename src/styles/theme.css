@@ -279,7 +279,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* The command-search input sits inside an already bordered dialog header.
    Avoid drawing a second rectangular browser focus frame around that input. */
 .admin-workspace-search-input:focus,
-.admin-workspace-search-input:focus-visible {
+.admin-workspace-search-input:focus-visible,
+.storefront-product-search-input:focus,
+.storefront-product-search-input:focus-visible {
   outline: none;
   outline-offset: 0;
   box-shadow: none;
