@@ -416,6 +416,7 @@ export type AdminSession = {
   userId: string | null;
   user: string | null;
   userEmail: string | null;
+  avatar: string | null;
   signOut: () => Promise<void>;
 };
 

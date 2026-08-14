@@ -476,6 +476,47 @@ function WorkspaceSearch({
   );
 }
 
+function AdminAccountAvatar({
+  src,
+  name,
+  initials,
+  className,
+}: {
+  src: string | null;
+  name: string;
+  initials: string;
+  className: string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
+  if (src && !imageFailed) {
+    return (
+      <img
+        src={src}
+        alt={`${name} profile`}
+        loading="eager"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setImageFailed(true)}
+        className={`shrink-0 bg-[#b8a58d] object-cover ${className}`}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-label={`${name} profile initials`}
+      className={`grid shrink-0 place-items-center bg-[#b8a58d] text-[10px] font-bold text-foreground ${className}`}
+    >
+      {initials || "TM"}
+    </span>
+  );
+}
+
 export function AdminShell({
   children,
   title,
@@ -502,6 +543,7 @@ export function AdminShell({
     authReady,
     signOut,
     user,
+    avatar,
   } = useAdminSession();
   const accountName = user?.trim() || "Team Member";
   const accountInitials = accountName
@@ -802,9 +844,12 @@ export function AdminShell({
                 aria-expanded={profileOpen}
                 className="flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-2 shadow-sm transition hover:bg-secondary"
               >
-                <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#b8a58d] text-[10px] font-bold text-foreground">
-                  {accountInitials}
-                </span>
+                <AdminAccountAvatar
+                  src={avatar}
+                  name={accountName}
+                  initials={accountInitials}
+                  className="h-7 w-7 rounded-lg"
+                />
                 <span className="hidden text-left sm:block">
                   <b className="block text-[11px] leading-3">{accountName}</b>
                   <span className="block text-[10px] leading-3 text-muted-foreground">
@@ -815,6 +860,20 @@ export function AdminShell({
               </button>
               {profileOpen && (
                 <div className="absolute right-0 top-12 z-[70] w-56 rounded-2xl border border-border bg-card p-2 shadow-xl">
+                  <div className="flex items-center gap-3 border-b border-border px-3 py-3">
+                    <AdminAccountAvatar
+                      src={avatar}
+                      name={accountName}
+                      initials={accountInitials}
+                      className="h-10 w-10 rounded-xl"
+                    />
+                    <div className="min-w-0">
+                      <b className="block truncate text-xs">{accountName}</b>
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {role}
+                      </span>
+                    </div>
+                  </div>
                   <p className="px-3 py-2 text-[10px] font-bold tracking-[.15em] text-muted-foreground">SIGNED IN ROLE</p>
                   <div className="rounded-xl bg-secondary px-3 py-2.5 text-xs font-semibold">{role}</div>
                   <button

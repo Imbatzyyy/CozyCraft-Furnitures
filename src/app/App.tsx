@@ -214,6 +214,7 @@ function App() {
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
   const [adminUser, setAdminUser] = useState<string | null>(null);
   const [adminUserEmail, setAdminUserEmail] = useState<string | null>(null);
+  const [adminAvatar, setAdminAvatar] = useState<string | null>(null);
   const [adminDatabaseRole, setAdminDatabaseRole] =
     useState<DbRole | null>(null);
   const [adminAuthReady, setAdminAuthReady] = useState(false);
@@ -596,6 +597,7 @@ function App() {
     setAdminUserId(null);
     setAdminUser(null);
     setAdminUserEmail(null);
+    setAdminAvatar(null);
     setAdminDatabaseRole(null);
   }, []);
 
@@ -603,7 +605,7 @@ function App() {
     async (id: string, email: string | null) => {
       const { data: profile, error } = await adminSupabase
         .from("profiles")
-        .select("full_name,email,role,staff_active")
+        .select("full_name,email,avatar_url,role,staff_active")
         .eq("id", id)
         .single();
       const {
@@ -621,11 +623,26 @@ function App() {
         await adminSupabase.auth.signOut({ scope: "local" });
         return;
       }
+      const metadataAvatar =
+        typeof session.user.user_metadata?.avatar_url === "string"
+          ? session.user.user_metadata.avatar_url
+          : typeof session.user.user_metadata?.picture === "string"
+            ? session.user.user_metadata.picture
+            : null;
+      const resolvedAvatar = await privateAvatarUrl(
+        profile.avatar_url || metadataAvatar,
+        adminSupabase,
+      );
+      const {
+        data: { session: currentSession },
+      } = await adminSupabase.auth.getSession();
+      if (currentSession?.user.id !== id) return;
       setAdminUserId(id);
       setAdminUserEmail(profile.email || email);
       setAdminUser(
         profile.full_name || profile.email?.split("@")[0] || "Team Member",
       );
+      setAdminAvatar(resolvedAvatar);
       setAdminDatabaseRole(databaseRole);
     },
     [clearAdminAccount],
@@ -1718,6 +1735,7 @@ function App() {
           userId: adminUserId,
           user: adminUser,
           userEmail: adminUserEmail,
+          avatar: adminAvatar,
           signOut: signOutAdmin,
         }}
       >
