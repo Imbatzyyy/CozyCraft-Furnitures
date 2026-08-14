@@ -189,6 +189,59 @@ export const adminNav = [
   [Settings, "Settings", "/admin/settings"],
 ] as const;
 
+export const adminNavGroups = [
+  {
+    label: "Overview",
+    description: "Workspace summary",
+    icon: LayoutDashboard,
+    paths: ["/admin"],
+  },
+  {
+    label: "Catalog",
+    description: "Products and stock",
+    icon: Package,
+    paths: [
+      "/admin/products",
+      "/admin/categories",
+      "/admin/inventory",
+      "/admin/experience",
+    ],
+  },
+  {
+    label: "Commerce",
+    description: "Orders and payments",
+    icon: ShoppingBag,
+    paths: ["/admin/orders", "/admin/payments"],
+  },
+  {
+    label: "Customer care",
+    description: "People and service",
+    icon: Users,
+    paths: [
+      "/admin/customers",
+      "/admin/member-tiers",
+      "/admin/reviews",
+      "/admin/support",
+    ],
+  },
+  {
+    label: "Insights",
+    description: "Reports and audit trail",
+    icon: ChartNoAxesCombined,
+    paths: ["/admin/reports", "/admin/activity-logs"],
+  },
+  {
+    label: "Administration",
+    description: "Team and configuration",
+    icon: Settings,
+    paths: ["/admin/team", "/admin/settings"],
+  },
+] as const;
+
+const adminPathIsActive = (pathname: string, path: string) =>
+  pathname === path ||
+  (path !== "/admin" && pathname.startsWith(`${path}/`));
+
 function WorkspaceSearch({
   visibleNav,
 }: {
@@ -433,6 +486,7 @@ export function AdminShell({
   const loc = useLocation();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
+  const [expandedNavGroup, setExpandedNavGroup] = useState("Overview");
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [mfaRequired, setMfaRequired] = useState<boolean | null>(null);
@@ -567,6 +621,20 @@ export function AdminShell({
   const visibleNav = adminNav.filter(([, , path]) =>
     allowedPaths.includes(path),
   );
+  const visibleNavGroups = adminNavGroups
+    .map((group) => ({
+      ...group,
+      items: visibleNav.filter(([, , path]) =>
+        (group.paths as readonly string[]).includes(path),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+  const activeNavGroup = visibleNavGroups.find((group) =>
+    group.items.some(([, , path]) => adminPathIsActive(loc.pathname, path)),
+  );
+  useEffect(() => {
+    if (activeNavGroup) setExpandedNavGroup(activeNavGroup.label);
+  }, [activeNavGroup?.label]);
   useEffect(() => {
     setOpen(false);
     setProfileOpen(false);
@@ -608,17 +676,84 @@ export function AdminShell({
           <p className="mt-2 text-xs text-white/65">{role}</p>
         </div>
         <nav className="mt-4 grid gap-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {visibleNav.map(([Icon, label, path]) => (
-            <Link
-              key={path}
-              to={path}
-              onClick={() => setOpen(false)}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${loc.pathname === path ? "bg-[#d8c7b0] text-[#201f1d] shadow-sm" : "text-white/65 hover:bg-white/8 hover:text-white"}`}
-            >
-              <Icon size={17} />
-              {label}
-            </Link>
-          ))}
+          {visibleNavGroups.map((group) => {
+            const GroupIcon = group.icon;
+            const expanded = expandedNavGroup === group.label;
+            const groupActive = activeNavGroup?.label === group.label;
+            if (group.label === "Overview") {
+              const overviewPath = group.items[0][2];
+              return (
+                <Link
+                  key={group.label}
+                  to={overviewPath}
+                  aria-current={groupActive ? "page" : undefined}
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                    groupActive
+                      ? "bg-[#d8c7b0] font-semibold text-[#201f1d] shadow-sm"
+                      : "text-white/65 hover:bg-white/8 hover:text-white"
+                  }`}
+                >
+                  <GroupIcon size={17} />
+                  Overview
+                </Link>
+              );
+            }
+            return (
+              <div key={group.label} className="rounded-xl">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedNavGroup(expanded ? "" : group.label)
+                  }
+                  aria-expanded={expanded}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                    groupActive
+                      ? "bg-white/10 text-white"
+                      : "text-white/65 hover:bg-white/8 hover:text-white"
+                  }`}
+                >
+                  <GroupIcon size={17} className="shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">{group.label}</span>
+                    <span className="mt-0.5 block truncate text-[9px] font-normal text-white/40">
+                      {group.description}
+                    </span>
+                  </span>
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-white/8 px-1 text-[9px] text-white/55">
+                    {group.items.length}
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {expanded && (
+                  <div className="ml-5 mt-1 grid gap-1 border-l border-white/12 pl-3">
+                    {group.items.map(([Icon, label, path]) => {
+                      const active = adminPathIsActive(loc.pathname, path);
+                      return (
+                        <Link
+                          key={path}
+                          to={path}
+                          aria-current={active ? "page" : undefined}
+                          onClick={() => setOpen(false)}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2 text-xs transition ${
+                            active
+                              ? "bg-[#d8c7b0] font-semibold text-[#201f1d] shadow-sm"
+                              : "text-white/58 hover:bg-white/8 hover:text-white"
+                          }`}
+                        >
+                          <Icon size={15} />
+                          {label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
         <div className="mt-auto border-t border-white/12 pt-4">
           <button
@@ -697,8 +832,72 @@ export function AdminShell({
             </div>
           </div>
         </header>
-        <nav aria-label="Quick admin navigation" className="sticky top-[70px] z-40 isolate flex gap-2 overflow-x-auto border-b border-border bg-[#f3f0ea]/95 px-3 py-2 backdrop-blur [scrollbar-width:none] sm:top-[78px] sm:px-5 lg:hidden [&::-webkit-scrollbar]:hidden">
-          {visibleNav.filter(([, label]) => ["Overview", "Products", "Orders", "Inventory", "Support"].includes(label)).map(([Icon, label, path]) => <Link key={path} to={path} className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-[11px] font-semibold ${loc.pathname === path ? "bg-foreground text-background" : "border border-border bg-card"}`}><Icon size={14} />{label}</Link>)}
+        <nav aria-label="Quick admin navigation" className="sticky top-[70px] z-40 isolate border-b border-border bg-[#f3f0ea]/95 px-3 py-2 backdrop-blur sm:top-[78px] sm:px-5 lg:hidden">
+          <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {visibleNavGroups.map((group) => {
+              const GroupIcon = group.icon;
+              const expanded = expandedNavGroup === group.label;
+              if (group.label === "Overview") {
+                const overviewPath = group.items[0][2];
+                return (
+                  <Link
+                    key={group.label}
+                    to={overviewPath}
+                    aria-current={activeNavGroup?.label === group.label ? "page" : undefined}
+                    className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-[11px] font-semibold ${
+                      activeNavGroup?.label === group.label
+                        ? "bg-foreground text-background"
+                        : "border border-border bg-card"
+                    }`}
+                  >
+                    <GroupIcon size={14} />
+                    Overview
+                  </Link>
+                );
+              }
+              return (
+                <button
+                  type="button"
+                  key={group.label}
+                  onClick={() => setExpandedNavGroup(expanded ? "" : group.label)}
+                  aria-expanded={expanded}
+                  className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-[11px] font-semibold ${
+                    activeNavGroup?.label === group.label
+                      ? "bg-foreground text-background"
+                      : "border border-border bg-card"
+                  }`}
+                >
+                  <GroupIcon size={14} />
+                  {group.label}
+                  <ChevronDown size={12} className={expanded ? "rotate-180" : ""} />
+                </button>
+              );
+            })}
+          </div>
+          {expandedNavGroup && expandedNavGroup !== "Overview" && (
+            <div className="mt-2 flex gap-2 overflow-x-auto border-t border-border/70 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {visibleNavGroups
+                .find((group) => group.label === expandedNavGroup)
+                ?.items.map(([Icon, label, path]) => {
+                  const active = adminPathIsActive(loc.pathname, path);
+                  return (
+                    <Link
+                      key={path}
+                      to={path}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[10px] font-semibold ${
+                        active
+                          ? "bg-[#d8c7b0] text-foreground"
+                          : "bg-card text-muted-foreground"
+                      }`}
+                    >
+                      <Icon size={13} />
+                      {label}
+                    </Link>
+                  );
+                })}
+            </div>
+          )}
         </nav>
         <main id="admin-main" tabIndex={-1} className="relative z-0 isolate mx-auto max-w-[1500px] p-3 sm:p-5 lg:p-8">{children}</main>
       </div>
