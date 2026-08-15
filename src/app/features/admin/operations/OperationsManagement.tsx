@@ -1368,6 +1368,10 @@ export function PaymentsPage() {
 export function CustomersPage() {
   const { customerProfiles, refreshCustomers } = useStore();
   const [selectedId, setSelectedId] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ fullName: "", username: "", phone: "", gender: "", dateOfBirth: "" });
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     void refreshCustomers();
   }, [refreshCustomers]);
@@ -1384,6 +1388,18 @@ export function CustomersPage() {
   const primaryAddress = customer?.addresses.find(
     (address) => address.is_primary,
   ) ?? customer?.addresses[0];
+  useEffect(() => {
+    if (!customer) return;
+    setDraft({ fullName: customer.full_name, username: customer.username, phone: customer.phone ?? "", gender: customer.gender, dateOfBirth: customer.date_of_birth ?? "" });
+    setEditing(false);
+  }, [customer?.id]);
+  const manageCustomer = async (body: Record<string, unknown>) => {
+    setBusy(true); setNotice("");
+    const { data, error } = await supabase.functions.invoke("manage-customer", { body });
+    setBusy(false);
+    setNotice(data?.error ?? error?.message ?? data?.message ?? "Customer account updated.");
+    if (!error && !data?.error) { setEditing(false); await refreshCustomers(); }
+  };
 
   return (
     <AdminShell title="Customers">
@@ -1488,8 +1504,10 @@ export function CustomersPage() {
                   </div>
                 ))}
               </div>
+              <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => setEditing((value) => !value)} className="rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-foreground">{editing ? "Cancel editing" : "Edit customer"}</button><button type="button" disabled={busy} onClick={() => { const active = customer.customer_active !== false; if (window.confirm(`${active ? "Suspend" : "Reactivate"} this customer account?`)) void manageCustomer({ action: "set-status", userId: customer.id, active: !active }); }} className={`rounded-xl border px-4 py-2.5 text-xs font-semibold ${customer.customer_active !== false ? "border-[#d7a28d] text-[#f2c7b5]" : "border-[#9fbd92] text-[#cde6c3]"}`}>{customer.customer_active !== false ? "Suspend account" : "Reactivate account"}</button><span className={`rounded-full px-3 py-2 text-[10px] font-bold ${customer.customer_active !== false ? "bg-[#dce9d7] text-[#45613f]" : "bg-[#f0d7cc] text-[#814d3c]"}`}>{customer.customer_active !== false ? "ACTIVE" : "SUSPENDED"}</span></div>
             </div>
             <div className="grid gap-5 p-6 lg:grid-cols-2">
+              {editing && <div className="rounded-2xl border border-border bg-[#faf8f4] p-5 lg:col-span-2"><p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">EDIT CUSTOMER PROFILE</p><div className="mt-4 grid gap-3 sm:grid-cols-2">{([['Full name','fullName'],['Username','username'],['Phone','phone'],['Gender','gender'],['Date of birth','dateOfBirth']] as const).map(([label,key]) => <label key={key} className="grid gap-2 text-xs font-semibold">{label}<input type={key === "dateOfBirth" ? "date" : "text"} value={draft[key]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-11 rounded-xl border border-border bg-white px-3 font-normal"/></label>)}</div><button type="button" disabled={busy} onClick={() => void manageCustomer({ action: "update", userId: customer.id, ...draft })} className="mt-4 rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background disabled:opacity-50">{busy ? "Saving…" : "Save customer changes"}</button></div>}
               <div className="rounded-2xl bg-secondary p-5">
                 <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
                   ACCOUNT DETAILS
@@ -1569,6 +1587,7 @@ export function CustomersPage() {
                 </p>
               </div>
             </div>
+            {notice && <p role="status" className="border-t border-border bg-secondary p-4 text-sm">{notice}</p>}
           </section>
         </div>
       )}

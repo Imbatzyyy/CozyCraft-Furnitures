@@ -140,6 +140,7 @@ export const teamRoleDescriptions: Record<TeamMember["role"], string> = {
 };
 
 export function TeamAccessPage() {
+  const { userId: currentUserId } = useAdminSession();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -279,6 +280,15 @@ export function TeamAccessPage() {
     }
     setNotice(data.message);
     await loadMembers();
+  };
+  const deleteMember = async (member: TeamMember) => {
+    if (member.id === currentUserId) { setError("You cannot delete your own account."); return; }
+    const confirmation = window.prompt(`Permanent deletion cannot be undone. Type DELETE ${member.email ?? member.full_name} to continue.`);
+    if (confirmation !== `DELETE ${member.email ?? member.full_name}`) return;
+    setError(""); setNotice("");
+    const { data, error: invokeError } = await supabase.functions.invoke("manage-team-member", { body: { action: "delete", userId: member.id } });
+    if (invokeError || data?.error) setError(data?.error ?? await functionErrorMessage(invokeError, "Unable to delete this team account."));
+    else { setNotice(data.message); await loadMembers(); }
   };
 
   return (
@@ -439,6 +449,7 @@ export function TeamAccessPage() {
                   >
                     {member.staff_active ? "Suspend access" : "Restore access"}
                   </button>
+                  <button type="button" disabled={member.id === currentUserId} onClick={() => void deleteMember(member)} className="text-xs font-semibold text-[#9a553f] underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-35">Permanently delete</button>
                 </div>
               </div>
             ))}
@@ -504,9 +515,10 @@ export function StoreSettingsPage() {
     dirtyRef.current = dirty;
   }, [dirty]);
   const loadSettings = useCallback(async () => {
-    const [storeResult, securityResult] = await Promise.all([
+    const [storeResult, securityResult, recipientResult] = await Promise.all([
       supabase.from("store_settings").select("*").eq("id", true).single(),
       supabase.from("admin_security_settings").select("*").eq("id", true).single(),
+      supabase.from("admin_report_recipients").select("recipients").eq("id", true).maybeSingle(),
     ]);
     if (storeResult.error) {
       setNotice(storeResult.error.message);
@@ -518,7 +530,13 @@ export function StoreSettingsPage() {
       setLoading(false);
       return;
     }
-    const nextStore = normalizeStoreSettings(storeResult.data);
+    const nextStore = normalizeStoreSettings({
+      ...storeResult.data,
+      report_settings: {
+        ...((storeResult.data?.report_settings as Record<string, unknown> | null) ?? {}),
+        recipients: recipientResult.data?.recipients ?? [],
+      },
+    });
     const nextSecurity = {
       ...defaultAdminSecuritySettings,
       ...(securityResult.data ?? {}),
@@ -578,6 +596,7 @@ export function StoreSettingsPage() {
     if (settings.announcement_link && !/^(\/|https:\/\/)/i.test(settings.announcement_link)) return "Announcement links must be an internal path or an HTTPS URL.";
     if (Object.values(settings.social_links).some((url) => url && !/^https:\/\//i.test(url))) return "Social links must use HTTPS.";
     if (!settings.checkout_settings.cod_enabled && !settings.checkout_settings.card_enabled && !settings.checkout_settings.gcash_enabled) return "Keep at least one payment method enabled.";
+    if (settings.currency_code !== "PHP" && (settings.checkout_settings.card_enabled || settings.checkout_settings.gcash_enabled)) return "Card and GCash checkout require PHP. Disable those methods or select PHP.";
     if (settings.fulfillment_settings.estimated_delivery_days_min > settings.fulfillment_settings.estimated_delivery_days_max) return "Minimum delivery days cannot exceed maximum delivery days.";
     if (!/^[A-Z0-9-]{1,10}$/.test(settings.fulfillment_settings.order_number_prefix)) return "Order prefix must use 1–10 uppercase letters, numbers, or hyphens.";
     if (settings.review_settings.minimum_length > settings.review_settings.maximum_length) return "Review minimum length cannot exceed its maximum.";
@@ -595,12 +614,11 @@ export function StoreSettingsPage() {
     setSaving(true);
     const { id: _storeId, updated_at: _storeUpdated, ...storeUpdate } = settings;
     const { id: _securityId, updated_at: _securityUpdated, updated_by: _updatedBy, ...securityUpdate } = security;
-    const [storeResult, securityResult] = await Promise.all([
-      supabase.from("store_settings").update(storeUpdate).eq("id", true),
-      supabase.from("admin_security_settings").update(securityUpdate).eq("id", true),
-    ]);
+    const { error } = await supabase.rpc("save_admin_workspace_settings", {
+      p_store: storeUpdate,
+      p_security: securityUpdate,
+    });
     setSaving(false);
-    const error = storeResult.error ?? securityResult.error;
     setNotice(error?.message ?? "Settings applied across CozyCraft in realtime.");
     if (!error) await loadSettings();
   };
@@ -658,6 +676,7 @@ export function StoreSettingsPage() {
                 {textInput("Customer contact email", settings.contact_email, (value) => setSettings((current) => ({ ...current, contact_email: value })))}
                 {textInput("Support phone", settings.support_phone, (value) => setSettings((current) => ({ ...current, support_phone: value })))}
                 {textInput("Business address", settings.business_address, (value) => setSettings((current) => ({ ...current, business_address: value })))}
+                <label className="grid gap-2 text-sm font-semibold">Store currency<select value={settings.currency_code} onChange={(event) => setSettings((current) => ({ ...current, currency_code: event.target.value as PublicStoreSettings["currency_code"] }))} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="PHP">PHP — Philippine peso</option><option value="USD">USD — US dollar</option><option value="EUR">EUR — Euro</option><option value="SGD">SGD — Singapore dollar</option><option value="JPY">JPY — Japanese yen</option></select><span className="text-[10px] font-normal leading-4 text-muted-foreground">PayMongo card and GCash checkout are available only while PHP is selected.</span></label>
                 <label className="grid gap-2 text-sm font-semibold md:col-span-2">Store description<textarea value={settings.store_description} onChange={(event) => setSettings((current) => ({ ...current, store_description: event.target.value }))} className="min-h-24 rounded-xl border border-border bg-[#fcfbf8] p-3 font-normal" /></label>
               </>
             )}
@@ -692,10 +711,17 @@ export function StoreSettingsPage() {
               {toggle("Cards via PayMongo", "Offer the secure hosted PayMongo card checkout.", settings.checkout_settings.card_enabled, (value) => updateNested("checkout_settings", "card_enabled", value))}
               {toggle("GCash via PayMongo", "Offer the secure hosted PayMongo GCash checkout.", settings.checkout_settings.gcash_enabled, (value) => updateNested("checkout_settings", "gcash_enabled", value))}
               {numberInput("COD maximum order (0 = unlimited)", settings.checkout_settings.cod_maximum_order, (value) => updateNested("checkout_settings", "cod_maximum_order", value), "PHP")}
+              {settings.currency_code !== "PHP" && <div className="rounded-xl border border-[#d6b18f] bg-[#f7eadc] p-4 text-xs leading-5 text-[#80563f] md:col-span-2">PayMongo accepts Philippine peso amounts for this store integration. Switch currency back to PHP before enabling card or GCash checkout.</div>}
             </>)}
             {section === "Notifications" && (<>
-              {toggle("Cancellation and refund email", "Allow administrators to send or resend the implemented Resend refund confirmation.", settings.email_event_settings.cancelled_refunded, (value) => updateNested("email_event_settings", "cancelled_refunded", value))}
-              <div className="rounded-xl border border-border bg-secondary/40 p-4 text-xs leading-5 text-muted-foreground md:col-span-2">Order, payment, fulfillment, delivery, support, and account confirmation messages continue through their existing Supabase Auth and in-app notification channels. This panel does not claim an email workflow until its server-side sender exists.</div>
+              {toggle("Account confirmation email", "Keep Supabase Auth confirmation messages enabled for newly registered customers.", settings.email_event_settings.account_confirmation, (value) => updateNested("email_event_settings", "account_confirmation", value))}
+              {toggle("Order confirmation email", "Email the customer after an order is recorded successfully.", settings.email_event_settings.order_confirmation, (value) => updateNested("email_event_settings", "order_confirmation", value))}
+              {toggle("Payment received email", "Email the customer after PayMongo confirms a settled payment.", settings.email_event_settings.payment_received, (value) => updateNested("email_event_settings", "payment_received", value))}
+              {toggle("Fulfillment update email", "Email customers when administrators advance an order through processing, packed, or shipped.", settings.email_event_settings.fulfillment_updates, (value) => updateNested("email_event_settings", "fulfillment_updates", value))}
+              {toggle("Delivered email", "Send a delivery confirmation and review reminder when an order is delivered.", settings.email_event_settings.delivered, (value) => updateNested("email_event_settings", "delivered", value))}
+              {toggle("Cancellation and refund email", "Allow administrators to send or resend cancellation and refund confirmations.", settings.email_event_settings.cancelled_refunded, (value) => updateNested("email_event_settings", "cancelled_refunded", value))}
+              {toggle("Support reply email", "Email customers when CozyCraft Care posts a new reply.", settings.email_event_settings.support_replies, (value) => updateNested("email_event_settings", "support_replies", value))}
+              <div className="rounded-xl border border-border bg-secondary/40 p-4 text-xs leading-5 text-muted-foreground md:col-span-2">Messages are sent server-side through Resend, use editable templates, and record delivery attempts without exposing the provider key. <Link to="/admin/content" className="ml-1 font-semibold text-foreground underline underline-offset-4">Manage templates and delivery logs</Link>.</div>
             </>)}
             {section === "Reviews" && (<>
               {toggle("Require moderation", "New reviews remain pending until approved in the admin Reviews tab.", settings.review_settings.approval_required, (value) => updateNested("review_settings", "approval_required", value))}

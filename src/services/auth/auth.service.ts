@@ -78,7 +78,7 @@ export async function signInForPortal(
 
   const { data: profile, error: profileError } = await authClient
     .from("profiles")
-    .select("role,staff_active")
+    .select("role,staff_active,customer_active")
     .eq("id", data.user.id)
     .single();
 
@@ -102,6 +102,15 @@ export async function signInForPortal(
       reason: "suspended",
       error:
         "This administrator account is suspended. Ask the super administrator to restore access.",
+    };
+  }
+  if (role === "customer" && profile.customer_active === false) {
+    await authClient.auth.signOut({ scope: "local" });
+    return {
+      ok: false,
+      role,
+      reason: "suspended",
+      error: "This customer account is currently suspended. Contact CozyCraft Care for assistance.",
     };
   }
   if (!roleCanUsePortal(role, portal)) {

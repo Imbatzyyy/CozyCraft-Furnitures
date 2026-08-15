@@ -102,6 +102,7 @@ import {
   StoreContext,
   useStore,
   fallbackProducts,
+  setMoneyCurrency,
 } from "./core";
 import { checkoutSignature, selectCheckoutLines } from "@/lib/commerce/checkout";
 import {
@@ -275,7 +276,7 @@ function App() {
         portalSupabase
           .from("store_settings")
           .select(
-            "id,store_name,store_description,contact_email,support_phone,business_address,delivery_area,low_stock_threshold,inventory_alerts,weekly_report_enabled,social_links,announcement_enabled,announcement_text,announcement_link,maintenance_mode,checkout_settings,fulfillment_settings,review_settings,account_settings,email_event_settings,report_settings,updated_at",
+            "id,store_name,store_description,currency_code,contact_email,support_phone,business_address,delivery_area,low_stock_threshold,inventory_alerts,weekly_report_enabled,social_links,announcement_enabled,announcement_text,announcement_link,maintenance_mode,checkout_settings,fulfillment_settings,review_settings,account_settings,email_event_settings,report_settings,updated_at",
           )
           .eq("id", true)
           .single(),
@@ -285,6 +286,7 @@ function App() {
         settingResult.data as Partial<PublicStoreSettings> | null,
       );
       setStoreSettings(normalizedSettings);
+      setMoneyCurrency(normalizedSettings.currency_code);
       const threshold = normalizedSettings.low_stock_threshold;
       const mapped = (productResult.data as DbProduct[]).map((row) =>
         mapProduct(row, threshold),
@@ -399,7 +401,7 @@ function App() {
     const { data, error } = await portalSupabase
       .from("profiles")
       .select(
-        "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,created_at,addresses!addresses_user_id_fkey(id,user_id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
+        "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at,addresses!addresses_user_id_fkey(id,user_id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
       )
       .eq("role", "customer")
       .order("created_at", { ascending: false });
@@ -442,7 +444,7 @@ function App() {
   ) => {
     let profileResult = await supabase
       .from("profiles")
-      .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,created_at")
+      .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at")
       .eq("id", id)
       .single();
     for (const retryDelay of [150, 350]) {
@@ -450,7 +452,7 @@ function App() {
       await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
       profileResult = await supabase
         .from("profiles")
-        .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,created_at")
+        .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at")
         .eq("id", id)
         .single();
     }
@@ -484,6 +486,11 @@ function App() {
     }
     const accountRole = (profile.role as DbRole) ?? "customer";
     if (accountRole !== "customer") {
+      await supabase.auth.signOut({ scope: "local" });
+      return;
+    }
+    if (profile.customer_active === false) {
+      window.sessionStorage.setItem("cozycraft-customer-access-notice", "This customer account is currently suspended. Contact CozyCraft Care for assistance.");
       await supabase.auth.signOut({ scope: "local" });
       return;
     }
@@ -1299,6 +1306,11 @@ function App() {
       setCart(remainingCart);
       window.sessionStorage.removeItem(checkoutStorageKey);
       await Promise.all([refreshOrders(), refreshProducts()]);
+      if (data.orderId) {
+        await supabase.functions.invoke("send-transactional-email", {
+          body: { eventType: "order_confirmation", orderId: data.orderId },
+        });
+      }
       return {
         id: data.orderId ?? null,
         orderNumber: data.orderNumber ?? null,
@@ -1330,6 +1342,9 @@ function App() {
     setCart(remainingCart);
     window.sessionStorage.removeItem(checkoutStorageKey);
     await Promise.all([refreshOrders(), refreshProducts()]);
+    await supabase.functions.invoke("send-transactional-email", {
+      body: { eventType: "order_confirmation", orderId },
+    });
     return {
       id: orderId,
       orderNumber: createdOrder?.order_number ?? null,
@@ -1350,7 +1365,15 @@ function App() {
       .from("orders")
       .update(payload)
       .eq("id", id);
-    if (!error) await refreshOrders();
+    if (!error) {
+      await refreshOrders();
+      await adminSupabase.functions.invoke("send-transactional-email", {
+        body: {
+          eventType: status === "delivered" ? "delivered" : "fulfillment_update",
+          orderId: id,
+        },
+      });
+    }
     return error?.message ?? null;
   };
   const cancelOrder = async (id: string, reason: string) => {
@@ -1539,6 +1562,9 @@ function App() {
       .eq("id", id);
     if (!error) {
       await Promise.all([refreshTickets(), refreshCustomers()]);
+      await adminSupabase.functions.invoke("send-transactional-email", {
+        body: { eventType: "support_reply", ticketId: id },
+      });
     }
     return error?.message ?? null;
   };
@@ -1913,6 +1939,9 @@ const router = createBrowserRouter([
   { path: "/", lazy: () => storefrontCatalogRoute("Home") },
   { path: "/home", lazy: () => storefrontCatalogRoute("Home") },
   { path: "/about", lazy: () => storefrontCatalogRoute("About") },
+  { path: "/contact", lazy: () => storefrontCatalogRoute("StaticContentPage") },
+  { path: "/faq", lazy: () => storefrontCatalogRoute("StaticContentPage") },
+  { path: "/privacy", lazy: () => storefrontCatalogRoute("StaticContentPage") },
   { path: "/collections/:room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/living-room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/bedroom", lazy: () => storefrontCatalogRoute("CollectionPage") },
@@ -1974,6 +2003,15 @@ const router = createBrowserRouter([
         "./features/admin/merchandising/MerchandisingExperience"
       );
       return { Component: MerchandisingExperiencePage };
+    },
+  },
+  {
+    path: "/admin/content",
+    lazy: async () => {
+      const { ContentManagementPage } = await import(
+        "./features/admin/content/ContentManagement"
+      );
+      return { Component: ContentManagementPage };
     },
   },
   { path: "/admin/reviews", lazy: () => adminOperationsRoute("ReviewsPage") },

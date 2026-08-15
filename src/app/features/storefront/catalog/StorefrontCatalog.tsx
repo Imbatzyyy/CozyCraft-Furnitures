@@ -95,6 +95,14 @@ import {
   parseMaterialSpecs,
 } from "@/lib/catalog/product-specs";
 import { productMainImageIndex } from "@/lib/catalog/product-images";
+import { sortProducts, type ProductSort } from "@/lib/catalog/sort-products";
+import {
+  clearContentCache,
+  getContentPage,
+  getHomepageBanners,
+  type ContentPage,
+  type HomepageBanner,
+} from "@/services/content/content.service";
 import {
   COMPARE_CHANGE_EVENT,
   readComparedProductIds,
@@ -148,7 +156,7 @@ import {
 
 export function Home() {
   const { products } = useStore();
-  const slides = [
+  const fallbackSlides = [
     {
       eyebrow: "THE 2026 COLLECTION",
       title: "Furniture that makes home feel complete.",
@@ -174,6 +182,33 @@ export function Home() {
       action: "Discover the edit",
     },
   ];
+  const [managedSlides, setManagedSlides] = useState<HomepageBanner[]>([]);
+  useEffect(() => {
+    const load = () => {
+      void getHomepageBanners(true)
+        .then(setManagedSlides)
+        .catch(() => undefined);
+    };
+    load();
+    const channel = supabase
+      .channel("storefront-homepage-banners")
+      .on("postgres_changes", { event: "*", schema: "public", table: "homepage_banners" }, () => {
+        clearContentCache();
+        load();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, []);
+  const slides = managedSlides.length
+    ? managedSlides.map((banner) => ({
+        eyebrow: banner.eyebrow,
+        title: banner.title,
+        copy: banner.subtitle,
+        image: banner.image_url,
+        action: banner.cta_label,
+        path: banner.cta_path,
+      }))
+    : fallbackSlides.map((slide) => ({ ...slide, path: "#shop" }));
   const [active, setActive] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(
@@ -217,12 +252,12 @@ export function Home() {
                   </p>
                 </div>
                 <div className="mt-9 flex flex-wrap items-center gap-5">
-                  <a
-                    href="#shop"
+                  <Link
+                    to={slide.path}
                     className="rounded-full bg-[#f6f2eb] px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-white"
                   >
                     {slide.action}
-                  </a>
+                  </Link>
                   <a
                     href="#collections"
                     className="text-sm font-semibold underline underline-offset-4"
@@ -515,7 +550,53 @@ export function Room({
   );
 }
 
+export function StaticContentPage() {
+  const slug = useLocation().pathname.replace(/^\//, "") || "contact";
+  const [content, setContent] = useState<ContentPage | null>(null);
+  useEffect(() => {
+    const load = () => void getContentPage(slug, true).then(setContent).catch(() => setContent(null));
+    load();
+    const channel = supabase.channel(`storefront-content-${slug}`).on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "content_pages", filter: `slug=eq.${slug}` },
+      () => { clearContentCache(slug); load(); },
+    ).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [slug]);
+  return (
+    <Layout>
+      <main className="mx-auto min-h-[65vh] max-w-[980px] px-5 py-16 lg:px-10 lg:py-24">
+        <p className="text-[10px] font-bold tracking-[.2em] text-muted-foreground">
+          {content?.eyebrow || "COZYCRAFT"}
+        </p>
+        <h1 className="mt-5 font-serif text-5xl tracking-[-.035em] sm:text-7xl">
+          {content?.title || "Customer information"}
+        </h1>
+        <p className="mt-7 max-w-2xl text-lg leading-8 text-muted-foreground">
+          {content?.summary || "This page is being prepared by the CozyCraft team."}
+        </p>
+        {content?.body && (
+          <div className="mt-12 whitespace-pre-line rounded-[2rem] border border-border bg-card p-7 text-sm leading-8 text-muted-foreground shadow-sm sm:p-10">
+            {content.body}
+          </div>
+        )}
+      </main>
+    </Layout>
+  );
+}
+
 export function About() {
+  const [content, setContent] = useState<ContentPage | null>(null);
+  useEffect(() => {
+    const load = () => void getContentPage("about", true).then(setContent).catch(() => undefined);
+    load();
+    const channel = supabase.channel("storefront-about-content").on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "content_pages", filter: "slug=eq.about" },
+      () => { clearContentCache("about"); load(); },
+    ).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, []);
   const team = [
     {
       name: "Joylyn Campuso",
@@ -562,14 +643,13 @@ export function About() {
             <div className="absolute inset-0 bg-gradient-to-r from-[#1d1d1a]/85 via-[#1d1d1a]/45 to-transparent" />
             <div className="relative flex min-h-[590px] max-w-3xl flex-col justify-end p-7 text-[#f7f3eb] sm:p-14">
               <p className="text-[10px] font-bold tracking-[.22em] text-[#dfd4c7]">
-                COZYCRAFT FURNITURES · EST. 2026
+                {content?.eyebrow || "COZYCRAFT FURNITURES · EST. 2026"}
               </p>
               <h1 className="mt-5 font-serif text-5xl leading-[1.02] sm:text-7xl">
-                Your home starts with the perfect furniture.
+                {content?.title || "Your home starts with the perfect furniture."}
               </h1>
               <p className="mt-6 max-w-xl text-sm leading-7 text-[#e3dcd2]">
-                A more convenient, reliable way to discover, order, and bring
-                home pieces made for everyday living.
+                {content?.summary || "A more convenient, reliable way to discover, order, and bring home pieces made for everyday living."}
               </p>
             </div>
           </div>
@@ -586,10 +666,10 @@ export function About() {
             </div>
             <div className="max-w-2xl text-sm leading-7 text-muted-foreground">
               <p>
-                CozyCraft Furnitures was founded in 2026 by Vision
+                {content?.body || <>CozyCraft Furnitures was founded in 2026 by Vision
                 Ventures—Prince Balane, Joylyn Campuso, Jacob Christopher
                 Cañete, Angela Faith Suba, and Hydee Mae Sumalinog—with the
-                project led by Prince Balane.
+                project led by Prince Balane.</>}
               </p>
               <p className="mt-5">
                 We created CozyCraft to make furniture shopping convenient,
@@ -910,7 +990,7 @@ export function CollectionPage() {
   const [materialFilter, setMaterialFilter] = useState("all");
   const [minimumPrice, setMinimumPrice] = useState(0);
   const [maximumPrice, setMaximumPrice] = useState(STOREFRONT_MAX_PRICE);
-  const [sort, setSort] = useState("featured");
+  const [sort, setSort] = useState<ProductSort>("featured");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [synonyms, setSynonyms] = useState<SearchSynonym[]>([]);
   const [compareIds, setCompareIds] = useState<string[]>(() => readComparedProductIds());
@@ -983,7 +1063,7 @@ export function CollectionPage() {
     });
   }
   items = filterByPriceRange(items, minimumPrice, maximumPrice);
-  items = [...items].sort((a, b) => sort === "price-low" ? a.price - b.price : sort === "price-high" ? b.price - a.price : sort === "rating" ? Number(b.rating) - Number(a.rating) : 0);
+  items = sortProducts(items, sort);
   const searchSuggestions = query.trim().length >= 2
     ? collectionItems.filter((product) => matchesCatalogSearch(product, expandedQuery)).slice(0, 6)
     : [];
@@ -1078,8 +1158,8 @@ export function CollectionPage() {
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setFiltersOpen((value) => !value)} aria-expanded={filtersOpen} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 text-xs font-semibold md:hidden"><SlidersHorizontal size={15} />Filters{activeFilterCount > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-foreground px-1 text-[9px] text-background">{activeFilterCount}</span>}</button>
-                  <select aria-label="Sort products" value={sort} onChange={(event) => setSort(event.target.value)} className="h-11 flex-1 rounded-xl border border-border bg-background px-3 text-xs font-semibold md:w-44">
-                    <option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="rating">Highest rated</option>
+                  <select aria-label="Sort products" value={sort} onChange={(event) => setSort(event.target.value as ProductSort)} className="h-11 flex-1 rounded-xl border border-border bg-background px-3 text-xs font-semibold md:w-48">
+                    <option value="featured">Featured</option><option value="newest">Newest</option><option value="popular">Most popular</option><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="rating">Highest rated</option>
                   </select>
                 </div>
               </div>

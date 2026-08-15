@@ -73,6 +73,7 @@ import {
   isStaffRole,
   safeFileName,
   supabase,
+  type DbBillingProfile,
   type DbCustomerProfile,
   type DbOrder,
   type DbProduct,
@@ -642,6 +643,13 @@ export function Profile() {
     if (matching) setTab(matching);
   }, []);
   const [notice, setNotice] = useState("");
+  const emptyBilling = useMemo<DbBillingProfile>(() => ({
+    user_id: userId ?? "", recipient_name: user ?? "", company_name: "", tax_id: "",
+    invoice_email: userEmail ?? "", address_line: "", barangay: "", city: "",
+    province: "", postal_code: "", same_as_delivery: false,
+  }), [user, userEmail, userId]);
+  const [billing, setBilling] = useState<DbBillingProfile>(emptyBilling);
+  const [billingSaving, setBillingSaving] = useState(false);
   const [ticket, setTicket] = useState("");
   const [ticketCategory, setTicketCategory] = useState<DbSupportTicket["category"]>("general");
   const [ticketPriority, setTicketPriority] = useState<DbSupportTicket["priority"]>("normal");
@@ -685,6 +693,30 @@ export function Profile() {
   const [passwordSetupSending, setPasswordSetupSending] = useState(false);
   const defaultUsername =
     profileUsername.trim() || (user ?? "").trim().split(/\s+/)[0] || "";
+  const loadBilling = useCallback(async () => {
+    if (!userId) return;
+    const { data } = await supabase.from("billing_profiles").select("*").eq("user_id", userId).maybeSingle();
+    setBilling(data ? (data as DbBillingProfile) : { ...emptyBilling, user_id: userId });
+  }, [emptyBilling, userId]);
+  useEffect(() => {
+    void loadBilling();
+    if (!userId) return;
+    const channel = supabase.channel(`customer-billing-${userId}`).on(
+      "postgres_changes", { event: "*", schema: "public", table: "billing_profiles", filter: `user_id=eq.${userId}` },
+      () => void loadBilling(),
+    ).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [loadBilling, userId]);
+  const saveBilling = async () => {
+    if (!userId || !/^\S+@\S+\.\S+$/.test(billing.invoice_email)) {
+      setNotice("Enter a valid invoice email address."); return;
+    }
+    setBillingSaving(true);
+    const { created_at: _created, updated_at: _updated, ...payload } = billing;
+    const { error } = await supabase.from("billing_profiles").upsert({ ...payload, user_id: userId });
+    setBillingSaving(false);
+    setNotice(error?.message ?? "Billing and invoice details saved securely.");
+  };
   useEffect(() => {
     if (!userId) return;
     const refresh = async () => {
@@ -1890,6 +1922,24 @@ export function Profile() {
                 <p className="mt-4 max-w-xl text-xs leading-5 text-muted-foreground">
                   Payment availability updates from Store Settings in realtime. Card and GCash details stay on PayMongo’s protected checkout; CozyCraft never stores card numbers.
                 </p>
+                <div className="mt-8 border-t border-border pt-7">
+                  <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">BILLING & INVOICES</p>
+                  <h3 className="mt-2 font-serif text-2xl">Invoice details.</h3>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">These details belong only to your account and are protected by database row-level security. Payment credentials are never stored here.</p>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {([
+                      ["Recipient name", "recipient_name"], ["Invoice email", "invoice_email"],
+                      ["Company (optional)", "company_name"], ["Tax ID (optional)", "tax_id"],
+                      ["Billing address", "address_line"], ["Barangay", "barangay"],
+                      ["City / municipality", "city"], ["Province / region", "province"],
+                      ["Postal code", "postal_code"],
+                    ] as Array<[string, keyof DbBillingProfile]>).map(([label, key]) => (
+                      <label key={key} className={`grid gap-2 text-xs font-semibold ${key === "address_line" ? "sm:col-span-2" : ""}`}>{label}<input value={String(billing[key] ?? "")} onChange={(event) => setBilling((current) => ({ ...current, [key]: event.target.value }))} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal outline-none focus:ring-2 focus:ring-foreground/15" /></label>
+                    ))}
+                    <label className="flex items-center gap-3 rounded-xl border border-border p-4 text-xs font-semibold sm:col-span-2"><input type="checkbox" checked={billing.same_as_delivery} onChange={(event) => setBilling((current) => ({ ...current, same_as_delivery: event.target.checked }))} className="h-5 w-5 accent-foreground" />Use my default delivery address for billing</label>
+                  </div>
+                  <button type="button" onClick={() => void saveBilling()} disabled={billingSaving} className="mt-4 rounded-xl bg-foreground px-5 py-3 text-xs font-semibold text-background disabled:opacity-50">{billingSaving ? "Saving details…" : "Save billing details"}</button>
+                </div>
               </>
             )}
             {tab === "Support" && (

@@ -66,6 +66,7 @@ export type DbProfile = {
   preferred_payment_method: "cod";
   role: DbRole;
   staff_active: boolean;
+  customer_active: boolean;
   created_at: string;
 };
 
@@ -226,6 +227,22 @@ export type DbCustomerProfile = DbProfile & {
     status: DbSupportTicket["status"];
     created_at: string;
   }>;
+};
+
+export type DbBillingProfile = {
+  user_id: string;
+  recipient_name: string;
+  company_name: string;
+  tax_id: string;
+  invoice_email: string;
+  address_line: string;
+  barangay: string;
+  city: string;
+  province: string;
+  postal_code: string;
+  same_as_delivery: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export const isStaffRole = (role: DbRole | null) =>

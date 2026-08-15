@@ -182,6 +182,7 @@ export const adminNav = [
   [Users, "Customers", "/admin/customers"],
   [Award, "Member tiers", "/admin/member-tiers"],
   [Sparkles, "Merchandising", "/admin/experience"],
+  [FileText, "Content", "/admin/content"],
   [Star, "Reviews", "/admin/reviews"],
   [ChartNoAxesCombined, "Reports", "/admin/reports"],
   [Activity, "Activity logs", "/admin/activity-logs"],
@@ -234,7 +235,7 @@ export const adminNavGroups = [
     label: "Administration",
     description: "Team and configuration",
     icon: Settings,
-    paths: ["/admin/team", "/admin/settings"],
+    paths: ["/admin/team", "/admin/settings", "/admin/content"],
   },
 ] as const;
 

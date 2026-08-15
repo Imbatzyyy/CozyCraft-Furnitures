@@ -758,6 +758,13 @@ export function Checkout() {
     if (paymentReturn === "success") {
       void supabase.functions
         .invoke("sync-paymongo-payments", { body: { orderIds: [returnOrderId] } })
+        .then(async ({ data, error }) => {
+          if (!error && !data?.error) {
+            await supabase.functions.invoke("send-transactional-email", {
+              body: { eventType: "payment_received", orderId: returnOrderId },
+            });
+          }
+        })
         .finally(() => void refreshOrders());
       return;
     }

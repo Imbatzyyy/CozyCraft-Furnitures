@@ -58,6 +58,7 @@ export type PublicStoreSettings = {
   id: boolean;
   store_name: string;
   store_description: string;
+  currency_code: "PHP" | "USD" | "EUR" | "SGD" | "JPY";
   contact_email: string;
   support_phone: string;
   business_address: string;
@@ -96,6 +97,7 @@ export const defaultStoreSettings: PublicStoreSettings = {
   id: true,
   store_name: "CozyCraft Furnitures",
   store_description: "Designed for a slower, warmer life at home.",
+  currency_code: "PHP",
   contact_email: "hello@cozycraftfurnitures.com",
   support_phone: "",
   business_address: "",

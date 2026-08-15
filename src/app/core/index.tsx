@@ -428,10 +428,18 @@ export function useAdminSession() {
   return session;
 }
 
+let activeCurrency = "PHP";
+
+export const setMoneyCurrency = (currency: string) => {
+  activeCurrency = ["PHP", "USD", "EUR", "SGD", "JPY"].includes(currency)
+    ? currency
+    : "PHP";
+};
+
 export const money = (value: number) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",
-    currency: "PHP",
+    currency: activeCurrency,
     maximumFractionDigits: 0,
   }).format(value);
 
@@ -863,7 +871,7 @@ export function Layout({
               {[
                 ["SHOP", [["Living room", "/living-room"], ["Bedroom", "/bedroom"], ["Dining room", "/dining-room"], ["New arrivals", "/new-arrivals"]]],
                 ["ACCOUNT", [["Profile", "/profile"], ["Orders", "/orders"], ["Wishlist", "/wishlist"], ["Bag", "/cart"]]],
-                ["COZYCRAFT", [["Our story", "/about"], ["Customer care", "/profile?tab=support"], ["Delivery addresses", "/profile?tab=addresses"], ["Secure checkout", "/cart"]]],
+                ["COZYCRAFT", [["Our story", "/about"], ["Contact", "/contact"], ["FAQ", "/faq"], ["Privacy", "/privacy"]]],
               ].map(([heading, links]) => (
                 <div key={heading as string}>
                   <p className="text-[10px] font-bold tracking-[.18em] text-white/45">{heading as string}</p>

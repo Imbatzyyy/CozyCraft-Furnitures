@@ -10,6 +10,7 @@ const administratorPaths = [
   "/admin/customers",
   "/admin/member-tiers",
   "/admin/experience",
+  "/admin/content",
   "/admin/reviews",
   "/admin/reports",
   "/admin/activity-logs",
