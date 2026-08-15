@@ -31,6 +31,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
+  Clock3,
   CreditCard,
   Download,
   Eye,
@@ -38,10 +39,13 @@ import {
   FileText,
   Grid2X2,
   Heart,
+  HelpCircle,
   ImagePlus,
   LayoutDashboard,
   List,
   LockKeyhole,
+  Mail,
+  MapPin,
   MessageCircle,
   LogOut,
   Menu,
@@ -96,6 +100,11 @@ import {
 } from "@/lib/catalog/product-specs";
 import { productMainImageIndex } from "@/lib/catalog/product-images";
 import { sortProducts, type ProductSort } from "@/lib/catalog/sort-products";
+import {
+  managedSectionTitle,
+  parseManagedSections,
+  type ManagedContentSection,
+} from "@/lib/content/managed-sections";
 import {
   clearContentCache,
   getContentPage,
@@ -563,23 +572,354 @@ export function StaticContentPage() {
     ).subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [slug]);
+  const sections = useMemo(
+    () => parseManagedSections(content?.body ?? ""),
+    [content?.body],
+  );
+  const page = content ?? {
+    slug,
+    eyebrow: "COZYCRAFT",
+    title: "Customer information",
+    summary: "This page is being prepared by the CozyCraft team.",
+    body: "",
+    published: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (slug === "faq") {
+    return <FaqInformationPage content={page} sections={sections} />;
+  }
+  if (slug === "privacy") {
+    return <PrivacyInformationPage content={page} sections={sections} />;
+  }
+  return <ContactInformationPage content={page} sections={sections} />;
+}
+
+function ContactInformationPage({
+  content,
+  sections,
+}: {
+  content: ContentPage;
+  sections: ManagedContentSection[];
+}) {
+  const email =
+    content.body.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0] ??
+    "cozycraftfurnitures2026@gmail.com";
+  const iconFor = (title: string) => {
+    const key = title.toLocaleLowerCase("en-PH");
+    if (key.includes("email")) return Mail;
+    if (key.includes("hour")) return Clock3;
+    if (key.includes("area")) return MapPin;
+    return MessageCircle;
+  };
+
   return (
     <Layout>
-      <main className="mx-auto min-h-[65vh] max-w-[980px] px-5 py-16 lg:px-10 lg:py-24">
-        <p className="text-[10px] font-bold tracking-[.2em] text-muted-foreground">
-          {content?.eyebrow || "COZYCRAFT"}
-        </p>
-        <h1 className="mt-5 font-serif text-5xl tracking-[-.035em] sm:text-7xl">
-          {content?.title || "Customer information"}
-        </h1>
-        <p className="mt-7 max-w-2xl text-lg leading-8 text-muted-foreground">
-          {content?.summary || "This page is being prepared by the CozyCraft team."}
-        </p>
-        {content?.body && (
-          <div className="mt-12 whitespace-pre-line rounded-[2rem] border border-border bg-card p-7 text-sm leading-8 text-muted-foreground shadow-sm sm:p-10">
-            {content.body}
+      <main className="min-h-[70vh] overflow-hidden bg-[#f3f0e9] text-[#1e1e1b]">
+        <section className="mx-auto max-w-[1440px] px-5 pb-5 pt-6 sm:px-7 lg:px-10 lg:pb-10 lg:pt-10">
+          <div className="grid overflow-hidden rounded-[2rem] border border-black/10 bg-[#22231f] text-white shadow-[0_26px_80px_rgba(32,30,25,.14)] lg:min-h-[510px] lg:grid-cols-[1.08fr_.92fr]">
+            <div className="flex min-w-0 flex-col justify-between p-7 sm:p-10 lg:p-14">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[.28em] text-[#d8c6aa]">
+                  {content.eyebrow}
+                </p>
+                <h1 className="mt-7 max-w-[760px] font-serif text-[clamp(3rem,7vw,6.6rem)] leading-[.9] tracking-[-.055em]">
+                  {content.title}
+                </h1>
+                <p className="mt-8 max-w-xl text-base leading-7 text-white/68 sm:text-lg sm:leading-8">
+                  {content.summary}
+                </p>
+              </div>
+              <div className="mt-12 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={`mailto:${email}`}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-[#20211e] transition hover:bg-[#e8ddcc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#22231f]"
+                >
+                  Email customer care <ArrowRight size={16} />
+                </a>
+                <Link
+                  to="/profile?tab=support"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/25 px-6 text-sm font-bold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  <MessageCircle size={16} /> Track a support request
+                </Link>
+              </div>
+            </div>
+
+            <div className="relative min-h-[350px] border-t border-white/10 bg-[#d9c7ab] p-5 text-[#20211e] sm:p-8 lg:min-h-0 lg:border-l lg:border-t-0 lg:p-10">
+              <div className="absolute inset-0 opacity-25 [background-image:radial-gradient(circle_at_1px_1px,#272720_1px,transparent_0)] [background-size:22px_22px]" />
+              <div className="relative flex h-full flex-col justify-between rounded-[1.6rem] border border-black/10 bg-[#f8f6f1] p-6 shadow-[0_18px_50px_rgba(42,38,30,.12)] sm:p-8">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#22231f] text-white">
+                  <MessageCircle size={21} />
+                </div>
+                <div className="mt-12">
+                  <p className="text-[10px] font-bold uppercase tracking-[.24em] text-black/45">
+                    CozyCraft Care
+                  </p>
+                  <h2 className="mt-4 max-w-sm font-serif text-4xl leading-[1.02] tracking-[-.035em] sm:text-5xl">
+                    Thoughtful help, from a real team.
+                  </h2>
+                  <p className="mt-5 max-w-md text-sm leading-7 text-black/58">
+                    Tell us what you need and include your order number when your question is about a purchase.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-        )}
+        </section>
+
+        <section className="mx-auto max-w-[1440px] px-5 pb-16 pt-5 sm:px-7 lg:px-10 lg:pb-24 lg:pt-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {sections.map((section, index) => {
+              const Icon = iconFor(section.title);
+              return (
+                <article
+                  key={`${section.title}-${index}`}
+                  className="group min-w-0 rounded-[1.5rem] border border-black/10 bg-white p-6 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(38,35,30,.08)] sm:p-7"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eee7db] text-[#38372f]">
+                      <Icon size={19} />
+                    </span>
+                    <span className="font-serif text-2xl text-black/18">0{index + 1}</span>
+                  </div>
+                  <h2 className="mt-8 text-xs font-bold uppercase tracking-[.18em] text-black/78">
+                    {section.title}
+                  </h2>
+                  <p className="mt-4 whitespace-pre-line break-words text-sm leading-7 text-black/56">
+                    {section.body}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      </main>
+    </Layout>
+  );
+}
+
+function FaqInformationPage({
+  content,
+  sections,
+}: {
+  content: ContentPage;
+  sections: ManagedContentSection[];
+}) {
+  const [query, setQuery] = useState("");
+  const [openTitle, setOpenTitle] = useState<string | null>(sections[0]?.title ?? null);
+  const filtered = sections.filter((section) =>
+    `${section.title} ${section.body}`
+      .toLocaleLowerCase("en-PH")
+      .includes(query.trim().toLocaleLowerCase("en-PH")),
+  );
+
+  useEffect(() => {
+    if (sections.length && !sections.some((section) => section.title === openTitle)) {
+      setOpenTitle(sections[0].title);
+    }
+  }, [openTitle, sections]);
+
+  return (
+    <Layout>
+      <main className="min-h-[70vh] bg-[#faf9f6] text-[#20201d]">
+        <section className="border-b border-black/10">
+          <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-14 sm:px-7 sm:py-20 lg:grid-cols-[.8fr_1.2fr] lg:items-end lg:px-10 lg:py-24">
+            <div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-black/10 bg-white shadow-sm">
+                <HelpCircle size={20} />
+              </div>
+              <p className="mt-8 text-[10px] font-bold uppercase tracking-[.28em] text-black/45">
+                {content.eyebrow}
+              </p>
+            </div>
+            <div>
+              <h1 className="max-w-4xl font-serif text-[clamp(3.2rem,7vw,7rem)] leading-[.9] tracking-[-.055em]">
+                {content.title}
+              </h1>
+              <p className="mt-7 max-w-2xl text-base leading-8 text-black/55 sm:text-lg">
+                {content.summary}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto grid max-w-[1440px] gap-10 px-5 py-12 sm:px-7 lg:grid-cols-[330px_minmax(0,1fr)] lg:px-10 lg:py-20">
+          <aside className="lg:sticky lg:top-28 lg:self-start">
+            <label className="relative block">
+              <span className="sr-only">Search frequently asked questions</span>
+              <Search className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-black/40" size={18} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search for an answer"
+                className="min-h-14 w-full rounded-full border border-black/10 bg-white py-3 pl-13 pr-5 text-sm outline-none transition placeholder:text-black/35 focus:border-black/35 focus:ring-4 focus:ring-black/5"
+              />
+            </label>
+            <div className="mt-6 rounded-[1.5rem] bg-[#252621] p-6 text-white">
+              <p className="text-[10px] font-bold uppercase tracking-[.2em] text-white/45">
+                Still curious?
+              </p>
+              <p className="mt-4 font-serif text-2xl leading-tight">
+                CozyCraft Care can help with the details.
+              </p>
+              <Link
+                to="/contact"
+                className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-xs font-bold text-[#252621] transition hover:bg-[#e8ddcc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                Contact us <ArrowRight size={14} />
+              </Link>
+            </div>
+          </aside>
+
+          <div className="min-w-0">
+            <div className="flex items-end justify-between gap-5 border-b border-black/10 pb-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[.22em] text-black/40">
+                  Answers, clearly
+                </p>
+                <h2 className="mt-2 font-serif text-3xl tracking-[-.03em] sm:text-4xl">
+                  What customers ask us.
+                </h2>
+              </div>
+              <span className="shrink-0 text-sm text-black/45">{filtered.length} results</span>
+            </div>
+
+            <div className="divide-y divide-black/10">
+              {filtered.map((section, index) => {
+                const isOpen = openTitle === section.title;
+                const panelId = `faq-panel-${index}`;
+                return (
+                  <article key={section.title} className="py-2">
+                    <button
+                      type="button"
+                      onClick={() => setOpenTitle(isOpen ? null : section.title)}
+                      aria-expanded={isOpen}
+                      aria-controls={panelId}
+                      className="group flex min-h-20 w-full items-center gap-4 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/60 focus-visible:ring-offset-4"
+                    >
+                      <span className="hidden w-10 shrink-0 font-serif text-lg text-black/25 sm:block">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <span className="min-w-0 flex-1 text-base font-bold leading-6 sm:text-lg">
+                        {managedSectionTitle(section.title)}
+                      </span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/10 bg-white transition group-hover:bg-black group-hover:text-white">
+                        <ChevronDown className={`transition duration-300 ${isOpen ? "rotate-180" : ""}`} size={17} />
+                      </span>
+                    </button>
+                    <div
+                      id={panelId}
+                      className={`grid transition-[grid-template-rows,opacity] duration-300 ${isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+                    >
+                      <div className="overflow-hidden">
+                        <p className="max-w-3xl whitespace-pre-line pb-8 pl-0 pr-14 text-sm leading-7 text-black/58 sm:pl-14 sm:text-base sm:leading-8">
+                          {section.body}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {!filtered.length && (
+              <div className="mt-8 rounded-[1.5rem] border border-dashed border-black/15 p-8 text-center">
+                <p className="font-serif text-2xl">No matching question yet.</p>
+                <p className="mt-2 text-sm text-black/50">Try a shorter phrase or contact CozyCraft Care.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+    </Layout>
+  );
+}
+
+function PrivacyInformationPage({
+  content,
+  sections,
+}: {
+  content: ContentPage;
+  sections: ManagedContentSection[];
+}) {
+  const lastUpdated = new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "long",
+    timeZone: "Asia/Manila",
+  }).format(new Date(content.updated_at));
+
+  return (
+    <Layout>
+      <main className="min-h-[70vh] bg-[#ede9e1] text-[#20201d]">
+        <section className="mx-auto max-w-[1440px] px-5 py-6 sm:px-7 lg:px-10 lg:py-10">
+          <div className="relative overflow-hidden rounded-[2rem] border border-black/10 bg-[#e1d6c5] px-6 py-12 sm:px-10 sm:py-16 lg:px-16 lg:py-20">
+            <div className="absolute -right-28 -top-36 h-[380px] w-[380px] rounded-full border-[70px] border-white/25" />
+            <div className="relative max-w-5xl">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#20211e] text-white">
+                <ShieldCheck size={21} />
+              </div>
+              <p className="mt-9 text-[10px] font-bold uppercase tracking-[.28em] text-black/48">
+                {content.eyebrow}
+              </p>
+              <h1 className="mt-5 max-w-4xl font-serif text-[clamp(3.2rem,7vw,7rem)] leading-[.9] tracking-[-.055em]">
+                {content.title}
+              </h1>
+              <p className="mt-8 max-w-2xl text-base leading-8 text-black/58 sm:text-lg">
+                {content.summary}
+              </p>
+              <p className="mt-9 text-xs font-semibold text-black/48">Last updated {lastUpdated}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto grid max-w-[1440px] gap-8 px-5 pb-20 pt-6 sm:px-7 lg:grid-cols-[300px_minmax(0,1fr)] lg:px-10 lg:pb-28 lg:pt-10">
+          <aside className="h-fit rounded-[1.5rem] border border-black/10 bg-[#f8f6f1] p-6 lg:sticky lg:top-28">
+            <p className="text-[10px] font-bold uppercase tracking-[.22em] text-black/40">On this page</p>
+            <nav aria-label="Privacy policy sections" className="mt-5 space-y-1">
+              {sections.map((section, index) => (
+                <a
+                  key={section.title}
+                  href={`#privacy-${index + 1}`}
+                  className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-black/58 transition hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/60"
+                >
+                  <span className="text-xs text-black/28">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="min-w-0">{managedSectionTitle(section.title)}</span>
+                </a>
+              ))}
+            </nav>
+            <div className="mt-7 border-t border-black/10 pt-6">
+              <LockKeyhole size={18} className="text-black/55" />
+              <p className="mt-3 text-xs leading-6 text-black/48">
+                Questions about this notice can be sent to CozyCraft Care.
+              </p>
+              <Link to="/contact" className="mt-3 inline-flex items-center gap-2 text-xs font-bold underline underline-offset-4">
+                Contact us <ArrowRight size={13} />
+              </Link>
+            </div>
+          </aside>
+
+          <div className="min-w-0 space-y-4">
+            {sections.map((section, index) => (
+              <article
+                id={`privacy-${index + 1}`}
+                key={section.title}
+                className="scroll-mt-32 rounded-[1.5rem] border border-black/10 bg-[#f8f6f1] p-6 sm:p-8 lg:p-10"
+              >
+                <div className="grid gap-5 sm:grid-cols-[70px_minmax(0,1fr)]">
+                  <span className="font-serif text-3xl text-black/20">{String(index + 1).padStart(2, "0")}</span>
+                  <div className="min-w-0">
+                    <h2 className="font-serif text-2xl leading-tight tracking-[-.02em] sm:text-3xl">
+                      {managedSectionTitle(section.title)}
+                    </h2>
+                    <p className="mt-5 whitespace-pre-line break-words text-sm leading-7 text-black/58 sm:text-base sm:leading-8">
+                      {section.body}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       </main>
     </Layout>
   );
