@@ -562,8 +562,14 @@ export function Room({
 export function StaticContentPage() {
   const slug = useLocation().pathname.replace(/^\//, "") || "contact";
   const [content, setContent] = useState<ContentPage | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   useEffect(() => {
-    const load = () => void getContentPage(slug, true).then(setContent).catch(() => setContent(null));
+    setContent(null);
+    setIsLoading(true);
+    const load = () => void getContentPage(slug, true)
+      .then(setContent)
+      .catch(() => setContent(null))
+      .finally(() => setIsLoading(false));
     load();
     const channel = supabase.channel(`storefront-content-${slug}`).on(
       "postgres_changes",
@@ -586,6 +592,8 @@ export function StaticContentPage() {
     updated_at: new Date().toISOString(),
   };
 
+  if (isLoading && !content) return <InformationPageLoading />;
+
   if (slug === "faq") {
     return <FaqInformationPage content={page} sections={sections} />;
   }
@@ -593,6 +601,26 @@ export function StaticContentPage() {
     return <PrivacyInformationPage content={page} sections={sections} />;
   }
   return <ContactInformationPage content={page} sections={sections} />;
+}
+
+function InformationPageLoading() {
+  return (
+    <Layout>
+      <main className="min-h-[70vh] bg-[#f3f0e9] px-5 py-6 sm:px-7 lg:px-10 lg:py-10" aria-busy="true" aria-label="Loading customer information">
+        <div className="mx-auto grid min-h-[520px] max-w-[1360px] animate-pulse overflow-hidden rounded-[2rem] border border-black/5 bg-[#e6e0d6] lg:grid-cols-[1.08fr_.92fr]">
+          <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-14">
+            <div className="h-3 w-36 rounded-full bg-black/10" />
+            <div className="mt-9 h-16 max-w-xl rounded-2xl bg-black/10 sm:h-24" />
+            <div className="mt-5 h-16 max-w-lg rounded-2xl bg-black/5" />
+            <div className="mt-10 h-12 w-48 rounded-full bg-black/10" />
+          </div>
+          <div className="border-t border-black/5 bg-[#d8c8ae] p-5 sm:p-8 lg:border-l lg:border-t-0 lg:p-10">
+            <div className="h-full min-h-[300px] rounded-[1.6rem] bg-white/65" />
+          </div>
+        </div>
+      </main>
+    </Layout>
+  );
 }
 
 function ContactInformationPage({
