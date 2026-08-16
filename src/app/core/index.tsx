@@ -946,18 +946,92 @@ type CareChatMessage = {
   includeInContext?: boolean;
 };
 
+const CARE_CHAT_GREETING =
+  "Hello — I’m Cozy. I can help you find furniture, understand delivery and payments, track orders, and resolve shopping concerns. How may I help you today?";
+const CARE_CHAT_STORAGE_PREFIX = "cozycraft-care-chat:v1:";
+const CARE_CHAT_STORAGE_LIMIT = 24;
+const CARE_CHAT_MESSAGE_LIMIT = 2_000;
+
+const initialCareChatMessages = (): CareChatMessage[] => [
+  { from: "care", text: CARE_CHAT_GREETING },
+];
+
+const readCareChatMessages = (storageKey: string): CareChatMessage[] => {
+  if (typeof window === "undefined") return initialCareChatMessages();
+
+  try {
+    const stored = window.sessionStorage.getItem(storageKey);
+    if (!stored) return initialCareChatMessages();
+
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return initialCareChatMessages();
+
+    const messages = parsed
+      .filter((item): item is CareChatMessage => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as Partial<CareChatMessage>;
+        return (
+          (candidate.from === "care" || candidate.from === "you") &&
+          typeof candidate.text === "string" &&
+          candidate.text.trim().length > 0
+        );
+      })
+      .map((item) => ({
+        from: item.from,
+        text: item.text.trim().slice(0, CARE_CHAT_MESSAGE_LIMIT),
+        includeInContext: item.includeInContext,
+      }))
+      .slice(-CARE_CHAT_STORAGE_LIMIT);
+
+    return messages.length > 0 ? messages : initialCareChatMessages();
+  } catch {
+    return initialCareChatMessages();
+  }
+};
+
+const persistCareChatMessages = (
+  storageKey: string,
+  messages: CareChatMessage[],
+) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    const safeMessages = messages
+      .map((item) => ({
+        from: item.from,
+        text: item.text.trim().slice(0, CARE_CHAT_MESSAGE_LIMIT),
+        includeInContext: item.includeInContext,
+      }))
+      .filter((item) => item.text.length > 0)
+      .slice(-CARE_CHAT_STORAGE_LIMIT);
+    window.sessionStorage.setItem(storageKey, JSON.stringify(safeMessages));
+  } catch {
+    // Chat remains usable when browser storage is disabled or unavailable.
+  }
+};
+
 export function CareChat() {
+  const { userId } = useStore();
+  const conversationOwner = userId ?? "guest";
+  const storageKey = `${CARE_CHAT_STORAGE_PREFIX}${conversationOwner}`;
+
+  return (
+    <CareChatSession
+      key={conversationOwner}
+      storageKey={storageKey}
+    />
+  );
+}
+
+function CareChatSession({ storageKey }: { storageKey: string }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const [messages, setMessages] = useState<CareChatMessage[]>([
-    {
-      from: "care",
-      text: "Hello — I’m Cozy. I can help you find furniture, understand delivery and payments, track orders, and resolve shopping concerns. How may I help you today?",
-    },
-  ]);
+  const [messages, setMessages] = useState<CareChatMessage[]>(() =>
+    readCareChatMessages(storageKey),
+  );
   const quickHelp = [
     "Help me find furniture",
     "Track my latest order",
@@ -978,6 +1052,10 @@ export function CareChat() {
     if (!open) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending, open]);
+
+  useEffect(() => {
+    persistCareChatMessages(storageKey, messages);
+  }, [messages, storageKey]);
 
   const reply = async (text: string) => {
     const message = text.trim();
