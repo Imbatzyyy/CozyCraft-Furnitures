@@ -363,6 +363,12 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
     setError("");
     if (mode === "signup" && !acceptedPolicies) {
       setError("Please agree to the Terms of Use and confirm that you have read the Privacy Policy before continuing with Google.");
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("customer-policy-acceptance")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        document.getElementById("customer-policy-acceptance")?.focus();
+      });
       return;
     }
     window.sessionStorage.setItem("cozycraft-google-sign-in-pending", "1");
@@ -539,7 +545,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       </main>
     );
   return (
-    <main className="min-h-dvh overflow-y-auto bg-[#e9e5de] p-3 sm:p-5 lg:h-dvh lg:overflow-hidden">
+    <main className="min-h-dvh bg-[#e9e5de] sm:p-4 xl:h-dvh xl:overflow-hidden xl:p-5">
       {policyDialog && (
         <CustomerPolicyDialog
           policy={policyDialog}
@@ -547,8 +553,8 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
           onSwitch={setPolicyDialog}
         />
       )}
-      <div className="mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1500px] overflow-hidden rounded-[1.5rem] bg-card shadow-[0_24px_80px_rgba(50,42,34,.12)] sm:min-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem] lg:h-full lg:min-h-0 lg:grid-cols-[1.08fr_.92fr]">
-        <section className="relative hidden min-h-0 overflow-hidden bg-[#24211e] p-10 text-[#f4f2ee] lg:flex lg:flex-col lg:justify-between">
+      <div className="mx-auto grid min-h-dvh max-w-[1580px] overflow-hidden bg-card shadow-[0_24px_80px_rgba(50,42,34,.12)] sm:min-h-[calc(100dvh-2rem)] sm:rounded-[2rem] xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1.04fr)_minmax(520px,.96fr)]">
+        <section className="relative hidden min-h-0 overflow-hidden bg-[#24211e] p-10 text-[#f4f2ee] xl:flex xl:flex-col xl:justify-between 2xl:p-14">
           <div className="absolute inset-0 opacity-35">
             <ResilientImage
               src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1300&q=80"
@@ -560,11 +566,11 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
           <div className="relative">
             <Logo light />
           </div>
-          <div className="relative max-w-md">
+          <div className="relative max-w-xl">
             <p className="text-[10px] font-bold tracking-[.22em] text-white/60">
               COZYCRAFT / MEMBERS
             </p>
-            <h1 className="mt-6 font-serif text-6xl leading-[.98]">
+            <h1 className="mt-6 font-serif text-[clamp(3.5rem,4vw,5.25rem)] leading-[.96] tracking-[-.035em]">
               A home for the things you love.
             </h1>
             <p className="mt-7 max-w-sm text-sm leading-7 text-white/75">
@@ -576,9 +582,9 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
             Thoughtful furniture, delivered with care.
           </p>
         </section>
-        <section className="flex min-h-0 items-center justify-center px-5 py-7 sm:px-10 sm:py-8 lg:overflow-hidden lg:py-5">
-          <form onSubmit={submit} className="auth-fixed-form w-full max-w-md">
-            <div className="mb-4 lg:hidden">
+        <section className="flex min-h-0 justify-center overflow-y-auto px-5 py-7 sm:px-9 sm:py-9 lg:px-12 xl:px-10 xl:py-8 2xl:px-16">
+          <form onSubmit={submit} className="auth-fixed-form my-auto w-full max-w-xl">
+            <div className="mb-5 xl:hidden">
               <Logo />
             </div>
             <div className="flex items-center justify-between">
@@ -587,7 +593,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
               </p>
               <Link
                 to="/home"
-                className="text-xs text-muted-foreground underline underline-offset-4 lg:hidden"
+                className="text-xs text-muted-foreground underline underline-offset-4 xl:hidden"
               >
                 Home
               </Link>
@@ -600,49 +606,11 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                 ? "Sign in to see your saved pieces, delivery details, and order tracking."
                 : "Create an account for saved addresses, favorites, and effortless checkout."}
             </p>
-            {mode === "signup" && (
-              <div className="mt-4 flex items-start gap-3 rounded-2xl border border-border bg-[#f4f0e9] p-3.5 transition hover:border-[#b9aa96]">
-                <input
-                  id="customer-policy-acceptance"
-                  type="checkbox"
-                  required
-                  checked={acceptedPolicies}
-                  onChange={(event) => {
-                    setAcceptedPolicies(event.target.checked);
-                    if (event.target.checked) setError("");
-                  }}
-                  aria-describedby="customer-policy-acceptance-copy"
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#24231f]"
-                />
-                <p id="customer-policy-acceptance-copy" className="text-[11px] leading-5 text-muted-foreground">
-                  <label htmlFor="customer-policy-acceptance" className="cursor-pointer">
-                  I agree to CozyCraft’s{" "}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setPolicyDialog("terms")}
-                    className="font-bold text-foreground underline decoration-[#aa9579] underline-offset-4"
-                  >
-                    Terms of Use
-                  </button>{" "}
-                  and confirm that I have read the{" "}
-                  <button
-                    type="button"
-                    onClick={() => setPolicyDialog("privacy")}
-                    className="font-bold text-foreground underline decoration-[#aa9579] underline-offset-4"
-                  >
-                    Privacy Policy
-                  </button>
-                  .
-                </p>
-              </div>
-            )}
             {storeSettings.account_settings.google_auth_enabled && <>
               <button
                 type="button"
                 onClick={google}
-                disabled={mode === "signup" && !acceptedPolicies}
-                className="mt-4 flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-border bg-white text-sm font-semibold transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-5 flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-border bg-white text-sm font-semibold transition hover:bg-secondary"
               >
                 <ResilientImage
                   src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
@@ -775,6 +743,54 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                 <input type="checkbox" className="accent-foreground" />
                 Keep me signed in
               </label>
+            )}
+            {mode === "signup" && (
+              <div className="mt-5 rounded-[1.15rem] border border-[#d9d0c3] bg-[#f4f0e9] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,.7)] transition focus-within:border-[#9b8062] sm:p-[1.125rem]">
+                <div className="flex items-start gap-3.5">
+                  <input
+                    id="customer-policy-acceptance"
+                    type="checkbox"
+                    required
+                    checked={acceptedPolicies}
+                    onChange={(event) => {
+                      setAcceptedPolicies(event.target.checked);
+                      if (event.target.checked) setError("");
+                    }}
+                    aria-describedby="customer-policy-acceptance-copy"
+                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#24231f]"
+                  />
+                  <div className="min-w-0">
+                    <label
+                      htmlFor="customer-policy-acceptance"
+                      className="block cursor-pointer text-[10px] font-bold uppercase tracking-[.18em] text-black/42"
+                    >
+                      Required agreement
+                    </label>
+                    <p
+                      id="customer-policy-acceptance-copy"
+                      className="mt-1.5 text-xs leading-5 text-muted-foreground sm:text-[13px] sm:leading-5"
+                    >
+                      I agree to CozyCraft’s{" "}
+                      <button
+                        type="button"
+                        onClick={() => setPolicyDialog("terms")}
+                        className="font-bold text-foreground underline decoration-[#aa9579] underline-offset-4 transition hover:decoration-foreground"
+                      >
+                        Terms of Use
+                      </button>{" "}
+                      and confirm that I have read the{" "}
+                      <button
+                        type="button"
+                        onClick={() => setPolicyDialog("privacy")}
+                        className="font-bold text-foreground underline decoration-[#aa9579] underline-offset-4 transition hover:decoration-foreground"
+                      >
+                        Privacy Policy
+                      </button>
+                      .
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
             <button disabled={submitting || (mode === "signup" && !acceptedPolicies)} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background disabled:cursor-not-allowed disabled:opacity-50">
               {submitting ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}

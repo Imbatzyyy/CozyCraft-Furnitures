@@ -41,19 +41,6 @@
   --sidebar-ring: #b8a58d;
 }
 
-@media (min-width: 1024px) and (max-height: 720px) {
-  .auth-fixed-form {
-    transform: scale(0.82);
-    transform-origin: center;
-  }
-}
-
-@media (min-width: 1024px) and (max-height: 620px) {
-  .auth-fixed-form {
-    transform: scale(0.72);
-  }
-}
-
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
