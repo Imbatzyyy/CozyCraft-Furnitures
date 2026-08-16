@@ -93,6 +93,8 @@ STORE RULES
   refund status as separate facts. Never infer one from another.
 - Store settings and published content supplied in LIVE COZYCRAFT DATA override any
   older general wording in this prompt.
+- When serviceFacts contains an exact fee, threshold, time window, payment method,
+  or account rule, state that exact live value instead of giving a generic answer.
 - When a current announcement or maintenance notice is supplied, explain it accurately
   without exaggerating its impact.
 
@@ -308,8 +310,19 @@ const safeFallbackReply = ({
 }) => {
   const words = new Set(searchableWords(message));
   const hasAny = (...values: string[]) => values.some((value) => words.has(value));
+  const settings = (storeSettings ?? {}) as Record<string, unknown>;
+  const checkout = (settings.checkout_settings ?? {}) as Record<string, unknown>;
+  const fulfillment = (settings.fulfillment_settings ?? {}) as Record<string, unknown>;
+  const review = (settings.review_settings ?? {}) as Record<string, unknown>;
+  const account = (settings.account_settings ?? {}) as Record<string, unknown>;
 
-  if (hasAny("order", "track", "tracking", "shipment", "shipped", "delivery")) {
+  if (hasAny("cancel", "cancellation", "refund", "refunded", "return", "returns")) {
+    const cancellationHours = Number(fulfillment.cancellation_window_hours) || 24;
+    const returnDays = Number(fulfillment.return_window_days) || 7;
+    return `For cancellations, returns, or refunds, CozyCraft checks each stage separately so the order and payment records remain accurate. Cancellation requests are normally available within ${cancellationHours} hours, while eligible delivered products have a ${returnDays}-day return window. Open My Account → Orders, select the order, and use its available request option. A paid order is not considered refunded until its refund status is confirmed.`;
+  }
+
+  if (hasAny("order", "track", "tracking", "shipment", "shipped")) {
     if (!authenticated) {
       return "I can help you track your CozyCraft order. Please sign in, then open My Account → Orders to see the latest payment and delivery timeline. If an update looks incorrect, you can start a support ticket from My Account → Support.";
     }
@@ -321,6 +334,51 @@ const safeFallbackReply = ({
       return `Your latest order ${String(latest.order_number ?? "")} is currently ${String(latest.status ?? "being reviewed")}. Its payment status is ${String(latest.payment_status ?? "not yet available")}. You can view the complete dated timeline in My Account → Orders.`;
     }
     return "I couldn’t find a recent order on this account. Please check My Account → Orders, or start a support ticket if you used a different account when checking out.";
+  }
+
+  if (hasAny("delivery", "shipping", "fee", "free", "arrive", "arrival")) {
+    const fee = Number(checkout.standard_delivery_fee) || 650;
+    const freeMinimum = Number(checkout.free_delivery_minimum) || 50_000;
+    const minimumDays = Number(fulfillment.estimated_delivery_days_min) || 5;
+    const maximumDays = Number(fulfillment.estimated_delivery_days_max) || 7;
+    return `Standard delivery is ${peso(fee)}. Delivery becomes free when the selected checkout subtotal reaches ${peso(freeMinimum)}. The current estimate is ${minimumDays}–${maximumDays} days, although the order’s dated timeline is the best source after checkout. The cart and checkout calculate the final delivery fee automatically from the selected products.`;
+  }
+
+  if (hasAny("payment", "pay", "card", "gcash", "cod", "checkout")) {
+    const methods = [
+      checkout.cod_enabled ? "Cash on Delivery" : null,
+      checkout.card_enabled ? "card" : null,
+      checkout.gcash_enabled ? "GCash" : null,
+    ].filter(Boolean).join(", ");
+    return `CozyCraft currently supports ${methods || "the payment methods shown at checkout"}. Card and GCash use PayMongo’s secure hosted checkout. After payment, return to CozyCraft and check My Account → Orders; payment status and delivery status are shown separately to avoid misleading updates.`;
+  }
+
+  if (hasAny("cart", "bag", "wishlist", "saved", "favorite", "favourite")) {
+    return authenticated
+      ? "Your bag and wishlist are saved to your CozyCraft account and can synchronize across signed-in devices. Use the bag checkboxes to choose only the products you want to check out; unselected products remain saved for later."
+      : "You may browse products as a guest, but signing in is required to save products to your bag or wishlist and synchronize them across devices.";
+  }
+
+  if (hasAny("account", "login", "signin", "password", "google", "username", "verify")) {
+    const minimumPassword = Number(account.password_minimum_length) || 10;
+    return `CozyCraft supports email/password and ${account.google_auth_enabled ? "Google sign-in" : "the sign-in methods currently shown"}. Email verification is ${account.email_verification_required ? "required" : "handled according to the account screen"}, usernames are ${account.username_required ? "required" : "optional"}, and a CozyCraft password must contain at least ${minimumPassword} characters. Use the customer sign-in page—not the separate administrator sign-in—for a shopping account.`;
+  }
+
+  if (hasAny("review", "reviews", "rating", "photo", "photos")) {
+    const minimumLength = Number(review.minimum_length) || 5;
+    return `Verified customers can review an eligible delivered product from My Account → Orders. A review needs at least ${minimumLength} characters${review.photos_enabled ? " and may include review photos" : ""}. Once it meets the current moderation rules, it appears on that product’s customer-review section.`;
+  }
+
+  if (hasAny("points", "point", "loyalty", "tier", "circle", "member", "membership")) {
+    const loyalty = (customerContext.homeCircle ?? null) as Record<string, unknown> | null;
+    if (authenticated && loyalty) {
+      return `Your Home Circle account currently has ${Number(loyalty.points_balance) || 0} points and is in the ${String(loyalty.tier ?? "member")} tier. You can review your tier progress and activity from My Account.`;
+    }
+    return "CozyCraft Home Circle records eligible spending, points, and membership tier progress for signed-in customers. Sign in and open My Account to see your current balance and tier information.";
+  }
+
+  if (hasAny("about", "founder", "founded", "team", "owner", "vision")) {
+    return "CozyCraft Furnitures was established in 2026 by Vision Ventures to make furniture shopping more convenient, reliable, and organized. The founding team includes Prince Balane, Joylyn Campuso, Jacob Christopher Cañete, Angela Faith Suba, and Hydee Mae Sumalinog. Visit the About page for their roles and the complete CozyCraft story.";
   }
 
   if (hasAny("product", "furniture", "sofa", "chair", "table", "bed", "cabinet", "stand")) {
@@ -336,13 +394,13 @@ const safeFallbackReply = ({
     }
   }
 
-  if (hasAny("contact", "support", "help", "email", "care")) {
-    const settings = (storeSettings ?? {}) as Record<string, unknown>;
+  if (hasAny("contact", "support", "help", "email", "care", "concern", "ticket")) {
     const email = String(settings.contact_email ?? "cozycraftfurnitures2026@gmail.com");
     return `I’m here to help. For a concern that needs staff investigation, please open My Account → Support and start a ticket. You may also contact CozyCraft at ${email}.`;
   }
 
-  return "Thank you for your patience. I can still help with product discovery, delivery and payment guidance, order tracking, returns, refunds, or CozyCraft Care. Please choose one of the suggested questions or briefly tell me which area you need help with.";
+  const summarizedQuestion = compactText(message.replace(/\s+/g, " "), 120);
+  return `I understand you’re asking about “${summarizedQuestion}.” I don’t want to give you an inaccurate answer while the live AI service is busy. Please add one detail—such as the product name, order concern, payment method, or page you are viewing—and I’ll narrow the guidance. For an account investigation, open My Account → Support.`;
 };
 
 const loadPublicKnowledge = async (
@@ -620,6 +678,11 @@ Deno.serve(async (request) => {
     history,
   );
   const relevantPages = selectRelevantPages(publicKnowledge.publishedPages, message);
+  const liveSettings = (publicKnowledge.storeSettings ?? {}) as Record<string, unknown>;
+  const liveCheckout = (liveSettings.checkout_settings ?? {}) as Record<string, unknown>;
+  const liveFulfillment = (liveSettings.fulfillment_settings ?? {}) as Record<string, unknown>;
+  const liveReviews = (liveSettings.review_settings ?? {}) as Record<string, unknown>;
+  const liveAccounts = (liveSettings.account_settings ?? {}) as Record<string, unknown>;
   const {
     products: _allProducts,
     publishedPages: _allPublishedPages,
@@ -634,6 +697,27 @@ Deno.serve(async (request) => {
     }),
     publicWebsite: {
       ...publicWebsite,
+      serviceFacts: {
+        currency: String(liveSettings.currency_code ?? "PHP"),
+        deliveryArea: liveSettings.delivery_area ?? "Philippines",
+        standardDeliveryFee: liveCheckout.standard_delivery_fee ?? null,
+        freeDeliveryMinimum: liveCheckout.free_delivery_minimum ?? null,
+        estimatedDeliveryDaysMinimum: liveFulfillment.estimated_delivery_days_min ?? null,
+        estimatedDeliveryDaysMaximum: liveFulfillment.estimated_delivery_days_max ?? null,
+        cancellationWindowHours: liveFulfillment.cancellation_window_hours ?? null,
+        returnWindowDays: liveFulfillment.return_window_days ?? null,
+        paymentMethods: {
+          cashOnDelivery: liveCheckout.cod_enabled === true,
+          card: liveCheckout.card_enabled === true,
+          gcash: liveCheckout.gcash_enabled === true,
+        },
+        verifiedPurchaseReviewsOnly: liveReviews.verified_purchases_only === true,
+        reviewApprovalRequired: liveReviews.approval_required === true,
+        emailVerificationRequired: liveAccounts.email_verification_required === true,
+        usernameRequired: liveAccounts.username_required === true,
+        googleSignInEnabled: liveAccounts.google_auth_enabled === true,
+        passwordMinimumLength: liveAccounts.password_minimum_length ?? null,
+      },
       publishedPages: relevantPages,
       activeHomepageBanners: activeHomepageBanners.slice(0, 5),
       catalogProductCount: publicKnowledge.products.length,
@@ -663,45 +747,53 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const groqResponse = await fetch(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${groqApiKey}`,
-          "Content-Type": "application/json",
+    const preferredModel = Deno.env.get("GROQ_MODEL") ?? "llama-3.1-8b-instant";
+    const modelCandidates = [...new Set([
+      preferredModel,
+      "llama-3.1-8b-instant",
+      "llama-3.3-70b-versatile",
+    ])].slice(0, 2);
+    let result: Record<string, unknown> | null = null;
+    let reply = "";
+
+    for (const model of modelCandidates) {
+      const groqResponse = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${groqApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0.2,
+            max_completion_tokens: 320,
+            messages: [
+              { role: "system", content: storeKnowledge },
+              {
+                role: "system",
+                content: `LIVE COZYCRAFT DATA (read-only JSON):\n${JSON.stringify(liveContext)}`,
+              },
+              ...history,
+              { role: "user", content: message },
+            ],
+          }),
         },
-        body: JSON.stringify({
-          model: Deno.env.get("GROQ_MODEL") ?? "llama-3.1-8b-instant",
-          temperature: 0.2,
-          max_completion_tokens: 320,
-          messages: [
-            { role: "system", content: storeKnowledge },
-            {
-              role: "system",
-              content: `LIVE COZYCRAFT DATA (read-only JSON):\n${JSON.stringify(liveContext)}`,
-            },
-            ...history,
-            { role: "user", content: message },
-          ],
-        }),
-      },
-    );
+      );
 
-    if (!groqResponse.ok) {
-      const failure = await groqResponse.text();
-      console.error("Groq request failed", groqResponse.status, failure);
-      return jsonResponse({
-        reply: fallbackReply,
-        authenticated: Boolean(user),
-        model: "cozycraft-guidance",
-        fallback: true,
-      });
+      if (!groqResponse.ok) {
+        const failure = await groqResponse.text();
+        console.error(`Groq model ${model} failed`, groqResponse.status, failure);
+        continue;
+      }
+
+      result = await groqResponse.json();
+      const choices = result.choices as Array<{ message?: { content?: string } }> | undefined;
+      const rawReply = choices?.[0]?.message?.content?.trim();
+      reply = rawReply ? cleanAssistantReply(rawReply) : "";
+      if (reply) break;
     }
-
-    const result = await groqResponse.json();
-    const rawReply = result?.choices?.[0]?.message?.content?.trim();
-    const reply = rawReply ? cleanAssistantReply(rawReply) : "";
 
     if (!reply) {
       return jsonResponse({
@@ -720,14 +812,14 @@ Deno.serve(async (request) => {
       guestReplyCache.set(guestCacheKey, {
         expiresAt: Date.now() + GUEST_REPLY_TTL_MS,
         reply,
-        model: result.model,
+        model: String(result?.model ?? "groq"),
       });
     }
 
     return jsonResponse({
       reply,
       authenticated: Boolean(user),
-      model: result.model,
+      model: String(result?.model ?? "groq"),
       optimized: true,
     });
   } catch (error) {

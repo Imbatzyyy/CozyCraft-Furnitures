@@ -943,6 +943,7 @@ function MobileStoreNav() {
 type CareChatMessage = {
   from: "care" | "you";
   text: string;
+  includeInContext?: boolean;
 };
 
 export function CareChat() {
@@ -982,10 +983,13 @@ export function CareChat() {
     const message = text.trim();
     if (!message || sending) return;
 
-    const history = messages.slice(-10).map((item) => ({
-      role: item.from === "you" ? "user" : "assistant",
-      content: item.text,
-    }));
+    const history = messages
+      .filter((item) => item.includeInContext !== false)
+      .slice(-8)
+      .map((item) => ({
+        role: item.from === "you" ? "user" : "assistant",
+        content: item.text,
+      }));
 
     setDraft("");
     setError("");
@@ -1023,7 +1027,11 @@ export function CareChat() {
 
       setMessages((current) => [
         ...current,
-        { from: "care", text: data.reply },
+        {
+          from: "care",
+          text: data.reply,
+          includeInContext: data.fallback !== true,
+        },
       ]);
     } catch (requestError) {
       console.error("CozyCraft assistant error", requestError);
