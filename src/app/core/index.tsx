@@ -954,14 +954,14 @@ export function CareChat() {
   const [messages, setMessages] = useState<CareChatMessage[]>([
     {
       from: "care",
-      text: "Hello — I’m Cozy, your CozyCraft care assistant. How can I help today?",
+      text: "Hello — I’m Cozy. I can help you find furniture, understand delivery and payments, track orders, and resolve shopping concerns. How may I help you today?",
     },
   ]);
   const quickHelp = [
-    "Track an order",
-    "Delivery concern",
-    "Payment help",
-    "Start a support ticket",
+    "Help me find furniture",
+    "Track my latest order",
+    "Delivery and returns",
+    "Payments and refunds",
   ];
 
   useEffect(() => {
@@ -1083,7 +1083,7 @@ export function CareChat() {
                   key={`${message.text}-${index}`}
                 >
                   <div
-                    className={`max-w-[86%] rounded-[1.1rem] px-4 py-3 text-[13px] leading-[1.55] ${
+                    className={`max-w-[86%] whitespace-pre-wrap break-words rounded-[1.1rem] px-4 py-3 text-[13px] leading-[1.55] ${
                       message.from === "you"
                         ? "rounded-br-[.35rem] bg-[#292824] text-white shadow-[0_5px_16px_rgba(35,32,27,.12)]"
                         : "rounded-bl-[.35rem] border border-[#e5e0d8] bg-white text-foreground shadow-[0_3px_12px_rgba(39,35,29,.05)]"
