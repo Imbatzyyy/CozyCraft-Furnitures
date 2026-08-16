@@ -124,7 +124,8 @@ SERVICE STYLE
 - Finish with the most useful next action. Offer human support when the issue needs
   account changes, investigation, approval, or a decision the assistant cannot perform.
 - Recommend only products present in the live catalog context.
-- When recommending products, include their exact name, price, availability, and relevant reason.
+- Recommend at most three products at a time and include their exact name, price,
+  availability, and a short relevant reason.
 - Keep most answers concise, but include enough detail to resolve the concern.
 - Use plain text with short paragraphs or numbered steps; do not use markdown tables.
 `;
@@ -140,6 +141,8 @@ type PublicKnowledge = {
 
 const PUBLIC_KNOWLEDGE_TTL_MS = 60_000;
 let publicKnowledgeCache: { expiresAt: number; value: PublicKnowledge } | null = null;
+const GUEST_REPLY_TTL_MS = 5 * 60_000;
+const guestReplyCache = new Map<string, { expiresAt: number; reply: string; model: string }>();
 
 const sanitizeMessages = (value: unknown): ChatMessage[] => {
   if (!Array.isArray(value)) return [];
@@ -153,14 +156,14 @@ const sanitizeMessages = (value: unknown): ChatMessage[] => {
         ["user", "assistant"].includes((item as ChatMessage).role) &&
         typeof (item as ChatMessage).content === "string",
     )
-    .slice(-6)
+    .slice(-4)
     .map((item) => ({
       role: item.role,
-      content: item.content.trim().slice(0, 700),
+      content: item.content.trim().slice(0, 400),
     }))
     .filter((item) => item.content.length > 0);
 
-  let remainingCharacters = 3_000;
+  let remainingCharacters = 1_600;
   return messages
     .reverse()
     .filter((item) => {
@@ -218,7 +221,7 @@ const selectRelevantProducts = (
   const matching = scored
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.index - right.index)
-    .slice(0, 28);
+    .slice(0, 12);
   const fallback = matching.length > 0
     ? matching
     : scored
@@ -227,9 +230,119 @@ const selectRelevantProducts = (
           const rightDate = Date.parse(String(right.item.addedAt ?? "")) || 0;
           return rightDate - leftDate;
         })
-        .slice(0, 16);
+        .slice(0, 8);
 
   return fallback.map(({ item }) => item);
+};
+
+const selectRelevantPages = (pages: unknown[], message: string) => {
+  const queryWords = new Set(searchableWords(message));
+  const scored = pages
+    .map((page) => {
+      const item = page as Record<string, unknown>;
+      const titleWords = new Set(
+        searchableWords(`${item.slug ?? ""} ${item.title ?? ""} ${item.summary ?? ""}`),
+      );
+      const bodyWords = new Set(searchableWords(String(item.body ?? "")));
+      const score = [...queryWords].reduce(
+        (total, word) =>
+          total + (titleWords.has(word) ? 5 : 0) + (bodyWords.has(word) ? 1 : 0),
+        0,
+      );
+      return { item, score };
+    })
+    .sort((left, right) => right.score - left.score);
+  const selected = scored.filter(({ score }) => score > 0).slice(0, 2);
+  const fallback = selected.length > 0
+    ? selected
+    : scored.filter(({ item }) => ["faq", "contact"].includes(String(item.slug))).slice(0, 2);
+
+  return fallback.map(({ item }) => ({
+    ...item,
+    body: compactText(item.body, 1_800),
+  }));
+};
+
+const instantReply = (message: string) => {
+  const normalized = message.toLocaleLowerCase("en-PH").trim();
+  if (/^(hi|hello|hey|hello cozy|hi cozy|good morning|good afternoon|good evening)[!.?\s]*$/.test(normalized)) {
+    return "Hello! Welcome to CozyCraft Care. I’m happy to help you find furniture, understand delivery or payments, track an order, or resolve a shopping concern. What would you like help with today?";
+  }
+  if (/^(kumusta|kamusta|hello po|hi po)[!.?\s]*$/.test(normalized)) {
+    return "Hello po! Welcome to CozyCraft Care. Masaya akong tumulong sa paghahanap ng furniture, delivery at payment questions, order tracking, o anumang shopping concern. Ano po ang maitutulong ko ngayon?";
+  }
+  if (/^(thanks|thank you|thank you cozy|salamat|salamat po)[!.?\s]*$/.test(normalized)) {
+    return "You’re very welcome! If you need anything else, CozyCraft Care is here to help.";
+  }
+  if (/^(bye|goodbye|see you)[!.?\s]*$/.test(normalized)) {
+    return "Thank you for visiting CozyCraft. Take care, and we’ll be happy to help again anytime.";
+  }
+  return null;
+};
+
+const cleanAssistantReply = (value: string) =>
+  value
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .trim();
+
+const peso = (value: unknown) =>
+  new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
+
+const safeFallbackReply = ({
+  message,
+  authenticated,
+  matchingProducts,
+  customerContext,
+  storeSettings,
+}: {
+  message: string;
+  authenticated: boolean;
+  matchingProducts: unknown[];
+  customerContext: Record<string, unknown>;
+  storeSettings: unknown;
+}) => {
+  const words = new Set(searchableWords(message));
+  const hasAny = (...values: string[]) => values.some((value) => words.has(value));
+
+  if (hasAny("order", "track", "tracking", "shipment", "shipped", "delivery")) {
+    if (!authenticated) {
+      return "I can help you track your CozyCraft order. Please sign in, then open My Account → Orders to see the latest payment and delivery timeline. If an update looks incorrect, you can start a support ticket from My Account → Support.";
+    }
+    const orders = Array.isArray(customerContext.orders)
+      ? customerContext.orders as Array<Record<string, unknown>>
+      : [];
+    const latest = orders[0];
+    if (latest) {
+      return `Your latest order ${String(latest.order_number ?? "")} is currently ${String(latest.status ?? "being reviewed")}. Its payment status is ${String(latest.payment_status ?? "not yet available")}. You can view the complete dated timeline in My Account → Orders.`;
+    }
+    return "I couldn’t find a recent order on this account. Please check My Account → Orders, or start a support ticket if you used a different account when checking out.";
+  }
+
+  if (hasAny("product", "furniture", "sofa", "chair", "table", "bed", "cabinet", "stand")) {
+    const products = matchingProducts.slice(0, 3) as Array<Record<string, unknown>>;
+    if (products.length > 0) {
+      const suggestions = products
+        .map(
+          (product, index) =>
+            `${index + 1}. ${String(product.name)} — ${peso(product.price)} — ${String(product.availability)}`,
+        )
+        .join("\n");
+      return `Here are the closest live catalog matches I found:\n${suggestions}\n\nYou can open the appropriate room collection to view full specifications and photos. Tell me your room, preferred style, or budget if you would like a narrower recommendation.`;
+    }
+  }
+
+  if (hasAny("contact", "support", "help", "email", "care")) {
+    const settings = (storeSettings ?? {}) as Record<string, unknown>;
+    const email = String(settings.contact_email ?? "cozycraftfurnitures2026@gmail.com");
+    return `I’m here to help. For a concern that needs staff investigation, please open My Account → Support and start a ticket. You may also contact CozyCraft at ${email}.`;
+  }
+
+  return "Thank you for your patience. I can still help with product discovery, delivery and payment guidance, order tracking, returns, refunds, or CozyCraft Care. Please choose one of the suggested questions or briefly tell me which area you need help with.";
 };
 
 const loadPublicKnowledge = async (
@@ -344,7 +457,7 @@ Deno.serve(async (request) => {
     Deno.env.get("SUPABASE_ANON_KEY") ??
     JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "{}").default;
 
-  if (!groqApiKey || !supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !supabaseAnonKey) {
     console.error("Assistant configuration is incomplete.");
     return jsonResponse(
       { error: "The assistant is temporarily unavailable." },
@@ -365,6 +478,16 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Please enter a message." }, 400);
   }
 
+  const immediate = instantReply(message);
+  if (immediate) {
+    return jsonResponse({
+      reply: immediate,
+      authenticated: false,
+      model: "cozycraft-instant",
+      optimized: true,
+    });
+  }
+
   const authorization = request.headers.get("Authorization") ?? "";
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     global: authorization
@@ -377,6 +500,21 @@ Deno.serve(async (request) => {
     ? await supabase.auth.getUser()
     : { data: { user: null } };
   const user = authData.user;
+  const history = sanitizeMessages(body.history);
+  const hasEarlierUserMessage = history.some((item) => item.role === "user");
+  const guestCacheKey = !user && !hasEarlierUserMessage
+    ? message.toLocaleLowerCase("en-PH").replace(/\s+/g, " ")
+    : null;
+  const cachedReply = guestCacheKey ? guestReplyCache.get(guestCacheKey) : null;
+  if (cachedReply && cachedReply.expiresAt > Date.now()) {
+    return jsonResponse({
+      reply: cachedReply.reply,
+      authenticated: false,
+      model: cachedReply.model,
+      cached: true,
+      optimized: true,
+    });
+  }
 
   const publicKnowledge = await loadPublicKnowledge(supabase);
 
@@ -397,7 +535,7 @@ Deno.serve(async (request) => {
           .select("label,city,province,is_primary")
           .eq("user_id", user.id)
           .order("is_primary", { ascending: false })
-          .limit(10),
+          .limit(6),
         supabase
           .from("orders")
           .select(
@@ -405,35 +543,35 @@ Deno.serve(async (request) => {
           )
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-          .limit(10),
+          .limit(6),
         supabase
           .from("cart_items")
           .select("quantity,products(name,price,stock_quantity)")
           .eq("user_id", user.id)
-          .limit(50),
+          .limit(24),
         supabase
           .from("wishlist_items")
           .select("products(name,price,stock_quantity)")
           .eq("user_id", user.id)
-          .limit(50),
+          .limit(24),
         supabase
           .from("support_tickets")
           .select("ticket_number,subject,status,admin_reply,created_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-          .limit(10),
+          .limit(6),
         supabase
           .from("return_requests")
           .select("return_number,order_id,reason,status,admin_note,created_at,updated_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-          .limit(10),
+          .limit(6),
         supabase
           .from("customer_notifications")
           .select("kind,title,message,entity_type,entity_id,read_at,created_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-          .limit(12),
+          .limit(6),
         supabase
           .from("mobile_loyalty_accounts")
           .select("points_balance,lifetime_eligible_spend,tier,tier_valid_until,last_activity_at,updated_at")
@@ -476,13 +614,18 @@ Deno.serve(async (request) => {
     customerContext.homeCircle = loyalty.data ?? null;
   }
 
-  const history = sanitizeMessages(body.history);
   const matchingProducts = selectRelevantProducts(
     publicKnowledge.products,
     message,
     history,
   );
-  const { products: _allProducts, ...publicWebsite } = publicKnowledge;
+  const relevantPages = selectRelevantPages(publicKnowledge.publishedPages, message);
+  const {
+    products: _allProducts,
+    publishedPages: _allPublishedPages,
+    activeHomepageBanners,
+    ...publicWebsite
+  } = publicKnowledge;
   const liveContext = {
     currentTime: new Date().toLocaleString("en-PH", {
       timeZone: "Asia/Manila",
@@ -491,6 +634,8 @@ Deno.serve(async (request) => {
     }),
     publicWebsite: {
       ...publicWebsite,
+      publishedPages: relevantPages,
+      activeHomepageBanners: activeHomepageBanners.slice(0, 5),
       catalogProductCount: publicKnowledge.products.length,
       matchingProducts,
       catalogNote:
@@ -498,6 +643,24 @@ Deno.serve(async (request) => {
     },
     currentCustomer: customerContext,
   };
+
+  const fallbackReply = safeFallbackReply({
+    message,
+    authenticated: Boolean(user),
+    matchingProducts,
+    customerContext,
+    storeSettings: publicKnowledge.storeSettings,
+  });
+
+  if (!groqApiKey) {
+    console.error("Assistant AI provider is not configured; using safe guidance mode.");
+    return jsonResponse({
+      reply: fallbackReply,
+      authenticated: Boolean(user),
+      model: "cozycraft-guidance",
+      fallback: true,
+    });
+  }
 
   try {
     const groqResponse = await fetch(
@@ -509,9 +672,9 @@ Deno.serve(async (request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: Deno.env.get("GROQ_MODEL") ?? "llama-3.3-70b-versatile",
-          temperature: 0.25,
-          max_completion_tokens: 700,
+          model: Deno.env.get("GROQ_MODEL") ?? "llama-3.1-8b-instant",
+          temperature: 0.2,
+          max_completion_tokens: 320,
           messages: [
             { role: "system", content: storeKnowledge },
             {
@@ -528,39 +691,52 @@ Deno.serve(async (request) => {
     if (!groqResponse.ok) {
       const failure = await groqResponse.text();
       console.error("Groq request failed", groqResponse.status, failure);
-      const isCapacityLimit =
-        groqResponse.status === 413 || groqResponse.status === 429;
-      return jsonResponse(
-        {
-          error:
-            isCapacityLimit
-              ? "The assistant is receiving many requests. Please try again shortly."
-              : "The assistant could not respond right now. Please try again.",
-        },
-        isCapacityLimit ? 429 : 502,
-      );
+      return jsonResponse({
+        reply: fallbackReply,
+        authenticated: Boolean(user),
+        model: "cozycraft-guidance",
+        fallback: true,
+      });
     }
 
     const result = await groqResponse.json();
-    const reply = result?.choices?.[0]?.message?.content?.trim();
+    const rawReply = result?.choices?.[0]?.message?.content?.trim();
+    const reply = rawReply ? cleanAssistantReply(rawReply) : "";
 
     if (!reply) {
-      return jsonResponse(
-        { error: "The assistant returned an empty response. Please try again." },
-        502,
-      );
+      return jsonResponse({
+        reply: fallbackReply,
+        authenticated: Boolean(user),
+        model: "cozycraft-guidance",
+        fallback: true,
+      });
+    }
+
+    if (guestCacheKey) {
+      if (guestReplyCache.size >= 100) {
+        const oldestKey = guestReplyCache.keys().next().value;
+        if (oldestKey) guestReplyCache.delete(oldestKey);
+      }
+      guestReplyCache.set(guestCacheKey, {
+        expiresAt: Date.now() + GUEST_REPLY_TTL_MS,
+        reply,
+        model: result.model,
+      });
     }
 
     return jsonResponse({
       reply,
       authenticated: Boolean(user),
       model: result.model,
+      optimized: true,
     });
   } catch (error) {
     console.error("Assistant request error", error);
-    return jsonResponse(
-      { error: "The assistant could not connect. Please try again." },
-      502,
-    );
+    return jsonResponse({
+      reply: fallbackReply,
+      authenticated: Boolean(user),
+      model: "cozycraft-guidance",
+      fallback: true,
+    });
   }
 });
