@@ -87,6 +87,7 @@ import {
 } from "@/services/supabase/client";
 import { recordAuthActivity } from "@/services/auth/activity.service";
 import { canonicalProductImages } from "@/lib/catalog/product-images";
+import { CUSTOMER_POLICY_VERSION } from "@/lib/legal/customer-policies";
 
 
 import {
@@ -556,12 +557,55 @@ function App() {
       if (session?.user) setAuthReady(false);
       window.setTimeout(() => {
         if (session?.user) {
-          if (window.sessionStorage.getItem("cozycraft-google-sign-in-pending") === "1") {
+          const googleSignInPending =
+            window.sessionStorage.getItem("cozycraft-google-sign-in-pending") === "1";
+          const pendingPolicyConsent = window.sessionStorage.getItem(
+            "cozycraft-policy-consent-pending",
+          );
+          if (googleSignInPending) {
             window.sessionStorage.removeItem("cozycraft-google-sign-in-pending");
             void recordAuthActivity(supabase, "customer_sign_in", {
               name: "Google sign-in",
               provider: "google",
             });
+          }
+          if (pendingPolicyConsent) {
+            window.sessionStorage.removeItem("cozycraft-policy-consent-pending");
+            try {
+              const consent = JSON.parse(pendingPolicyConsent) as {
+                termsVersion?: string;
+                privacyVersion?: string;
+                source?: string;
+              };
+              if (
+                consent.termsVersion === CUSTOMER_POLICY_VERSION &&
+                consent.privacyVersion === CUSTOMER_POLICY_VERSION
+              ) {
+                void Promise.all([
+                  supabase.auth.updateUser({
+                    data: {
+                      customer_policy_accepted: true,
+                      terms_version: CUSTOMER_POLICY_VERSION,
+                      privacy_version: CUSTOMER_POLICY_VERSION,
+                      policy_accepted_at: new Date().toISOString(),
+                      policy_acceptance_source:
+                        consent.source ?? "web_google_signup",
+                    },
+                  }),
+                  supabase.rpc("accept_current_customer_policies", {
+                    p_terms_version: CUSTOMER_POLICY_VERSION,
+                    p_privacy_version: CUSTOMER_POLICY_VERSION,
+                    p_source: consent.source ?? "web_google_signup",
+                    p_context: {
+                      user_agent: window.navigator.userAgent.slice(0, 500),
+                      locale: window.navigator.language,
+                    },
+                  }),
+                ]);
+              }
+            } catch {
+              // Invalid browser state never blocks a valid OAuth sign-in.
+            }
           }
           void loadAccount(
             session.user.id,
@@ -1941,6 +1985,7 @@ const router = createBrowserRouter([
   { path: "/about", lazy: () => storefrontCatalogRoute("About") },
   { path: "/contact", lazy: () => storefrontCatalogRoute("StaticContentPage") },
   { path: "/faq", lazy: () => storefrontCatalogRoute("StaticContentPage") },
+  { path: "/terms", lazy: () => storefrontCatalogRoute("StaticContentPage") },
   { path: "/privacy", lazy: () => storefrontCatalogRoute("StaticContentPage") },
   { path: "/collections/:room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/living-room", lazy: () => storefrontCatalogRoute("CollectionPage") },

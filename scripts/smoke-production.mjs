@@ -5,6 +5,8 @@ const routes = [
   "/bedroom",
   "/dining-room",
   "/about",
+  "/terms",
+  "/privacy",
   "/login",
   "/signup",
   "/forgot-password",

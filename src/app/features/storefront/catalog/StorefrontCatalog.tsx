@@ -597,8 +597,14 @@ export function StaticContentPage() {
   if (slug === "faq") {
     return <FaqInformationPage content={page} sections={sections} />;
   }
-  if (slug === "privacy") {
-    return <PrivacyInformationPage content={page} sections={sections} />;
+  if (slug === "privacy" || slug === "terms") {
+    return (
+      <PrivacyInformationPage
+        content={page}
+        sections={sections}
+        kind={slug}
+      />
+    );
   }
   return <ContactInformationPage content={page} sections={sections} />;
 }
@@ -867,10 +873,13 @@ function FaqInformationPage({
 function PrivacyInformationPage({
   content,
   sections,
+  kind,
 }: {
   content: ContentPage;
   sections: ManagedContentSection[];
+  kind: "privacy" | "terms";
 }) {
+  const isPrivacy = kind === "privacy";
   const lastUpdated = new Intl.DateTimeFormat("en-PH", {
     dateStyle: "long",
     timeZone: "Asia/Manila",
@@ -884,7 +893,7 @@ function PrivacyInformationPage({
             <div className="absolute -right-28 -top-36 h-[380px] w-[380px] rounded-full border-[70px] border-white/25" />
             <div className="relative max-w-5xl">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#20211e] text-white">
-                <ShieldCheck size={21} />
+                {isPrivacy ? <ShieldCheck size={21} /> : <FileText size={21} />}
               </div>
               <p className="mt-9 text-[10px] font-bold uppercase tracking-[.28em] text-black/48">
                 {content.eyebrow}
@@ -903,11 +912,11 @@ function PrivacyInformationPage({
         <section className="mx-auto grid max-w-[1440px] gap-8 px-5 pb-20 pt-6 sm:px-7 lg:grid-cols-[300px_minmax(0,1fr)] lg:px-10 lg:pb-28 lg:pt-10">
           <aside className="h-fit rounded-[1.5rem] border border-black/10 bg-[#f8f6f1] p-6 lg:sticky lg:top-28">
             <p className="text-[10px] font-bold uppercase tracking-[.22em] text-black/40">On this page</p>
-            <nav aria-label="Privacy policy sections" className="mt-5 space-y-1">
+            <nav aria-label={`${isPrivacy ? "Privacy Policy" : "Terms of Use"} sections`} className="mt-5 space-y-1">
               {sections.map((section, index) => (
                 <a
                   key={section.title}
-                  href={`#privacy-${index + 1}`}
+                  href={`#legal-${index + 1}`}
                   className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-black/58 transition hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/60"
                 >
                   <span className="text-xs text-black/28">{String(index + 1).padStart(2, "0")}</span>
@@ -918,7 +927,7 @@ function PrivacyInformationPage({
             <div className="mt-7 border-t border-black/10 pt-6">
               <LockKeyhole size={18} className="text-black/55" />
               <p className="mt-3 text-xs leading-6 text-black/48">
-                Questions about this notice can be sent to CozyCraft Care.
+                Questions about this {isPrivacy ? "notice" : "agreement"} can be sent to CozyCraft Care.
               </p>
               <Link to="/contact" className="mt-3 inline-flex items-center gap-2 text-xs font-bold underline underline-offset-4">
                 Contact us <ArrowRight size={13} />
@@ -929,7 +938,7 @@ function PrivacyInformationPage({
           <div className="min-w-0 space-y-4">
             {sections.map((section, index) => (
               <article
-                id={`privacy-${index + 1}`}
+                id={`legal-${index + 1}`}
                 key={section.title}
                 className="scroll-mt-32 rounded-[1.5rem] border border-black/10 bg-[#f8f6f1] p-6 sm:p-8 lg:p-10"
               >

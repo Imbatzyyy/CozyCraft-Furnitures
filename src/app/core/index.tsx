@@ -872,7 +872,7 @@ export function Layout({
               {[
                 ["SHOP", [["Living room", "/living-room"], ["Bedroom", "/bedroom"], ["Dining room", "/dining-room"], ["New arrivals", "/new-arrivals"]]],
                 ["ACCOUNT", [["Profile", "/profile"], ["Orders", "/orders"], ["Wishlist", "/wishlist"], ["Bag", "/cart"]]],
-                ["COZYCRAFT", [["Our story", "/about"], ["Contact", "/contact"], ["FAQ", "/faq"], ["Privacy", "/privacy"]]],
+                ["COZYCRAFT", [["Our story", "/about"], ["Contact", "/contact"], ["FAQ", "/faq"], ["Terms", "/terms"], ["Privacy", "/privacy"]]],
               ].map(([heading, links]) => (
                 <div key={heading as string}>
                   <p className="text-[10px] font-bold tracking-[.18em] text-white/45">{heading as string}</p>
