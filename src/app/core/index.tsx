@@ -19,6 +19,7 @@ import {
 } from "react-router-dom";
 import {
   Activity,
+  ArrowUp,
   ArrowLeft,
   ArrowRight,
   Archive,
@@ -1043,10 +1044,10 @@ export function CareChat() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Open CozyCraft chat"
-          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#292a26] text-[#f7f3eb] shadow-[0_14px_30px_rgba(35,31,27,.28)] transition hover:-translate-y-0.5 hover:bg-[#3d3b36] md:bottom-7 md:right-7 md:z-40"
+          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#24231f] text-white shadow-[0_16px_40px_rgba(27,25,22,.24)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#34322d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bca98e] focus-visible:ring-offset-2 md:bottom-7 md:right-7 md:z-40"
         >
-          <MessageCircle size={23} />
-          <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-background bg-[#b89b78]" />
+          <MessageCircle size={22} strokeWidth={1.8} />
+          <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#24231f] bg-[#7e9d76]" />
         </button>
       )}
       {open && (
@@ -1054,51 +1055,50 @@ export function CareChat() {
           role="dialog"
           aria-modal="true"
           aria-label="CozyCraft customer care chat"
-          className="fixed bottom-[4.75rem] right-3 z-50 flex h-[min(580px,calc(100dvh-6rem))] w-[calc(100vw-24px)] max-w-[390px] flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-2xl md:bottom-7 md:right-7 md:h-[min(620px,calc(100dvh-56px))] md:w-[calc(100vw-56px)]"
+          className="fixed bottom-[4.75rem] right-3 z-50 flex h-[min(620px,calc(100dvh-6rem))] w-[calc(100vw-24px)] max-w-[400px] flex-col overflow-hidden rounded-[1.5rem] border border-[#ded9d0] bg-[#fbfaf7] shadow-[0_24px_80px_rgba(31,28,24,.22)] md:bottom-7 md:right-7 md:h-[min(640px,calc(100dvh-56px))] md:w-[calc(100vw-56px)]"
         >
-          <header className="flex items-center justify-between bg-[#292a26] px-5 py-4 text-[#f7f3eb]">
-            <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#d8c7b0] text-foreground">
-                <MessageCircle size={17} />
-              </span>
-              <div>
-                <p className="text-sm font-semibold">CozyCraft Care</p>
-                <p className="mt-0.5 text-[10px] text-white/60">
-                  AI shopping & customer care
-                </p>
+          <header className="flex min-h-[74px] items-center justify-between border-b border-[#e4dfd7] bg-white px-5 py-4 text-foreground">
+            <div className="min-w-0">
+              <p className="truncate text-[15px] font-semibold tracking-[-.01em]">
+                CozyCraft Care
+              </p>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#72906b]" aria-hidden="true" />
+                <span>AI assistant · Online</span>
               </div>
             </div>
             <button
               onClick={() => setOpen(false)}
               aria-label="Close chat"
-              className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:bg-[#f0ede7] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c7b69f]"
             >
-              <X size={17} />
+              <X size={18} strokeWidth={1.8} />
             </button>
           </header>
-          <div className="flex-1 overflow-y-auto bg-[#faf8f4] p-4">
-            <p className="mb-4 text-center text-[10px] font-bold tracking-[.14em] text-muted-foreground">
-              COZYCRAFT CUSTOMER CARE
-            </p>
-            <div className="grid gap-3" aria-live="polite">
+          <div className="flex-1 overflow-y-auto bg-[#f7f5f1] px-4 py-5 sm:px-5">
+            <div className="grid gap-3.5" aria-live="polite">
               {messages.map((message, index) => (
                 <div
+                  className={`flex ${message.from === "you" ? "justify-end" : "justify-start"}`}
                   key={`${message.text}-${index}`}
-                  className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-5 ${
-                    message.from === "you"
-                      ? "ml-auto rounded-br-md bg-foreground text-background"
-                      : "rounded-bl-md bg-card text-foreground shadow-sm"
-                  }`}
                 >
-                  {message.text}
+                  <div
+                    className={`max-w-[86%] rounded-[1.1rem] px-4 py-3 text-[13px] leading-[1.55] ${
+                      message.from === "you"
+                        ? "rounded-br-[.35rem] bg-[#292824] text-white shadow-[0_5px_16px_rgba(35,32,27,.12)]"
+                        : "rounded-bl-[.35rem] border border-[#e5e0d8] bg-white text-foreground shadow-[0_3px_12px_rgba(39,35,29,.05)]"
+                    }`}
+                  >
+                    {message.text}
+                  </div>
                 </div>
               ))}
               {sending && (
-                <div className="w-fit rounded-2xl rounded-bl-md bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm">
-                  <span className="inline-flex gap-1" aria-label="Cozy is typing">
-                    <span className="animate-pulse">●</span>
-                    <span className="animate-pulse [animation-delay:150ms]">●</span>
-                    <span className="animate-pulse [animation-delay:300ms]">●</span>
+                <div className="w-fit rounded-[1.1rem] rounded-bl-[.35rem] border border-[#e5e0d8] bg-white px-4 py-3 text-muted-foreground shadow-[0_3px_12px_rgba(39,35,29,.05)]">
+                  <span className="inline-flex items-center gap-1.5" aria-label="Cozy is typing">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
                   </span>
                 </div>
               )}
@@ -1107,52 +1107,61 @@ export function CareChat() {
             {error && (
               <div
                 role="alert"
-                className="mt-3 rounded-xl bg-[#f3e3d5] px-3 py-2 text-xs font-semibold text-[#83583f]"
+                className="mt-4 rounded-xl border border-[#ead4c6] bg-[#f8eae0] px-3.5 py-3 text-xs font-medium leading-5 text-[#83583f]"
               >
                 {error}
               </div>
             )}
-            <div className="mt-5">
-              <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
-                QUICK HELP
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {quickHelp.map((item) => (
-                  <button
-                    type="button"
-                    key={item}
-                    onClick={() => void reply(item)}
-                    disabled={sending}
-                    className="rounded-full border border-border bg-card px-3 py-2 text-xs font-semibold transition hover:bg-secondary"
-                  >
-                    {item}
-                  </button>
-                ))}
+            {messages.length === 1 && !sending && (
+              <div className="mt-7 border-t border-[#e3ded6] pt-5">
+                <p className="text-[10px] font-semibold uppercase tracking-[.13em] text-muted-foreground">
+                  Suggested questions
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {quickHelp.map((item) => (
+                    <button
+                      type="button"
+                      key={item}
+                      onClick={() => void reply(item)}
+                      disabled={sending}
+                      className="min-h-10 rounded-xl border border-[#ded8cf] bg-white px-3 py-2.5 text-left text-[11px] font-medium leading-4 text-foreground transition hover:border-[#bcae9a] hover:bg-[#f0ede7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c7b69f] disabled:opacity-50"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
           <form
             onSubmit={(event) => {
               event.preventDefault();
               send();
             }}
-            className="flex gap-2 border-t border-border bg-card p-3"
+            className="border-t border-[#e4dfd7] bg-white p-3.5"
           >
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              className="h-11 min-w-0 flex-1 rounded-xl bg-secondary px-3 text-sm outline-none focus:ring-2 focus:ring-[#cbb8a1]"
-              placeholder="Type your concern..."
-              aria-label="Chat message"
-              maxLength={2000}
-              disabled={sending}
-            />
-            <button
-              disabled={sending || !draft.trim()}
-              className="h-11 rounded-xl bg-foreground px-4 text-xs font-semibold text-background disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {sending ? "Sending" : "Send"}
-            </button>
+            <div className="flex items-center gap-2 rounded-2xl border border-[#dcd6cd] bg-[#faf9f6] p-1.5 pl-3.5 transition focus-within:border-[#aa9b86] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#d7c9b7]/45">
+              <input
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                className="h-10 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#96918a]"
+                placeholder="Message CozyCraft Care"
+                aria-label="Chat message"
+                maxLength={2000}
+                disabled={sending}
+              />
+              <button
+                type="submit"
+                aria-label={sending ? "Sending message" : "Send message"}
+                disabled={sending || !draft.trim()}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#292824] text-white transition hover:bg-[#3a3833] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bca98e] disabled:cursor-not-allowed disabled:bg-[#d2cec7] disabled:text-[#8e8982]"
+              >
+                <ArrowUp size={18} strokeWidth={2} />
+              </button>
+            </div>
+            <p className="mt-2 px-1 text-[9px] leading-4 text-muted-foreground">
+              AI responses may be imperfect. For account-specific help, start a support ticket.
+            </p>
           </form>
         </section>
       )}
