@@ -745,8 +745,8 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
               </label>
             )}
             {mode === "signup" && (
-              <div className="mt-5 rounded-[1.15rem] border border-[#d9d0c3] bg-[#f4f0e9] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,.7)] transition focus-within:border-[#9b8062] sm:p-[1.125rem]">
-                <div className="flex items-start gap-3.5">
+              <div className="mt-4 rounded-2xl border border-[#d9d0c3] bg-[#f4f0e9] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.7)] transition focus-within:border-[#9b8062] sm:px-3.5 sm:py-3">
+                <div className="flex items-start gap-3">
                   <input
                     id="customer-policy-acceptance"
                     type="checkbox"
@@ -757,18 +757,18 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                       if (event.target.checked) setError("");
                     }}
                     aria-describedby="customer-policy-acceptance-copy"
-                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#24231f]"
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[#24231f]"
                   />
                   <div className="min-w-0">
                     <label
                       htmlFor="customer-policy-acceptance"
-                      className="block cursor-pointer text-[10px] font-bold uppercase tracking-[.18em] text-black/42"
+                      className="block cursor-pointer text-[9px] font-bold uppercase tracking-[.16em] text-black/42"
                     >
                       Required agreement
                     </label>
                     <p
                       id="customer-policy-acceptance-copy"
-                      className="mt-1.5 text-xs leading-5 text-muted-foreground sm:text-[13px] sm:leading-5"
+                      className="mt-1 text-[11px] leading-[1.15rem] text-muted-foreground sm:text-xs sm:leading-[1.2rem]"
                     >
                       I agree to CozyCraft’s{" "}
                       <button
