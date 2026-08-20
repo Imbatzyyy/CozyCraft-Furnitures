@@ -1669,6 +1669,7 @@ export function ComparePage() {
     };
   }, []);
   const compared = ids.map((id) => products.find((product) => product.id === id)).filter((product): product is Product => Boolean(product));
+  const comparisonTableMinWidth = 148 + compared.length * 270;
   const rows = [
     ["Price", (product: Product) => money(product.price)],
     ["Room", (product: Product) => product.category],
@@ -1679,10 +1680,106 @@ export function ComparePage() {
     ["Customer rating", (product: Product) => `${product.rating} / 5 (${product.reviews} reviews)`],
     ["Availability", (product: Product) => exactStockAvailability(product.stockQuantity, product.stock)],
   ] as const;
-  return <Layout><main className="mx-auto max-w-[1440px] px-5 py-10 lg:px-10 lg:py-16">
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">PRODUCT COMPARISON</p><h1 className="mt-3 font-serif text-4xl sm:text-6xl">Choose with confidence.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">Compare up to four pieces using the catalog data already loaded on this device.</p></div>{ids.length > 0 && <button type="button" onClick={() => writeComparedProductIds([])} className="text-xs font-semibold underline underline-offset-4">Clear comparison</button>}</div>
-    {compared.length ? <div className="mt-9 overflow-x-auto rounded-2xl border border-border bg-card"><table className="w-full min-w-[720px] border-collapse text-left"><thead><tr><th className="w-40 border-b border-r border-border bg-secondary/55 p-4 text-xs">Product</th>{compared.map((product) => <th key={product.id} className="min-w-[220px] border-b border-r border-border p-4 last:border-r-0"><div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-secondary"><ResilientImage src={product.images[productMainImageIndex(product)]} alt={product.name} className="h-full w-full object-cover"/><button type="button" onClick={() => toggleComparedProduct(product.id)} className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-card/95 shadow" aria-label={`Remove ${product.name}`}><X size={14}/></button></div><Link to={`/products/${product.id}`} className="mt-3 block text-sm font-semibold hover:underline">{product.name}</Link></th>)}</tr></thead><tbody>{rows.map(([label, value]) => <tr key={label}><th className="border-b border-r border-border bg-secondary/35 p-4 align-top text-xs">{label}</th>{compared.map((product) => <td key={product.id} className="border-b border-r border-border p-4 align-top text-xs leading-5 text-muted-foreground last:border-r-0">{value(product)}</td>)}</tr>)}</tbody></table></div> : <div className="mt-10 rounded-3xl border border-dashed border-border bg-card p-10 text-center"><Scale className="mx-auto text-muted-foreground"/><h2 className="mt-4 font-serif text-3xl">Your comparison is empty.</h2><p className="mt-2 text-sm text-muted-foreground">Use the scale icon on any product card to add a piece.</p><Link to="/living-room" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Browse products</Link></div>}
-  </main></Layout>;
+  return (
+    <Layout>
+      <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10 lg:px-10 lg:py-14">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">PRODUCT COMPARISON</p>
+            <h1 className="mt-3 font-serif text-4xl leading-[.95] sm:text-5xl lg:text-6xl">Choose with confidence.</h1>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Compare up to four pieces using the latest catalog details, dimensions, ratings, and availability.</p>
+          </div>
+          {ids.length > 0 && (
+            <button
+              type="button"
+              onClick={() => writeComparedProductIds([])}
+              className="w-fit shrink-0 rounded-full border border-border bg-card px-4 py-2.5 text-xs font-semibold transition hover:bg-secondary"
+            >
+              Clear comparison
+            </button>
+          )}
+        </div>
+
+        {compared.length ? (
+          <section className="mt-8" aria-labelledby="comparison-table-title">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 id="comparison-table-title" className="text-xs font-semibold">{compared.length} {compared.length === 1 ? "product" : "products"} selected</h2>
+              <p className="text-[10px] text-muted-foreground sm:hidden">Swipe to compare →</p>
+            </div>
+            <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-border bg-card shadow-[0_12px_35px_rgba(33,31,29,.045)] [-webkit-overflow-scrolling:touch]">
+              <table
+                aria-label="Product comparison"
+                className="w-full table-fixed border-collapse text-left"
+                style={{ minWidth: `${comparisonTableMinWidth}px` }}
+              >
+                <colgroup>
+                  <col className="w-[148px]"/>
+                  {compared.map((product) => <col key={product.id}/>)}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col" className="sticky left-0 z-20 border-b border-r border-border bg-[#f2eee8] p-3 text-[11px] font-bold sm:p-4">Product</th>
+                    {compared.map((product) => (
+                      <th key={product.id} scope="col" className="border-b border-r border-border bg-card p-3 align-top last:border-r-0 sm:p-4">
+                        <div className="relative h-40 w-full overflow-hidden rounded-xl bg-secondary sm:h-52 lg:h-60">
+                          <ResilientImage
+                            src={product.images[productMainImageIndex(product)]}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => toggleComparedProduct(product.id)}
+                            className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-card/95 shadow transition hover:bg-secondary"
+                            aria-label={`Remove ${product.name} from comparison`}
+                          >
+                            <X size={14}/>
+                          </button>
+                        </div>
+                        <Link
+                          to={`/products/${product.id}`}
+                          className="mt-3 flex min-h-10 items-start text-sm font-semibold leading-5 hover:underline"
+                        >
+                          {product.name}
+                        </Link>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(([label, value]) => (
+                    <tr key={label}>
+                      <th
+                        scope="row"
+                        className="sticky left-0 z-10 border-b border-r border-border bg-[#f7f4ef] p-3 align-top text-[11px] font-bold sm:p-4"
+                      >
+                        {label}
+                      </th>
+                      {compared.map((product) => (
+                        <td
+                          key={product.id}
+                          className="break-words border-b border-r border-border p-3 align-top text-xs leading-5 text-muted-foreground last:border-r-0 sm:p-4"
+                        >
+                          {value(product)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : (
+          <div className="mt-10 rounded-3xl border border-dashed border-border bg-card p-8 text-center sm:p-10">
+            <Scale className="mx-auto text-muted-foreground"/>
+            <h2 className="mt-4 font-serif text-3xl">Your comparison is empty.</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Use the scale icon on any product card to add a piece.</p>
+            <Link to="/living-room" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Browse products</Link>
+          </div>
+        )}
+      </main>
+    </Layout>
+  );
 }
 
 type ProductReview = {
