@@ -453,15 +453,15 @@ export function Wishlist() {
                 Move a piece to your bag when the time is right.
               </p>
             </div>
-            <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {savedItems.map((p, index) => (
+            <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] items-stretch gap-5">
+              {savedItems.map((p) => (
                 <article
                   key={p.id}
-                  className={`group overflow-hidden rounded-3xl border border-border bg-card shadow-[0_10px_28px_rgba(35,31,27,.05)] ${index === 0 ? "sm:col-span-2 sm:grid sm:grid-cols-[1.08fr_.92fr]" : ""}`}
+                  className="group flex h-full min-w-0 flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_10px_28px_rgba(35,31,27,.05)]"
                 >
                 <Link
                   to={`/products/${p.id}`}
-                    className={`relative block overflow-hidden bg-secondary ${index === 0 ? "aspect-auto min-h-[340px]" : "aspect-[.82]"}`}
+                    className="relative block aspect-[4/3] overflow-hidden bg-secondary sm:aspect-[5/4]"
                 >
                   <ResilientImage
                     src={primaryProductImage(p)}
@@ -474,7 +474,7 @@ export function Wishlist() {
                     </span>
                 </Link>
                   <div
-                    className={`p-5 ${index === 0 ? "flex flex-col justify-between" : ""}`}
+                    className="flex flex-1 flex-col p-5"
                   >
                   <div>
                       <p className="text-[10px] font-bold tracking-[.13em] text-muted-foreground">
@@ -488,7 +488,7 @@ export function Wishlist() {
                         {money(p.price)}
                       </p>
                   </div>
-                    <div className="mt-5 flex gap-2">
+                    <div className="mt-auto flex gap-2 pt-5">
                     <button
                         onClick={() => {
                           add(p.id);
