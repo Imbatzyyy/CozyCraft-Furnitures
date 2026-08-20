@@ -130,6 +130,8 @@ SERVICE STYLE
   availability, and a short relevant reason.
 - Keep most answers concise, but include enough detail to resolve the concern.
 - Use plain text with short paragraphs or numbered steps; do not use markdown tables.
+- Return only the customer-facing answer. Never emit hidden reasoning, analysis, chain of
+  thought, or tags such as <think> and <analysis>.
 `;
 
 type PublicKnowledge = {
@@ -145,6 +147,93 @@ const PUBLIC_KNOWLEDGE_TTL_MS = 60_000;
 let publicKnowledgeCache: { expiresAt: number; value: PublicKnowledge } | null = null;
 const GUEST_REPLY_TTL_MS = 5 * 60_000;
 const guestReplyCache = new Map<string, { expiresAt: number; reply: string; model: string }>();
+const GROQ_MODEL_CACHE_TTL_MS = 15 * 60_000;
+let groqModelCache: { expiresAt: number; models: string[] } | null = null;
+let groqRateLimitedUntil = 0;
+
+const cacheGuestReply = (
+  key: string | null,
+  reply: string,
+  model: string,
+  ttlMs = GUEST_REPLY_TTL_MS,
+) => {
+  if (!key) return;
+  if (guestReplyCache.size >= 100) {
+    const oldestKey = guestReplyCache.keys().next().value;
+    if (oldestKey) guestReplyCache.delete(oldestKey);
+  }
+  guestReplyCache.set(key, {
+    expiresAt: Date.now() + ttlMs,
+    reply,
+    model,
+  });
+};
+
+const rankGroqTextModel = (model: string, preferredModel: string) => {
+  const normalized = model.toLocaleLowerCase("en-US");
+  if (
+    /whisper|speech|audio|tts|guard|safeguard|moderation|embedding/.test(
+      normalized,
+    )
+  ) {
+    return -1;
+  }
+
+  let score = model === preferredModel ? 1_000 : 0;
+  if (/gpt-oss/.test(normalized)) score += 120;
+  if (/llama/.test(normalized)) score += 110;
+  if (/qwen/.test(normalized)) score += 90;
+  if (/gemma|mistral|mixtral/.test(normalized)) score += 70;
+  if (/instant|instruct|versatile/.test(normalized)) score += 35;
+  if (/20b/.test(normalized)) score += 55;
+  else if (/8b|12b|17b|32b/.test(normalized)) score += 25;
+  if (/70b|120b|405b/.test(normalized)) score -= 40;
+  if (/preview|experimental/.test(normalized)) score -= 15;
+  return score;
+};
+
+const loadGroqModelCandidates = async (
+  groqApiKey: string,
+  preferredModel: string,
+) => {
+  const now = Date.now();
+  if (groqModelCache && groqModelCache.expiresAt > now) {
+    return groqModelCache.models;
+  }
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${groqApiKey}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      console.warn("Groq model discovery failed", response.status);
+      return [preferredModel];
+    }
+
+    const payload = await response.json() as {
+      data?: Array<{ id?: unknown; active?: unknown }>;
+    };
+    const models = (payload.data ?? [])
+      .filter((model) => model.active !== false && typeof model.id === "string")
+      .map((model) => String(model.id))
+      .map((model) => ({ model, score: rankGroqTextModel(model, preferredModel) }))
+      .filter(({ score }) => score >= 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 1)
+      .map(({ model }) => model);
+
+    const candidates = models.length > 0 ? models : [preferredModel];
+    groqModelCache = {
+      expiresAt: now + GROQ_MODEL_CACHE_TTL_MS,
+      models: candidates,
+    };
+    return candidates;
+  } catch (error) {
+    console.warn("Groq model discovery could not connect", error);
+    return [preferredModel];
+  }
+};
 
 const sanitizeMessages = (value: unknown): ChatMessage[] => {
   if (!Array.isArray(value)) return [];
@@ -192,12 +281,44 @@ const selectRelevantProducts = (
   message: string,
   history: ChatMessage[],
 ) => {
-  const queryWords = new Set(
-    searchableWords(
-      `${history.slice(-2).map((item) => item.content).join(" ")} ${message}`,
-    ),
+  const conversationQuery =
+    `${history.slice(-2).map((item) => item.content).join(" ")} ${message}`;
+  const queryWords = new Set(searchableWords(conversationQuery));
+  const requestedProductType = [
+    "chair",
+    "table",
+    "sofa",
+    "bed",
+    "cabinet",
+    "wardrobe",
+    "dresser",
+    "nightstand",
+    "stand",
+    "shelf",
+    "desk",
+  ].find((type) => [...queryWords].some((word) => word.startsWith(type)));
+  const budgetMatch = conversationQuery.match(
+    /(?:under|below|maximum|max|budget(?:\s+of)?|up\s+to)\s*(?:php|₱)?\s*([\d,.]+)/i,
   );
-  const scored = products.map((product, index) => {
+  const maximumBudget = budgetMatch
+    ? Number(budgetMatch[1].replace(/,/g, ""))
+    : null;
+  const requiresAvailableStock = [...queryWords].some((word) =>
+    ["available", "availability", "stock", "instock"].includes(word)
+  );
+  const eligibleProducts = products.filter((product) => {
+    const item = product as Record<string, unknown>;
+    if (maximumBudget && Number(item.price) > maximumBudget) return false;
+    if (requiresAvailableStock && Number(item.stock) <= 0) return false;
+    if (!requestedProductType) return true;
+
+    const catalogPlacement = searchableWords(
+      `${item.name ?? ""} ${item.category ?? ""} ${item.subcategory ?? ""}`,
+    );
+    return catalogPlacement.some((word) => word.startsWith(requestedProductType));
+  });
+  const productPool = eligibleProducts.length > 0 ? eligibleProducts : products;
+  const scored = productPool.map((product, index) => {
     const item = product as Record<string, unknown>;
     const weightedFields: Array<[unknown, number]> = [
       [item.name, 9],
@@ -223,7 +344,7 @@ const selectRelevantProducts = (
   const matching = scored
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.index - right.index)
-    .slice(0, 12);
+    .slice(0, 6);
   const fallback = matching.length > 0
     ? matching
     : scored
@@ -232,13 +353,28 @@ const selectRelevantProducts = (
           const rightDate = Date.parse(String(right.item.addedAt ?? "")) || 0;
           return rightDate - leftDate;
         })
-        .slice(0, 8);
+        .slice(0, 6);
 
   return fallback.map(({ item }) => item);
 };
 
 const selectRelevantPages = (pages: unknown[], message: string) => {
   const queryWords = new Set(searchableWords(message));
+  const pageIntent = [
+    "about",
+    "contact",
+    "faq",
+    "privacy",
+    "policy",
+    "data",
+    "business",
+    "founder",
+    "team",
+    "support",
+    "help",
+  ].some((word) => queryWords.has(word));
+  if (!pageIntent) return [];
+
   const scored = pages
     .map((page) => {
       const item = page as Record<string, unknown>;
@@ -255,11 +391,8 @@ const selectRelevantPages = (pages: unknown[], message: string) => {
     })
     .sort((left, right) => right.score - left.score);
   const selected = scored.filter(({ score }) => score > 0).slice(0, 2);
-  const fallback = selected.length > 0
-    ? selected
-    : scored.filter(({ item }) => ["faq", "contact"].includes(String(item.slug))).slice(0, 2);
 
-  return fallback.map(({ item }) => ({
+  return selected.map(({ item }) => ({
     ...item,
     body: compactText(item.body, 1_800),
   }));
@@ -282,8 +415,32 @@ const instantReply = (message: string) => {
   return null;
 };
 
+const canAnswerWithLiveGuidance = (message: string) => {
+  const words = new Set(searchableWords(message));
+  const hasAny = (...values: string[]) => values.some((value) => words.has(value));
+  const asksForPrivateConfiguration =
+    hasAny("api", "key", "keys", "secret", "secrets", "database", "configuration") &&
+    hasAny("show", "reveal", "give", "display", "private");
+
+  return asksForPrivateConfiguration ||
+    hasAny("restock", "restocked", "restocking") ||
+    hasAny("cancel", "cancellation", "refund", "refunded", "return", "returns") ||
+    hasAny("track", "tracking", "shipment", "shipped") ||
+    hasAny("delivery", "shipping", "fee", "arrive", "arrival") ||
+    hasAny("payment", "card", "gcash", "cod", "checkout") ||
+    hasAny("cart", "bag", "wishlist", "saved", "favorite", "favourite") ||
+    hasAny("account", "login", "signin", "password", "google", "username", "verify") ||
+    hasAny("review", "reviews", "rating") ||
+    hasAny("points", "loyalty", "tier", "circle", "membership") ||
+    hasAny("about", "founder", "founded", "team", "owner", "vision") ||
+    hasAny("contact", "support", "email", "ticket");
+};
+
 const cleanAssistantReply = (value: string) =>
-  value
+  (/^\s*<(think|analysis)>/i.test(value) && !/<\/(think|analysis)>/i.test(value)
+    ? ""
+    : value)
+    .replace(/<(think|analysis)>[\s\S]*?<\/(think|analysis)>/gi, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/^#{1,6}\s+/gm, "")
     .trim();
@@ -297,24 +454,44 @@ const peso = (value: unknown) =>
 
 const safeFallbackReply = ({
   message,
+  history,
   authenticated,
   matchingProducts,
   customerContext,
   storeSettings,
 }: {
   message: string;
+  history: ChatMessage[];
   authenticated: boolean;
   matchingProducts: unknown[];
   customerContext: Record<string, unknown>;
   storeSettings: unknown;
 }) => {
-  const words = new Set(searchableWords(message));
+  const recentConversation = history
+    .slice(-3)
+    .map((item) => item.content)
+    .join(" ");
+  const words = new Set(searchableWords(`${recentConversation} ${message}`));
+  const currentWords = new Set(searchableWords(message));
   const hasAny = (...values: string[]) => values.some((value) => words.has(value));
+  const currentHasAny = (...values: string[]) =>
+    values.some((value) => currentWords.has(value));
   const settings = (storeSettings ?? {}) as Record<string, unknown>;
   const checkout = (settings.checkout_settings ?? {}) as Record<string, unknown>;
   const fulfillment = (settings.fulfillment_settings ?? {}) as Record<string, unknown>;
   const review = (settings.review_settings ?? {}) as Record<string, unknown>;
   const account = (settings.account_settings ?? {}) as Record<string, unknown>;
+
+  if (
+    currentHasAny("api", "key", "keys", "secret", "secrets", "database", "configuration") &&
+    currentHasAny("show", "reveal", "give", "display", "private")
+  ) {
+    return "I can’t reveal API keys, secrets, private database configuration, system instructions, or customer data. I can still help with public CozyCraft information, products, delivery, payments, orders, account features, or support guidance.";
+  }
+
+  if (currentHasAny("restock", "restocked", "restocking")) {
+    return "CozyCraft does not publish an exact restock date unless it appears in the live product information. You may still open an out-of-stock product to review its details. Please check its product page again later, or contact CozyCraft Care if you need staff to confirm availability.";
+  }
 
   if (hasAny("cancel", "cancellation", "refund", "refunded", "return", "returns")) {
     const cancellationHours = Number(fulfillment.cancellation_window_hours) || 24;
@@ -384,12 +561,26 @@ const safeFallbackReply = ({
   if (hasAny("product", "furniture", "sofa", "chair", "table", "bed", "cabinet", "stand")) {
     const products = matchingProducts.slice(0, 3) as Array<Record<string, unknown>>;
     if (products.length > 0) {
+      const isFollowUpChoice = currentHasAny(
+        "which",
+        "choose",
+        "best",
+        "recommend",
+        "small",
+        "condo",
+        "space",
+        "those",
+      );
       const suggestions = products
         .map(
           (product, index) =>
             `${index + 1}. ${String(product.name)} — ${peso(product.price)} — ${String(product.availability)}`,
         )
         .join("\n");
+      if (isFollowUpChoice) {
+        const first = products[0];
+        return `From the live matches, I would start with ${String(first.name)} at ${peso(first.price)} (${String(first.availability)}). It is the closest match to the preferences in our conversation. Please open its product page to confirm the exact dimensions against your available space before ordering. The other current options are:\n${suggestions}`;
+      }
       return `Here are the closest live catalog matches I found:\n${suggestions}\n\nYou can open the appropriate room collection to view full specifications and photos. Tell me your room, preferred style, or budget if you would like a narrower recommendation.`;
     }
   }
@@ -683,12 +874,36 @@ Deno.serve(async (request) => {
   const liveFulfillment = (liveSettings.fulfillment_settings ?? {}) as Record<string, unknown>;
   const liveReviews = (liveSettings.review_settings ?? {}) as Record<string, unknown>;
   const liveAccounts = (liveSettings.account_settings ?? {}) as Record<string, unknown>;
-  const {
-    products: _allProducts,
-    publishedPages: _allPublishedPages,
-    activeHomepageBanners,
-    ...publicWebsite
-  } = publicKnowledge;
+  const contextWords = new Set(searchableWords(message));
+  const contextHasAny = (...values: string[]) =>
+    values.some((value) => contextWords.has(value));
+  const currentCustomerForAssistant: Record<string, unknown> = {
+    authenticated: Boolean(user),
+    profile: customerContext.profile ?? null,
+  };
+  if (contextHasAny("order", "track", "tracking", "shipment", "shipped", "cancel", "return", "refund")) {
+    currentCustomerForAssistant.orders = customerContext.orders ?? [];
+    currentCustomerForAssistant.returnRequests = customerContext.returnRequests ?? [];
+  }
+  if (contextHasAny("cart", "bag", "checkout")) {
+    currentCustomerForAssistant.cart = customerContext.cart ?? [];
+  }
+  if (contextHasAny("wishlist", "saved", "favorite", "favourite")) {
+    currentCustomerForAssistant.wishlist = customerContext.wishlist ?? [];
+  }
+  if (contextHasAny("support", "ticket", "concern", "help")) {
+    currentCustomerForAssistant.supportTickets = customerContext.supportTickets ?? [];
+  }
+  if (contextHasAny("points", "loyalty", "tier", "circle", "member", "membership")) {
+    currentCustomerForAssistant.homeCircle = customerContext.homeCircle ?? null;
+  }
+  if (contextHasAny("address", "delivery", "shipping")) {
+    currentCustomerForAssistant.addresses = customerContext.addresses ?? [];
+  }
+  if (contextHasAny("notification", "notifications", "update", "updates")) {
+    currentCustomerForAssistant.recentNotifications =
+      customerContext.recentNotifications ?? [];
+  }
   const liveContext = {
     currentTime: new Date().toLocaleString("en-PH", {
       timeZone: "Asia/Manila",
@@ -696,7 +911,18 @@ Deno.serve(async (request) => {
       timeStyle: "short",
     }),
     publicWebsite: {
-      ...publicWebsite,
+      generatedAt: publicKnowledge.generatedAt,
+      store: {
+        name: liveSettings.store_name ?? "CozyCraft Furnitures",
+        description: compactText(liveSettings.store_description, 400),
+        contactEmail: liveSettings.contact_email ?? null,
+        supportPhone: liveSettings.support_phone ?? null,
+        deliveryArea: liveSettings.delivery_area ?? "Philippines",
+        announcement: liveSettings.announcement_enabled
+          ? compactText(liveSettings.announcement_text, 300)
+          : null,
+        maintenanceMode: liveSettings.maintenance_mode === true,
+      },
       serviceFacts: {
         currency: String(liveSettings.currency_code ?? "PHP"),
         deliveryArea: liveSettings.delivery_area ?? "Philippines",
@@ -718,23 +944,39 @@ Deno.serve(async (request) => {
         googleSignInEnabled: liveAccounts.google_auth_enabled === true,
         passwordMinimumLength: liveAccounts.password_minimum_length ?? null,
       },
+      availableCategories: publicKnowledge.categories.slice(0, 40),
       publishedPages: relevantPages,
-      activeHomepageBanners: activeHomepageBanners.slice(0, 5),
+      activeHomepageBanners: publicKnowledge.activeHomepageBanners.slice(0, 3),
       catalogProductCount: publicKnowledge.products.length,
       matchingProducts,
       catalogNote:
         "matchingProducts contains the live catalog entries most relevant to this conversation, selected from the complete active catalog.",
     },
-    currentCustomer: customerContext,
+    currentCustomer: currentCustomerForAssistant,
   };
 
   const fallbackReply = safeFallbackReply({
     message,
+    history,
     authenticated: Boolean(user),
     matchingProducts,
     customerContext,
     storeSettings: publicKnowledge.storeSettings,
   });
+
+  if (canAnswerWithLiveGuidance(message)) {
+    cacheGuestReply(
+      guestCacheKey,
+      fallbackReply,
+      "cozycraft-live-guidance",
+    );
+    return jsonResponse({
+      reply: fallbackReply,
+      authenticated: Boolean(user),
+      model: "cozycraft-live-guidance",
+      optimized: true,
+    });
+  }
 
   if (!groqApiKey) {
     console.error("Assistant AI provider is not configured; using safe guidance mode.");
@@ -746,44 +988,108 @@ Deno.serve(async (request) => {
     });
   }
 
+  if (groqRateLimitedUntil > Date.now()) {
+    cacheGuestReply(
+      guestCacheKey,
+      fallbackReply,
+      "cozycraft-guidance",
+      Math.max(10_000, groqRateLimitedUntil - Date.now()),
+    );
+    return jsonResponse({
+      reply: fallbackReply,
+      authenticated: Boolean(user),
+      model: "cozycraft-guidance",
+      fallback: true,
+    });
+  }
+
   try {
     const preferredModel = Deno.env.get("GROQ_MODEL") ?? "llama-3.1-8b-instant";
-    const modelCandidates = [...new Set([
-      preferredModel,
-      "llama-3.1-8b-instant",
-      "llama-3.3-70b-versatile",
-    ])].slice(0, 2);
+    const modelCandidates = await loadGroqModelCandidates(groqApiKey, preferredModel);
     let result: Record<string, unknown> | null = null;
     let reply = "";
+    let degradedReason:
+      | "authentication"
+      | "rate_limited"
+      | "request_rejected"
+      | "provider_unavailable"
+      | "network_error"
+      | null = null;
+    let degradedDetail:
+      | "model_unavailable"
+      | "context_too_large"
+      | "request_format"
+      | "unknown"
+      | null = null;
 
     for (const model of modelCandidates) {
-      const groqResponse = await fetch(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${groqApiKey}`,
-            "Content-Type": "application/json",
+      let groqResponse: Response;
+      try {
+        groqResponse = await fetch(
+          "https://api.groq.com/openai/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${groqApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model,
+              temperature: 0.2,
+              max_completion_tokens: 320,
+              ...(model.startsWith("openai/gpt-oss-")
+                ? { include_reasoning: false, reasoning_effort: "low" }
+                : {}),
+              messages: [
+                { role: "system", content: storeKnowledge },
+                {
+                  role: "system",
+                  content: `LIVE COZYCRAFT DATA (read-only JSON):\n${JSON.stringify(liveContext)}`,
+                },
+                ...history,
+                { role: "user", content: message },
+              ],
+            }),
+            signal: AbortSignal.timeout(15_000),
           },
-          body: JSON.stringify({
-            model,
-            temperature: 0.2,
-            max_completion_tokens: 320,
-            messages: [
-              { role: "system", content: storeKnowledge },
-              {
-                role: "system",
-                content: `LIVE COZYCRAFT DATA (read-only JSON):\n${JSON.stringify(liveContext)}`,
-              },
-              ...history,
-              { role: "user", content: message },
-            ],
-          }),
-        },
-      );
+        );
+      } catch (error) {
+        degradedReason = "network_error";
+        console.error(`Groq model ${model} could not be reached`, error);
+        continue;
+      }
 
       if (!groqResponse.ok) {
         const failure = await groqResponse.text();
+        const normalizedFailure = failure.toLocaleLowerCase("en-US");
+        degradedReason = groqResponse.status === 401 || groqResponse.status === 403
+          ? "authentication"
+          : groqResponse.status === 429
+          ? "rate_limited"
+          : groqResponse.status >= 500
+          ? "provider_unavailable"
+          : "request_rejected";
+        degradedDetail = degradedReason === "request_rejected" &&
+            /model|decommission|deprecated|not found|does not exist/.test(
+          normalizedFailure,
+        )
+          ? "model_unavailable"
+          : degradedReason === "request_rejected" &&
+              /context|token|too large|too long|maximum length/.test(normalizedFailure)
+          ? "context_too_large"
+          : degradedReason === "request_rejected" &&
+              /message|max_completion_tokens|temperature|request|invalid/.test(
+              normalizedFailure,
+            )
+          ? "request_format"
+          : "unknown";
+        if (groqResponse.status === 429) {
+          const retryAfterSeconds = Number(groqResponse.headers.get("retry-after"));
+          groqRateLimitedUntil = Date.now() +
+            (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+              ? retryAfterSeconds * 1_000
+              : 45_000);
+        }
         console.error(`Groq model ${model} failed`, groqResponse.status, failure);
         continue;
       }
@@ -796,24 +1102,30 @@ Deno.serve(async (request) => {
     }
 
     if (!reply) {
+      if (degradedReason === "rate_limited") {
+        cacheGuestReply(
+          guestCacheKey,
+          fallbackReply,
+          "cozycraft-guidance",
+          Math.max(10_000, groqRateLimitedUntil - Date.now()),
+        );
+      }
       return jsonResponse({
         reply: fallbackReply,
         authenticated: Boolean(user),
         model: "cozycraft-guidance",
         fallback: true,
+        degradedReason,
+        degradedDetail,
       });
     }
 
     if (guestCacheKey) {
-      if (guestReplyCache.size >= 100) {
-        const oldestKey = guestReplyCache.keys().next().value;
-        if (oldestKey) guestReplyCache.delete(oldestKey);
-      }
-      guestReplyCache.set(guestCacheKey, {
-        expiresAt: Date.now() + GUEST_REPLY_TTL_MS,
+      cacheGuestReply(
+        guestCacheKey,
         reply,
-        model: String(result?.model ?? "groq"),
-      });
+        String(result?.model ?? "groq"),
+      );
     }
 
     return jsonResponse({
