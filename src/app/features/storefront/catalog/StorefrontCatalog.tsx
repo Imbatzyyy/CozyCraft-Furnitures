@@ -99,6 +99,7 @@ import {
   parseMaterialSpecs,
 } from "@/lib/catalog/product-specs";
 import { productMainImageIndex } from "@/lib/catalog/product-images";
+import { exactStockAvailability } from "@/lib/catalog/stock-availability";
 import { sortProducts, type ProductSort } from "@/lib/catalog/sort-products";
 import {
   managedSectionTitle,
@@ -1676,7 +1677,7 @@ export function ComparePage() {
     ["Materials", (product: Product) => parseMaterialSpecs(product.material || materialFor(product.id)).map((item) => `${item.type}: ${item.description}`).join(" · ")],
     ["Dimensions", (product: Product) => parseDimensionSpecs(product.dimensions).map((item) => `${item.label}: ${item.value}${item.unit ? ` ${item.unit}` : ""}`).join(" · ") || "Details coming soon"],
     ["Customer rating", (product: Product) => `${product.rating} / 5 (${product.reviews} reviews)`],
-    ["Availability", (product: Product) => `${product.stock}${typeof product.stockQuantity === "number" ? ` · ${product.stockQuantity} available` : ""}`],
+    ["Availability", (product: Product) => exactStockAvailability(product.stockQuantity, product.stock)],
   ] as const;
   return <Layout><main className="mx-auto max-w-[1440px] px-5 py-10 lg:px-10 lg:py-16">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">PRODUCT COMPARISON</p><h1 className="mt-3 font-serif text-4xl sm:text-6xl">Choose with confidence.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">Compare up to four pieces using the catalog data already loaded on this device.</p></div>{ids.length > 0 && <button type="button" onClick={() => writeComparedProductIds([])} className="text-xs font-semibold underline underline-offset-4">Clear comparison</button>}</div>
@@ -1736,6 +1737,8 @@ export function ProductPage() {
       : null;
   const atStockLimit = stockLimit !== null && quantity >= stockLimit;
   const outOfStock = stockLimit === 0;
+  const lowStock = stockLimit !== null && stockLimit > 0 && stockLimit <= 8;
+  const stockAvailability = exactStockAvailability(product.stockQuantity, product.stock);
   const selectedDeliveryArea = deliveryAreas.find((area) => area.area_code === deliveryAreaCode) ?? null;
   const deliveryWindow = selectedDeliveryArea ? deliveryDateRange(selectedDeliveryArea) : null;
   const deliveryFee = selectedDeliveryArea ? deliveryFeeFor(selectedDeliveryArea, product.price * quantity) : null;
@@ -2054,7 +2057,12 @@ export function ProductPage() {
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-muted-foreground">Availability</span>
-                <span className="text-[#62755a]">● {product.stock}</span>
+                <span
+                  className={outOfStock ? "text-[#9a493f]" : lowStock ? "text-[#8b6b36]" : "text-[#62755a]"}
+                  aria-label={`Availability: ${stockAvailability}`}
+                >
+                  ● {stockAvailability}
+                </span>
               </div>
             </div>
             <div className="mt-5 grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2">

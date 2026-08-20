@@ -94,6 +94,7 @@ import {
   readComparedProductIds,
   toggleComparedProduct,
 } from "@/lib/catalog/compare";
+import { exactStockAvailability } from "@/lib/catalog/stock-availability";
 
 
 export type Product = {
@@ -1396,7 +1397,7 @@ export function ProductCard({ product }: { product: Product }) {
           ))}
         </div>
         <span className="absolute bottom-3 left-3 rounded-full bg-background/95 px-2.5 py-1 text-[10px] font-semibold shadow-sm">
-          {product.stock}
+          {exactStockAvailability(product.stockQuantity, product.stock)}
         </span>
         {product.images.length > 1 && (
           <div className="absolute bottom-3 right-3 flex gap-1">
