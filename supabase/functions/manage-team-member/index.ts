@@ -1,5 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
+import {
+  buildTeamInvitationEmail,
+  type TeamInvitationRole,
+} from "../_shared/team-invitation-email.ts";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
 const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com", "capacitor://localhost", "ionic://localhost", "http://localhost", "https://localhost"]);
@@ -17,7 +21,7 @@ const json = (request: Request, body: unknown, status = 200) =>
     headers: { ...corsHeaders(request), "Content-Type": "application/json" },
   });
 
-type TeamRole = "staff" | "admin" | "superadmin";
+type TeamRole = TeamInvitationRole;
 type TeamRequest =
   | {
       action: "invite";
@@ -146,36 +150,108 @@ Deno.serve(async (request) => {
       );
     }
 
-    const { data, error } = await adminClient.auth.admin.inviteUserByEmail(
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendKey) {
+      return json(request, { error: "Team invitation email is not configured." }, 503);
+    }
+
+    const { data, error } = await adminClient.auth.admin.generateLink({
+      type: "invite",
       email,
-      {
+      options: {
         data: { full_name: fullName },
-        redirectTo:
-          "https://www.cozycraftfurnitures.com/admin/setup-account",
+        redirectTo: `${canonicalOrigin}/admin/setup-account`,
       },
-    );
-    if (error || !data.user) {
-      return json(request, { error: error?.message ?? "Unable to send invitation." }, 400);
+    });
+    if (error || !data.user || !data.properties?.action_link) {
+      return json(request, { error: error?.message ?? "Unable to create the secure invitation." }, 400);
+    }
+
+    const invitedUserId = data.user.id;
+    const deleteIncompleteInvite = async () => {
+      await adminClient.auth.admin.deleteUser(invitedUserId, false).catch(() => undefined);
+    };
+
+    let actionLink: URL;
+    try {
+      actionLink = new URL(data.properties.action_link);
+      if (actionLink.protocol !== "https:" || actionLink.origin !== new URL(supabaseUrl).origin) {
+        throw new Error("Unexpected invitation URL.");
+      }
+    } catch {
+      await deleteIncompleteInvite();
+      return json(request, { error: "The secure invitation link could not be verified." }, 500);
     }
 
     const { error: profileError } = await adminClient.from("profiles").upsert({
-      id: data.user.id,
+      id: invitedUserId,
       email,
       full_name: fullName,
       role: payload.role,
       staff_active: true,
     });
     if (profileError) {
-      await adminClient.auth.admin.deleteUser(data.user.id).catch(() => undefined);
+      await deleteIncompleteInvite();
       return json(request, { error: profileError.message }, 400);
+    }
+
+    const supportEmail = Deno.env.get("RESEND_REPLY_TO") ??
+      "cozycraftfurnitures2026@gmail.com";
+    const invitation = buildTeamInvitationEmail({
+      actionLink: actionLink.toString(),
+      role: payload.role,
+      supportEmail,
+    });
+    let emailResponse: Response;
+    try {
+      emailResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        signal: AbortSignal.timeout(20_000),
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": `team-invite-${invitedUserId}`,
+        },
+        body: JSON.stringify({
+          from: Deno.env.get("RESEND_INVITE_FROM") ??
+            Deno.env.get("RESEND_FROM_EMAIL") ??
+            "CozyCraft Furnitures <no-reply@auth.cozycraftfurnitures.com>",
+          to: [email],
+          reply_to: supportEmail,
+          subject: invitation.subject,
+          html: invitation.html,
+          text: invitation.text,
+          tags: [
+            { name: "category", value: "team_invitation" },
+            { name: "role", value: payload.role },
+          ],
+        }),
+      });
+    } catch {
+      await deleteIncompleteInvite();
+      return json(request, { error: "The email provider could not be reached. No team account was created." }, 502);
+    }
+
+    const emailResult = await emailResponse.json().catch(() => ({}));
+    if (!emailResponse.ok) {
+      await deleteIncompleteInvite();
+      const providerMessage = typeof emailResult?.message === "string"
+        ? emailResult.message.slice(0, 300)
+        : "The email provider rejected the invitation.";
+      return json(request, { error: `${providerMessage} No team account was created.` }, 502);
     }
 
     await adminClient.from("activity_logs").insert({
       actor_id: user.id,
       action: "team_member_invited",
       entity_type: "profile",
-      entity_id: data.user.id,
-      details: { email, role: payload.role },
+      entity_id: invitedUserId,
+      details: {
+        email,
+        role: payload.role,
+        delivery_provider: "resend",
+        provider_message_id: emailResult?.id ?? null,
+      },
     });
 
     return json(request, { success: true, message: `Invitation sent to ${email}.` });
