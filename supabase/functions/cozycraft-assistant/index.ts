@@ -803,11 +803,22 @@ Deno.serve(async (request) => {
     );
   }
 
-  let body: { message?: unknown; history?: unknown };
+  let body: { action?: unknown; message?: unknown; history?: unknown };
   try {
     body = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid request body." }, 400);
+  }
+
+  // A token-free, database-free probe lets an open chat panel wake a cold Edge
+  // Function before the customer sends a real message.
+  if (body.action === "health") {
+    return jsonResponse({
+      ok: true,
+      status: "online",
+      service: "cozycraft-assistant",
+      checkedAt: new Date().toISOString(),
+    });
   }
 
   const message =

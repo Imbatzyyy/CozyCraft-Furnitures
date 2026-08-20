@@ -1028,7 +1028,11 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<
+    "checking" | "online" | "recovering"
+  >("checking");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const lastWakeAtRef = useRef(0);
   const [messages, setMessages] = useState<CareChatMessage[]>(() =>
     readCareChatMessages(storageKey),
   );
@@ -1039,6 +1043,47 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
     "Payments and refunds",
   ];
 
+  const invokeAssistant = useCallback(async (
+    body:
+      | { action: "health" }
+      | {
+        message: string;
+        history: Array<{ role: "user" | "assistant"; content: string }>;
+      },
+  ) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    return supabase.functions.invoke("cozycraft-assistant", {
+      body,
+      headers: accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined,
+    });
+  }, []);
+
+  const wakeAssistant = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastWakeAtRef.current < 3 * 60 * 1_000) {
+      setConnectionStatus("online");
+      return true;
+    }
+
+    setConnectionStatus(lastWakeAtRef.current > 0 ? "recovering" : "checking");
+    try {
+      const response = await invokeAssistant({ action: "health" });
+      if (response.error || response.data?.ok !== true) {
+        throw response.error ?? new Error("Assistant health check failed.");
+      }
+      lastWakeAtRef.current = Date.now();
+      setConnectionStatus("online");
+      return true;
+    } catch (healthError) {
+      console.warn("CozyCraft assistant wake-up check failed", healthError);
+      setConnectionStatus("recovering");
+      return false;
+    }
+  }, [invokeAssistant]);
+
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -1047,6 +1092,32 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    void wakeAssistant();
+    const heartbeat = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void wakeAssistant(true);
+      }
+    }, 4 * 60 * 1_000);
+    const reconnect = () => {
+      if (document.visibilityState === "visible") {
+        void wakeAssistant(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", reconnect);
+    window.addEventListener("online", reconnect);
+    window.addEventListener("focus", reconnect);
+    return () => {
+      window.clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", reconnect);
+      window.removeEventListener("online", reconnect);
+      window.removeEventListener("focus", reconnect);
+    };
+  }, [open, wakeAssistant]);
 
   useEffect(() => {
     if (!open) return;
@@ -1065,7 +1136,7 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
       .filter((item) => item.includeInContext !== false)
       .slice(-8)
       .map((item) => ({
-        role: item.from === "you" ? "user" : "assistant",
+        role: item.from === "you" ? "user" as const : "assistant" as const,
         content: item.text,
       }));
 
@@ -1075,18 +1146,7 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
     setMessages((current) => [...current, { from: "you", text: message }]);
 
     try {
-      const invokeAssistant = async () => {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const accessToken = sessionData.session?.access_token;
-        return supabase.functions.invoke("cozycraft-assistant", {
-          body: { message, history },
-          headers: accessToken
-            ? { Authorization: `Bearer ${accessToken}` }
-            : undefined,
-        });
-      };
-
-      let response = await invokeAssistant();
+      let response = await invokeAssistant({ message, history });
       if (response.error) {
         const status =
           response.error.context instanceof Response
@@ -1094,8 +1154,10 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
             : 0;
         const canRetry = status === 0 || status === 429 || status >= 500;
         if (canRetry) {
-          await new Promise((resolve) => window.setTimeout(resolve, 650));
-          response = await invokeAssistant();
+          setConnectionStatus("recovering");
+          await wakeAssistant(true);
+          await new Promise((resolve) => window.setTimeout(resolve, 450));
+          response = await invokeAssistant({ message, history });
         }
       }
 
@@ -1109,6 +1171,9 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
         throw new Error(data?.error || "The assistant returned no response.");
       }
 
+      lastWakeAtRef.current = Date.now();
+      setConnectionStatus("online");
+
       setMessages((current) => [
         ...current,
         {
@@ -1119,6 +1184,7 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
       ]);
     } catch (requestError) {
       console.error("CozyCraft assistant error", requestError);
+      setConnectionStatus("recovering");
       setError(await functionErrorMessage(
         requestError,
         "CozyCraft Care is temporarily unavailable. Please try again in a moment.",
@@ -1155,8 +1221,21 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
                 CozyCraft Care
               </p>
               <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#72906b]" aria-hidden="true" />
-                <span>AI assistant · Online</span>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    connectionStatus === "online"
+                      ? "bg-[#72906b]"
+                      : "animate-pulse bg-[#b08a5b]"
+                  }`}
+                  aria-hidden="true"
+                />
+                <span>
+                  AI assistant · {connectionStatus === "online"
+                    ? "Online"
+                    : connectionStatus === "checking"
+                      ? "Connecting"
+                      : "Reconnecting"}
+                </span>
               </div>
             </div>
             <button
