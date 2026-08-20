@@ -1059,15 +1059,275 @@ export function ProductEditor({
 export function InventoryPage() {
   const { adminProducts } = useStore();
   const [notice, setNotice] = useState("");
-  const [adjustment, setAdjustment] = useState<{item:ManagedProduct;delta:number}|null>(null);
+  const [adjustment, setAdjustment] = useState<{
+    item: ManagedProduct;
+    direction: -1 | 1;
+  } | null>(null);
+  const [adjustmentUnits, setAdjustmentUnits] = useState("1");
   const [reason, setReason] = useState("");
-  const [movements, setMovements] = useState<Array<{id:number;product_id:string;previous_quantity:number;new_quantity:number;quantity_delta:number;reason:string;created_at:string}>>([]);
-  const items = adminProducts.map((p): ManagedProduct => ({ id:p.id,name:p.name,description:p.description,category:p.category,subcategory:p.subcategory??subcategoryFor(p.id),price:p.price,quantity:p.stockQuantity??0,status:p.status==="draft"?"Draft":p.status==="inactive"?"Inactive":"Active",images:p.images,main:p.mainImageIndex??0,material:p.material??"",dimensions:p.dimensions }));
-  const low = items.filter(item=>item.quantity<=8);
-  const loadMovements = useCallback(async () => { const {data}=await supabase.from("inventory_movements").select("id,product_id,previous_quantity,new_quantity,quantity_delta,reason,created_at").order("created_at",{ascending:false}).limit(12); setMovements((data??[]) as typeof movements); },[]);
-  useEffect(()=>{ void loadMovements(); const channel=supabase.channel("admin-inventory-ledger").on("postgres_changes",{event:"*",schema:"public",table:"inventory_movements"},()=>void loadMovements()).subscribe(); return()=>{void supabase.removeChannel(channel);}; },[loadMovements]);
-  const adjust = async () => { if(!adjustment||reason.trim().length<3){setNotice("Add a short reason for this stock adjustment.");return;} const {error}=await supabase.rpc("adjust_product_inventory",{p_product_id:adjustment.item.id,p_delta:adjustment.delta,p_reason:reason.trim()}); if(error){setNotice(error.message);return;} setNotice(adjustment.item.name+" stock updated and recorded."); setAdjustment(null); setReason(""); await loadMovements(); };
-  return <AdminShell title="Inventory"><div className="flex justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LIVE STOCK CONTROL</p><h2 className="mt-2 text-3xl font-semibold">Inventory board</h2><p className="mt-2 text-sm text-muted-foreground">Every adjustment updates the customer storefront immediately and is recorded below.</p></div></div><div className="mt-7 grid gap-4 lg:grid-cols-[1fr_.8fr]"><section className="rounded-2xl bg-[#282522] p-6 text-white"><p className="text-[10px] font-bold tracking-[.16em] text-[#d8c7b0]">REORDER FOCUS</p><p className="mt-4 font-serif text-4xl">{low.length} pieces need attention.</p><p className="mt-3 text-sm text-white/65">Products at eight units or below are marked low stock in the shop.</p></section><section className="rounded-2xl border border-border bg-card p-6"><p className="text-xs text-muted-foreground">WAREHOUSE TOTAL</p><p className="mt-4 text-4xl font-semibold">{items.reduce((sum,item)=>sum+item.quantity,0)}</p><p className="mt-2 text-sm text-muted-foreground">units across {items.length} products</p></section></div><section className="mt-6 overflow-hidden rounded-2xl border border-border bg-card"><div className="border-b border-border px-5 py-4"><b>Live stock adjustments</b></div>{items.map(item=><div key={item.id} className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><b className="text-sm">{item.name}</b><p className="mt-1 text-xs text-muted-foreground">{item.category} · {item.id}</p></div><div className="flex items-center gap-4"><Status>{item.quantity===0?"Out of stock":item.quantity<=8?"Low stock":"Active"}</Status><div className="flex h-9 items-center rounded-xl border border-border"><button aria-label={`Decrease ${item.name} stock`} onClick={()=>setAdjustment({item,delta:-1})} disabled={item.quantity===0} className="grid h-full w-9 place-items-center disabled:opacity-30"><Minus size={14}/></button><span className="w-9 text-center text-sm font-semibold">{item.quantity}</span><button aria-label={`Increase ${item.name} stock`} onClick={()=>setAdjustment({item,delta:1})} className="grid h-full w-9 place-items-center"><Plus size={14}/></button></div></div></div>)}</section><section className="mt-6 overflow-hidden rounded-2xl border border-border bg-card"><div className="border-b border-border px-5 py-4"><b>Recent inventory activity</b><p className="mt-1 text-xs text-muted-foreground">A traceable ledger of manual, checkout, cancellation, and refund stock changes.</p></div>{movements.length===0?<p className="p-5 text-sm text-muted-foreground">No stock movements recorded yet.</p>:movements.map(move=><div key={move.id} className="grid gap-2 border-b border-border px-5 py-4 text-sm sm:grid-cols-[1fr_auto_auto]"><div><b>{items.find(item=>item.id===move.product_id)?.name??move.product_id}</b><p className="mt-1 text-xs text-muted-foreground">{move.reason}</p></div><b className={move.quantity_delta>0?"text-emerald-700":"text-amber-700"}>{move.quantity_delta>0?"+":""}{move.quantity_delta} units</b><time className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("en-PH",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Manila"}).format(new Date(move.created_at))}</time></div>)}</section>{adjustment&&<div className="fixed inset-0 z-[90] grid place-items-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="stock-adjust-title"><div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl"><h3 id="stock-adjust-title" className="text-xl font-semibold">{adjustment.delta>0?"Add":"Remove"} one unit</h3><p className="mt-2 text-sm text-muted-foreground">{adjustment.item.name} · Current stock {adjustment.item.quantity}</p><label className="mt-5 block text-sm font-semibold" htmlFor="inventory-reason">Reason</label><input id="inventory-reason" autoFocus value={reason} onChange={event=>setReason(event.target.value)} placeholder="e.g. Physical stock count" className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"/><div className="mt-5 flex justify-end gap-3"><button onClick={()=>{setAdjustment(null);setReason("");}} className="rounded-xl border border-border px-4 py-2.5 font-semibold">Cancel</button><button onClick={()=>void adjust()} className="rounded-xl bg-foreground px-4 py-2.5 font-semibold text-background">Confirm adjustment</button></div></div></div>}{notice&&<Toast message={notice} close={()=>setNotice("")}/>}</AdminShell>;
+  const [adjusting, setAdjusting] = useState(false);
+  const [movements, setMovements] = useState<Array<{
+    id: number;
+    product_id: string;
+    previous_quantity: number;
+    new_quantity: number;
+    quantity_delta: number;
+    reason: string;
+    created_at: string;
+  }>>([]);
+  const items = adminProducts.map((product): ManagedProduct => ({
+    id: product.id,
+    name: product.name,
+    description: product.description,
+    category: product.category,
+    subcategory: product.subcategory ?? subcategoryFor(product.id),
+    price: product.price,
+    quantity: product.stockQuantity ?? 0,
+    status: product.status === "draft" ? "Draft" : product.status === "inactive" ? "Inactive" : "Active",
+    images: product.images,
+    main: product.mainImageIndex ?? 0,
+    material: product.material ?? "",
+    dimensions: product.dimensions,
+  }));
+  const low = items.filter((item) => item.quantity <= 8);
+  const liveAdjustmentItem = adjustment
+    ? items.find((item) => item.id === adjustment.item.id) ?? adjustment.item
+    : null;
+  const parsedUnits = Number(adjustmentUnits);
+  const validUnits = Number.isInteger(parsedUnits) && parsedUnits > 0;
+  const removalExceedsStock = Boolean(
+    adjustment?.direction === -1
+      && liveAdjustmentItem
+      && validUnits
+      && parsedUnits > liveAdjustmentItem.quantity,
+  );
+  const resultingStock = liveAdjustmentItem && adjustment && validUnits
+    ? liveAdjustmentItem.quantity + adjustment.direction * parsedUnits
+    : liveAdjustmentItem?.quantity ?? 0;
+
+  const loadMovements = useCallback(async () => {
+    const { data } = await supabase
+      .from("inventory_movements")
+      .select("id,product_id,previous_quantity,new_quantity,quantity_delta,reason,created_at")
+      .order("created_at", { ascending: false })
+      .limit(12);
+    setMovements((data ?? []) as typeof movements);
+  }, []);
+
+  useEffect(() => {
+    void loadMovements();
+    const channel = supabase
+      .channel("admin-inventory-ledger")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inventory_movements" },
+        () => void loadMovements(),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadMovements]);
+
+  const openAdjustment = (item: ManagedProduct, direction: -1 | 1) => {
+    setAdjustment({ item, direction });
+    setAdjustmentUnits("1");
+    setReason("");
+  };
+
+  const closeAdjustment = () => {
+    setAdjustment(null);
+    setAdjustmentUnits("1");
+    setReason("");
+  };
+
+  const adjust = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!adjustment || !liveAdjustmentItem) return;
+    if (!validUnits) {
+      setNotice("Enter a whole number of units greater than zero.");
+      return;
+    }
+    if (removalExceedsStock) {
+      setNotice(`You can remove at most ${liveAdjustmentItem.quantity} units from this product.`);
+      return;
+    }
+    if (reason.trim().length < 3) {
+      setNotice("Add a short reason for this stock adjustment.");
+      return;
+    }
+
+    const delta = adjustment.direction * parsedUnits;
+    setAdjusting(true);
+    const { error } = await supabase.rpc("adjust_product_inventory", {
+      p_product_id: liveAdjustmentItem.id,
+      p_delta: delta,
+      p_reason: reason.trim(),
+    });
+    setAdjusting(false);
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
+    setNotice(
+      `${liveAdjustmentItem.name}: ${Math.abs(delta)} ${Math.abs(delta) === 1 ? "unit" : "units"} ${delta > 0 ? "added" : "removed"}.`,
+    );
+    closeAdjustment();
+    await loadMovements();
+  };
+
+  return (
+    <AdminShell title="Inventory">
+      <div className="flex justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LIVE STOCK CONTROL</p>
+          <h2 className="mt-2 text-3xl font-semibold">Inventory board</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Every adjustment updates the customer storefront immediately and is recorded below.</p>
+        </div>
+      </div>
+
+      <div className="mt-7 grid gap-4 lg:grid-cols-[1fr_.8fr]">
+        <section className="rounded-2xl bg-[#282522] p-6 text-white">
+          <p className="text-[10px] font-bold tracking-[.16em] text-[#d8c7b0]">REORDER FOCUS</p>
+          <p className="mt-4 font-serif text-4xl">{low.length} pieces need attention.</p>
+          <p className="mt-3 text-sm text-white/65">Products at eight units or below are marked low stock in the shop.</p>
+        </section>
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <p className="text-xs text-muted-foreground">WAREHOUSE TOTAL</p>
+          <p className="mt-4 text-4xl font-semibold">{items.reduce((sum, item) => sum + item.quantity, 0)}</p>
+          <p className="mt-2 text-sm text-muted-foreground">units across {items.length} products</p>
+        </section>
+      </div>
+
+      <section className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <b>Live stock adjustments</b>
+          <p className="mt-1 text-xs text-muted-foreground">Add or remove any number of units in one recorded adjustment.</p>
+        </div>
+        {items.map((item) => (
+          <div key={item.id} className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <b className="text-sm">{item.name}</b>
+              <p className="mt-1 text-xs text-muted-foreground">{item.category} · {item.id}</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <Status>{item.quantity === 0 ? "Out of stock" : item.quantity <= 8 ? "Low stock" : "Active"}</Status>
+              <div className="flex h-9 items-center rounded-xl border border-border">
+                <button
+                  type="button"
+                  aria-label={`Remove units from ${item.name}`}
+                  title="Remove multiple units"
+                  onClick={() => openAdjustment(item, -1)}
+                  disabled={item.quantity === 0}
+                  className="grid h-full w-9 place-items-center disabled:opacity-30"
+                >
+                  <Minus size={14}/>
+                </button>
+                <span className="min-w-10 px-1 text-center text-sm font-semibold">{item.quantity}</span>
+                <button
+                  type="button"
+                  aria-label={`Add units to ${item.name}`}
+                  title="Add multiple units"
+                  onClick={() => openAdjustment(item, 1)}
+                  className="grid h-full w-9 place-items-center"
+                >
+                  <Plus size={14}/>
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <b>Recent inventory activity</b>
+          <p className="mt-1 text-xs text-muted-foreground">A traceable ledger of manual, checkout, cancellation, and refund stock changes.</p>
+        </div>
+        {movements.length === 0 ? (
+          <p className="p-5 text-sm text-muted-foreground">No stock movements recorded yet.</p>
+        ) : movements.map((movement) => (
+          <div key={movement.id} className="grid gap-2 border-b border-border px-5 py-4 text-sm sm:grid-cols-[1fr_auto_auto]">
+            <div>
+              <b>{items.find((item) => item.id === movement.product_id)?.name ?? movement.product_id}</b>
+              <p className="mt-1 text-xs text-muted-foreground">{movement.reason}</p>
+            </div>
+            <b className={movement.quantity_delta > 0 ? "text-emerald-700" : "text-amber-700"}>
+              {movement.quantity_delta > 0 ? "+" : ""}{movement.quantity_delta} units
+            </b>
+            <time className="text-xs text-muted-foreground">
+              {new Intl.DateTimeFormat("en-PH", {
+                dateStyle: "medium",
+                timeStyle: "short",
+                timeZone: "Asia/Manila",
+              }).format(new Date(movement.created_at))}
+            </time>
+          </div>
+        ))}
+      </section>
+
+      {adjustment && liveAdjustmentItem && (
+        <div className="fixed inset-0 z-[90] grid place-items-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="stock-adjust-title">
+          <form onSubmit={adjust} className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl sm:p-7">
+            <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">INVENTORY ADJUSTMENT</p>
+            <h3 id="stock-adjust-title" className="mt-2 text-2xl font-semibold">
+              {adjustment.direction > 0 ? "Add stock" : "Remove stock"}
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">{liveAdjustmentItem.name} · Current stock {liveAdjustmentItem.quantity}</p>
+
+            <label className="mt-6 block text-sm font-semibold" htmlFor="inventory-units">Number of units</label>
+            <input
+              id="inventory-units"
+              autoFocus
+              required
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={adjustment.direction < 0 ? liveAdjustmentItem.quantity : undefined}
+              step={1}
+              value={adjustmentUnits}
+              onChange={(event) => setAdjustmentUnits(event.target.value.replace(/[^0-9]/g, ""))}
+              className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-lg font-semibold"
+            />
+            {removalExceedsStock && (
+              <p className="mt-2 text-xs font-semibold text-[#9a493f]" role="alert">Only {liveAdjustmentItem.quantity} units are currently available to remove.</p>
+            )}
+
+            <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl bg-secondary p-4 text-center">
+              <div><p className="text-[9px] font-bold tracking-[.12em] text-muted-foreground">CURRENT</p><p className="mt-1 text-lg font-semibold">{liveAdjustmentItem.quantity}</p></div>
+              <div><p className="text-[9px] font-bold tracking-[.12em] text-muted-foreground">CHANGE</p><p className="mt-1 text-lg font-semibold">{validUnits ? `${adjustment.direction > 0 ? "+" : "−"}${parsedUnits}` : "—"}</p></div>
+              <div><p className="text-[9px] font-bold tracking-[.12em] text-muted-foreground">NEW STOCK</p><p className="mt-1 text-lg font-semibold">{validUnits && !removalExceedsStock ? resultingStock : "—"}</p></div>
+            </div>
+
+            <label className="mt-5 block text-sm font-semibold" htmlFor="inventory-reason">Reason</label>
+            <input
+              id="inventory-reason"
+              required
+              minLength={3}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="e.g. New warehouse delivery"
+              className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3"
+            />
+            <p className="mt-2 text-[10px] text-muted-foreground">One reason will be recorded for this complete adjustment.</p>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" onClick={closeAdjustment} disabled={adjusting} className="rounded-xl border border-border px-4 py-2.5 font-semibold disabled:opacity-50">Cancel</button>
+              <button
+                type="submit"
+                disabled={adjusting || !validUnits || removalExceedsStock || reason.trim().length < 3}
+                className="rounded-xl bg-foreground px-5 py-2.5 font-semibold text-background disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {adjusting ? "Saving adjustment…" : `${adjustment.direction > 0 ? "Add" : "Remove"} ${validUnits ? parsedUnits : ""} ${parsedUnits === 1 ? "unit" : "units"}`}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {notice && <Toast message={notice} close={() => setNotice("")}/>}
+    </AdminShell>
+  );
 }
 
 export function CategoriesPage() {
