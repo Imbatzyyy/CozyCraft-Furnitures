@@ -685,6 +685,9 @@ export function Checkout() {
   const [payment, setPayment] = useState("cod");
   const [notice, setNotice] = useState("");
   const [placing, setPlacing] = useState(false);
+  const [paymentHandoff, setPaymentHandoff] = useState<
+    "preparing" | "redirecting" | null
+  >(null);
   const [deliveryAreas, setDeliveryAreas] = useState<DeliveryServiceArea[]>(
     DEFAULT_DELIVERY_SERVICE_AREAS,
   );
@@ -832,6 +835,65 @@ export function Checkout() {
     );
   }
   if (!user) return <Account mode="login" />;
+  if (paymentHandoff) {
+    const payingWithGcash = payment === "gcash";
+    return (
+      <main
+        className="fixed inset-0 z-[300] grid min-h-[100dvh] place-items-center overflow-y-auto bg-[#f5f2ec] px-5 py-10"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <section className="w-full max-w-[520px] overflow-hidden rounded-[2rem] border border-[#ded7cc] bg-white text-center shadow-[0_28px_80px_rgba(41,38,34,.14)]">
+          <div className="bg-[#292622] px-7 py-9 text-[#f7f3eb]">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-white/15 bg-white/10">
+              <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-white/25 border-t-white" />
+            </div>
+            <p className="mt-6 text-[10px] font-bold tracking-[.2em] text-white/60">
+              SECURE PAYMENT HANDOFF
+            </p>
+            <h1 className="mt-3 font-serif text-3xl sm:text-4xl">
+              {paymentHandoff === "redirecting"
+                ? "PayMongo is ready."
+                : "Connecting securely to PayMongo."}
+            </h1>
+          </div>
+          <div className="px-6 py-7 sm:px-9">
+            <p className="mx-auto max-w-[390px] text-sm leading-6 text-muted-foreground">
+              Please keep this window open while we reserve your pieces and
+              prepare your secure {payingWithGcash ? "GCash" : "card"} checkout.
+            </p>
+            <div className="mt-6 grid grid-cols-3 gap-2" aria-hidden="true">
+              {["Validate", "Reserve", "Redirect"].map((label, index) => (
+                <div key={label} className="min-w-0">
+                  <span
+                    className={`mx-auto grid h-7 w-7 place-items-center rounded-full text-[10px] font-bold ${
+                      paymentHandoff === "redirecting" || index < 2
+                        ? "bg-[#292622] text-white"
+                        : "bg-[#ece7df] text-[#777169]"
+                    }`}
+                  >
+                    {paymentHandoff === "redirecting" || index < 2 ? (
+                      <Check size={13} />
+                    ) : (
+                      index + 1
+                    )}
+                  </span>
+                  <span className="mt-2 block truncate text-[9px] font-bold tracking-[.08em] text-muted-foreground">
+                    {label.toUpperCase()}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-7 flex items-center justify-center gap-2 rounded-xl bg-[#e7efe3] px-4 py-3 text-xs font-semibold text-[#56714f]">
+              <ShieldCheck size={16} />
+              Your payment details are entered only on PayMongo.
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
   if (completed)
     return (
       <Layout>
@@ -1155,21 +1217,44 @@ export function Checkout() {
                     setNotice("No payment method is currently available for this order.");
                     return;
                   }
+                  const usesPayMongo = payment === "card" || payment === "gcash";
+                  setNotice("");
                   setPlacing(true);
-                  const result = await placeOrder(
-                    chosen.id,
-                    payment,
-                    requestedIds,
-                  );
-                  setPlacing(false);
+                  if (usesPayMongo) setPaymentHandoff("preparing");
+                  let result;
+                  try {
+                    result = await placeOrder(
+                      chosen.id,
+                      payment,
+                      requestedIds,
+                    );
+                  } catch (error) {
+                    setPaymentHandoff(null);
+                    setPlacing(false);
+                    setNotice(
+                      error instanceof Error
+                        ? error.message
+                        : "Unable to start secure payment. Please try again.",
+                    );
+                    return;
+                  }
                   if (result.error) {
+                    setPaymentHandoff(null);
+                    setPlacing(false);
                     setNotice(result.error);
                     return;
                   }
                   if (result.checkoutUrl) {
-                    window.location.assign(result.checkoutUrl);
+                    setPaymentHandoff("redirecting");
+                    // Let React paint the final handoff state before leaving
+                    // CozyCraft. This avoids flashing the now-empty cart while
+                    // the browser opens the external payment gateway.
+                    window.requestAnimationFrame(() => {
+                      window.location.assign(result.checkoutUrl!);
+                    });
                     return;
                   }
+                  setPlacing(false);
                   setCompleted({
                     id: result.id ?? crypto.randomUUID(),
                     orderNumber:

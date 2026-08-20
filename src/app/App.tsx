@@ -1336,25 +1336,11 @@ function App() {
           error: message,
         };
       }
-      if (userId && remainingCart.length) {
-        await supabase.from("cart_items").upsert(
-          remainingCart.map((item) => ({
-            user_id: userId,
-            product_id: item.id,
-            quantity: item.quantity,
-            selected_for_checkout: item.selectedForCheckout,
-          })),
-          { onConflict: "user_id,product_id" },
-        );
-      }
-      setCart(remainingCart);
+      // The protected place_order RPC removes only the submitted cart lines
+      // and reserves inventory atomically. Do not block the PayMongo handoff
+      // with redundant cart writes, catalog refreshes, or email delivery.
+      // Realtime subscriptions reconcile the local stores in the background.
       window.sessionStorage.removeItem(checkoutStorageKey);
-      await Promise.all([refreshOrders(), refreshProducts()]);
-      if (data.orderId) {
-        await supabase.functions.invoke("send-transactional-email", {
-          body: { eventType: "order_confirmation", orderId: data.orderId },
-        });
-      }
       return {
         id: data.orderId ?? null,
         orderNumber: data.orderNumber ?? null,

@@ -104,22 +104,27 @@ Deno.serve(async (request) => {
     if (error) return json(request, { error: error.message }, 400);
     orderId = data as string;
 
-    const { data: existingTransaction } = await adminClient
-      .from("payment_transactions")
-      .select("checkout_url,status")
-      .eq("order_id", orderId)
-      .maybeSingle();
+    // These reads are independent once the atomic order reservation returns.
+    // Running them together removes one database round-trip from every online
+    // checkout without weakening inventory or idempotency guarantees.
+    const [existingTransactionResult, orderResult] = await Promise.all([
+      adminClient
+        .from("payment_transactions")
+        .select("checkout_url,status")
+        .eq("order_id", orderId)
+        .maybeSingle(),
+      adminClient
+        .from("orders")
+        .select("id,order_number,total,shipping_address,order_items(product_name,unit_price,quantity)")
+        .eq("id", orderId)
+        .eq("user_id", user.id)
+        .single(),
+    ]);
+    const { data: existingTransaction } = existingTransactionResult;
+    const { data: order, error: orderError } = orderResult;
     if (existingTransaction?.checkout_url && existingTransaction.status === "pending") {
-      const { data: existingOrder } = await adminClient.from("orders").select("order_number").eq("id", orderId).single();
-      return json(request, { orderId, orderNumber: existingOrder?.order_number ?? null, checkoutUrl: existingTransaction.checkout_url, reused: true });
+      return json(request, { orderId, orderNumber: order?.order_number ?? null, checkoutUrl: existingTransaction.checkout_url, reused: true });
     }
-
-    const { data: order, error: orderError } = await adminClient
-      .from("orders")
-      .select("id,order_number,total,shipping_address,order_items(product_name,unit_price,quantity)")
-      .eq("id", orderId)
-      .eq("user_id", user.id)
-      .single();
     if (orderError || !order) throw new Error("The reserved order could not be loaded.");
 
     const lineItems = order.order_items.map((item: { product_name: string; unit_price: number; quantity: number }) => ({
@@ -170,6 +175,7 @@ Deno.serve(async (request) => {
           },
         },
       }),
+      signal: AbortSignal.timeout(20_000),
     });
     const paymongoBody = await paymongoResponse.json();
     if (!paymongoResponse.ok) {
@@ -191,6 +197,14 @@ Deno.serve(async (request) => {
       raw_payload: session,
     });
     if (transactionError) throw transactionError;
+
+    // Email delivery must never delay the customer-facing redirect. The edge
+    // runtime keeps this background task alive after the response is returned.
+    EdgeRuntime.waitUntil(
+      adminClient.functions.invoke("send-transactional-email", {
+        body: { eventType: "order_confirmation", orderId: order.id },
+      }).then(() => undefined),
+    );
 
     return json(request, {
       orderId: order.id,
