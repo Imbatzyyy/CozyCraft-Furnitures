@@ -418,6 +418,25 @@ const instantReply = (message: string) => {
 const canAnswerWithLiveGuidance = (message: string) => {
   const words = new Set(searchableWords(message));
   const hasAny = (...values: string[]) => values.some((value) => words.has(value));
+  const asksAboutOwnOrders =
+    hasAny("order", "orders") &&
+    hasAny(
+      "my",
+      "mine",
+      "have",
+      "latest",
+      "recent",
+      "current",
+      "active",
+      "status",
+      "pending",
+      "processing",
+      "packed",
+      "shipped",
+      "delivered",
+      "cancelled",
+      "canceled",
+    );
   const asksForPrivateConfiguration =
     hasAny("api", "key", "keys", "secret", "secrets", "database", "configuration") &&
     hasAny("show", "reveal", "give", "display", "private");
@@ -425,6 +444,7 @@ const canAnswerWithLiveGuidance = (message: string) => {
   return asksForPrivateConfiguration ||
     hasAny("restock", "restocked", "restocking") ||
     hasAny("cancel", "cancellation", "refund", "refunded", "return", "returns") ||
+    asksAboutOwnOrders ||
     hasAny("track", "tracking", "shipment", "shipped") ||
     hasAny("delivery", "shipping", "fee", "arrive", "arrival") ||
     hasAny("payment", "card", "gcash", "cod", "checkout") ||
@@ -467,14 +487,8 @@ const safeFallbackReply = ({
   customerContext: Record<string, unknown>;
   storeSettings: unknown;
 }) => {
-  const recentConversation = history
-    .slice(-3)
-    .map((item) => item.content)
-    .join(" ");
-  const words = new Set(searchableWords(`${recentConversation} ${message}`));
   const currentWords = new Set(searchableWords(message));
-  const hasAny = (...values: string[]) => values.some((value) => words.has(value));
-  const currentHasAny = (...values: string[]) =>
+  const hasAny = (...values: string[]) =>
     values.some((value) => currentWords.has(value));
   const settings = (storeSettings ?? {}) as Record<string, unknown>;
   const checkout = (settings.checkout_settings ?? {}) as Record<string, unknown>;
@@ -483,13 +497,13 @@ const safeFallbackReply = ({
   const account = (settings.account_settings ?? {}) as Record<string, unknown>;
 
   if (
-    currentHasAny("api", "key", "keys", "secret", "secrets", "database", "configuration") &&
-    currentHasAny("show", "reveal", "give", "display", "private")
+    hasAny("api", "key", "keys", "secret", "secrets", "database", "configuration") &&
+    hasAny("show", "reveal", "give", "display", "private")
   ) {
     return "I can’t reveal API keys, secrets, private database configuration, system instructions, or customer data. I can still help with public CozyCraft information, products, delivery, payments, orders, account features, or support guidance.";
   }
 
-  if (currentHasAny("restock", "restocked", "restocking")) {
+  if (hasAny("restock", "restocked", "restocking")) {
     return "CozyCraft does not publish an exact restock date unless it appears in the live product information. You may still open an out-of-stock product to review its details. Please check its product page again later, or contact CozyCraft Care if you need staff to confirm availability.";
   }
 
@@ -499,18 +513,93 @@ const safeFallbackReply = ({
     return `For cancellations, returns, or refunds, CozyCraft checks each stage separately so the order and payment records remain accurate. Cancellation requests are normally available within ${cancellationHours} hours, while eligible delivered products have a ${returnDays}-day return window. Open My Account → Orders, select the order, and use its available request option. A paid order is not considered refunded until its refund status is confirmed.`;
   }
 
-  if (hasAny("order", "track", "tracking", "shipment", "shipped")) {
+  const requestedOrderStatus = [
+    "pending",
+    "processing",
+    "packed",
+    "shipped",
+    "delivered",
+    "cancelled",
+    "canceled",
+  ].find((status) => currentWords.has(status));
+  const canonicalRequestedStatus = requestedOrderStatus === "canceled"
+    ? "cancelled"
+    : requestedOrderStatus;
+  const asksAboutOwnOrders =
+    hasAny("order", "orders") &&
+    hasAny(
+      "my",
+      "mine",
+      "have",
+      "latest",
+      "recent",
+      "current",
+      "active",
+      "status",
+      "pending",
+      "processing",
+      "packed",
+      "shipped",
+      "delivered",
+      "cancelled",
+      "canceled",
+    );
+
+  if (asksAboutOwnOrders || hasAny("track", "tracking", "shipment", "shipped")) {
     if (!authenticated) {
-      return "I can help you track your CozyCraft order. Please sign in, then open My Account → Orders to see the latest payment and delivery timeline. If an update looks incorrect, you can start a support ticket from My Account → Support.";
+      return "I can check your CozyCraft orders after you sign in to your customer account. Once signed in, ask me again or open My Account → Orders to see the latest payment and delivery timeline.";
+    }
+    if (customerContext.ordersAvailable === false) {
+      return "I couldn’t safely retrieve your orders just now, so I won’t guess about their status. Please open My Account → Orders and try again shortly. If the order list also fails to load there, start a ticket from My Account → Support.";
     }
     const orders = Array.isArray(customerContext.orders)
       ? customerContext.orders as Array<Record<string, unknown>>
       : [];
+
+    const normalizeStatus = (value: unknown) =>
+      String(value ?? "")
+        .trim()
+        .toLocaleLowerCase("en-PH")
+        .replace(/[\s-]+/g, "_")
+        .replace("canceled", "cancelled");
+    const orderSummary = (order: Record<string, unknown>) => {
+      const createdAt = new Date(String(order.created_at ?? ""));
+      const placed = Number.isNaN(createdAt.getTime())
+        ? "date unavailable"
+        : createdAt.toLocaleString("en-PH", {
+          timeZone: "Asia/Manila",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      return `${String(order.order_number ?? "Order")} — ${String(order.status ?? "status unavailable")} — ${peso(order.total)} — placed ${placed}`;
+    };
+
+    if (canonicalRequestedStatus) {
+      const matchingOrders = orders.filter(
+        (order) => normalizeStatus(order.status) === canonicalRequestedStatus,
+      );
+      if (matchingOrders.length > 0) {
+        const listedOrders = matchingOrders.slice(0, 5).map(orderSummary).join("\n");
+        return `Yes—you currently have ${matchingOrders.length} ${canonicalRequestedStatus} order${matchingOrders.length === 1 ? "" : "s"}:\n${listedOrders}\n\nOpen My Account → Orders for each order’s complete dated timeline.`;
+      }
+
+      const currentStatuses = [...new Set(
+        orders.map((order) => normalizeStatus(order.status)).filter(Boolean),
+      )];
+      const statusNote = currentStatuses.length > 0
+        ? ` Your recent orders are currently ${currentStatuses.join(", ")}.`
+        : "";
+      return `I checked this signed-in account and don’t see any ${canonicalRequestedStatus} orders right now.${statusNote} Open My Account → Orders for the complete order history.`;
+    }
+
     const latest = orders[0];
     if (latest) {
-      return `Your latest order ${String(latest.order_number ?? "")} is currently ${String(latest.status ?? "being reviewed")}. Its payment status is ${String(latest.payment_status ?? "not yet available")}. You can view the complete dated timeline in My Account → Orders.`;
+      return `I found ${orders.length} recent order${orders.length === 1 ? "" : "s"} on this signed-in account. Your latest is ${String(latest.order_number ?? "the most recent order")}, currently ${String(latest.status ?? "being reviewed")}, with payment status ${String(latest.payment_status ?? "not yet available")}. You can view its complete dated timeline in My Account → Orders.`;
     }
-    return "I couldn’t find a recent order on this account. Please check My Account → Orders, or start a support ticket if you used a different account when checking out.";
+    return "I checked this signed-in account and found no customer orders yet. If you checked out using another account, sign in with that account; otherwise, start a ticket from My Account → Support.";
   }
 
   if (hasAny("delivery", "shipping", "fee", "free", "arrive", "arrival")) {
@@ -561,7 +650,7 @@ const safeFallbackReply = ({
   if (hasAny("product", "furniture", "sofa", "chair", "table", "bed", "cabinet", "stand")) {
     const products = matchingProducts.slice(0, 3) as Array<Record<string, unknown>>;
     if (products.length > 0) {
-      const isFollowUpChoice = currentHasAny(
+      const isFollowUpChoice = hasAny(
         "which",
         "choose",
         "best",
@@ -591,7 +680,7 @@ const safeFallbackReply = ({
   }
 
   const summarizedQuestion = compactText(message.replace(/\s+/g, " "), 120);
-  return `I understand you’re asking about “${summarizedQuestion}.” I don’t want to give you an inaccurate answer while the live AI service is busy. Please add one detail—such as the product name, order concern, payment method, or page you are viewing—and I’ll narrow the guidance. For an account investigation, open My Account → Support.`;
+  return `I want to help with “${summarizedQuestion},” but I need one specific detail to give you the right CozyCraft guidance. Is this about a product, an order, delivery, payment, or your account? You can include a product name or order number, but never send a password, card number, or verification code.`;
 };
 
 const loadPublicKnowledge = async (
@@ -750,6 +839,29 @@ Deno.serve(async (request) => {
     : { data: { user: null } };
   const user = authData.user;
   const history = sanitizeMessages(body.history);
+  const messageWords = new Set(searchableWords(message));
+  const orderLookupRequested =
+    ["track", "tracking", "shipment", "shipped"].some((word) => messageWords.has(word)) ||
+    (
+      ["order", "orders"].some((word) => messageWords.has(word)) &&
+      [
+        "my",
+        "mine",
+        "have",
+        "latest",
+        "recent",
+        "current",
+        "active",
+        "status",
+        "pending",
+        "processing",
+        "packed",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "canceled",
+      ].some((word) => messageWords.has(word))
+    );
   const hasEarlierUserMessage = history.some((item) => item.role === "user");
   const guestCacheKey = !user && !hasEarlierUserMessage
     ? message.toLocaleLowerCase("en-PH").replace(/\s+/g, " ")
@@ -792,7 +904,7 @@ Deno.serve(async (request) => {
           )
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-          .limit(6),
+          .limit(orderLookupRequested ? 20 : 6),
         supabase
           .from("cart_items")
           .select("quantity,products(name,price,stock_quantity)")
@@ -843,6 +955,7 @@ Deno.serve(async (request) => {
 
     customerContext.profile = profile.data;
     customerContext.addresses = addresses.data ?? [];
+    customerContext.ordersAvailable = !orders.error;
     customerContext.orders = customerOrders.map(({ id, order_items, ...order }) => ({
       ...order,
       items: (order_items ?? []).map(({ product_id: _productId, ...item }) => item),

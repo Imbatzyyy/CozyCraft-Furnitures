@@ -1075,10 +1075,16 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
     setMessages((current) => [...current, { from: "you", text: message }]);
 
     try {
-      const invokeAssistant = () =>
-        supabase.functions.invoke("cozycraft-assistant", {
+      const invokeAssistant = async () => {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+        return supabase.functions.invoke("cozycraft-assistant", {
           body: { message, history },
+          headers: accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : undefined,
         });
+      };
 
       let response = await invokeAssistant();
       if (response.error) {
