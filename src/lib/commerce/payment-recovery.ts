@@ -11,6 +11,18 @@ const keyPrefix = "cozycraft-pending-payment";
 export const pendingPaymentRecoveryKey = (userId: string) =>
   `${keyPrefix}:${userId}`;
 
+export const pendingPaymentOrderUrl = (orderId: string) =>
+  `/profile?tab=orders&order=${encodeURIComponent(orderId)}`;
+
+export const replaceCheckoutHistoryWithPaymentRecovery = (
+  history: Pick<History, "state" | "replaceState">,
+  orderId: string,
+) => {
+  const recoveryUrl = pendingPaymentOrderUrl(orderId);
+  history.replaceState(history.state, "", recoveryUrl);
+  return recoveryUrl;
+};
+
 export const isRecoverablePendingPayment = (
   order: DbOrder,
   now = Date.now(),
@@ -65,4 +77,3 @@ export const clearPendingPaymentRecovery = (
   storage: Pick<Storage, "removeItem">,
   userId: string,
 ) => storage.removeItem(pendingPaymentRecoveryKey(userId));
-

@@ -117,6 +117,7 @@ import {
   clearPendingPaymentRecovery,
   isRecoverablePendingPayment,
   readPendingPaymentRecovery,
+  type PendingPaymentRecovery,
 } from "@/lib/commerce/payment-recovery";
 
 type PsgcRegion = {
@@ -665,17 +666,18 @@ export function Profile() {
     cancelOrder,
   } = useStore();
   const nav = useNavigate();
+  const location = useLocation();
   const passwordMinimum = storeSettings.account_settings.password_minimum_length;
   const [tab, setTab] = useState("Profile");
   const requestedOrderId = useMemo(
-    () => new URLSearchParams(window.location.search).get("order") ?? "",
-    [],
+    () => new URLSearchParams(location.search).get("order") ?? "",
+    [location.search],
   );
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("tab")?.toLowerCase();
+    const requested = new URLSearchParams(location.search).get("tab")?.toLowerCase();
     const matching = ["Profile","Orders","Addresses","Payments","Change password","Support"].find((item)=>item.toLowerCase().replace(/\s+/g,"-")===requested || item.toLowerCase()===requested);
     if (matching) setTab(matching);
-  }, []);
+  }, [location.search]);
   const [notice, setNotice] = useState("");
   const emptyBilling = useMemo<DbBillingProfile>(() => ({
     user_id: userId ?? "", recipient_name: user ?? "", company_name: "", tax_id: "",
@@ -700,6 +702,8 @@ export function Profile() {
   const [orderFilter, setOrderFilter] = useState("all");
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [paymentClock, setPaymentClock] = useState(() => Date.now());
+  const [pendingPaymentRecovery, setPendingPaymentRecovery] =
+    useState<PendingPaymentRecovery | null>(null);
   const [resumingPaymentId, setResumingPaymentId] = useState<string | null>(null);
   const [paymentRecoveryError, setPaymentRecoveryError] = useState("");
   const [returnRequests, setReturnRequests] = useState<Array<{ id:string; order_id:string; return_number:string; reason:string; details:string; status:string; admin_note:string|null; created_at:string }>>([]);
@@ -1073,30 +1077,35 @@ export function Profile() {
       window.localStorage,
       userId,
     );
+    setPendingPaymentRecovery(localRecovery);
     if (!localRecovery) return;
     const matchingOrder = orders.find(
       (order) => order.id === localRecovery.orderId,
     );
     if (matchingOrder && !isRecoverablePendingPayment(matchingOrder)) {
       clearPendingPaymentRecovery(window.localStorage, userId);
+      setPendingPaymentRecovery(null);
     }
   }, [orders, userId]);
   useEffect(() => {
     const hasRecoverablePayment = orders.some(
       (order) => paymentWindowRemaining(order, Date.now()) > 0,
+    ) || Boolean(
+      pendingPaymentRecovery &&
+        Date.parse(pendingPaymentRecovery.expiresAt) > Date.now(),
     );
     setPaymentClock(Date.now());
     if (!hasRecoverablePayment) return;
     const timer = window.setInterval(() => setPaymentClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [orders]);
-  const resumePayment = async (order: DbOrder) => {
+  }, [orders, pendingPaymentRecovery]);
+  const resumePaymentById = async (orderId: string) => {
     if (resumingPaymentId) return;
     setPaymentRecoveryError("");
-    setResumingPaymentId(order.id);
+    setResumingPaymentId(orderId);
     const { data, error } = await supabase.functions.invoke(
       "resume-paymongo-checkout",
-      { body: { orderId: order.id } },
+      { body: { orderId } },
     );
     if (error || data?.error) {
       setPaymentRecoveryError(
@@ -1119,6 +1128,7 @@ export function Profile() {
     }
     window.location.assign(data.checkoutUrl);
   };
+  const resumePayment = (order: DbOrder) => resumePaymentById(order.id);
   useEffect(() => {
     if (!visibleOrders.length) {
       setSelectedOrderId("");
@@ -1134,11 +1144,23 @@ export function Profile() {
     if (!visibleOrders.some((order) => order.id === selectedOrderId)) {
       setSelectedOrderId(visibleOrders[0].id);
     }
-  }, [selectedOrderId, visibleOrders]);
+  }, [requestedOrderId, selectedOrderId, visibleOrders]);
   const selectedOrder =
     visibleOrders.find((order) => order.id === selectedOrderId) ??
     visibleOrders[0] ??
     null;
+  const unloadedPaymentRecovery =
+    pendingPaymentRecovery &&
+    !orders.some((order) => order.id === pendingPaymentRecovery.orderId) &&
+    Date.parse(pendingPaymentRecovery.expiresAt) > paymentClock
+      ? pendingPaymentRecovery
+      : null;
+  const unloadedPaymentRemaining = unloadedPaymentRecovery
+    ? Math.max(
+        0,
+        Date.parse(unloadedPaymentRecovery.expiresAt) - paymentClock,
+      )
+    : 0;
   if (!user) return <Account mode="login" />;
   if (role && role !== "customer") {
     return (
@@ -1762,7 +1784,38 @@ export function Profile() {
                     );
                   })}
                 </div>
-                {!selectedOrder ? (
+                {unloadedPaymentRecovery && (
+                  <section className="mt-5 rounded-2xl border border-[#d8c8ad] bg-[#f7f1e7] p-5 shadow-sm">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold tracking-[.16em] text-[#7b684d]">RESTORING RESERVED ORDER</p>
+                        <h3 className="mt-2 font-serif text-2xl">
+                          #{unloadedPaymentRecovery.orderNumber ?? "Pending payment"}
+                        </h3>
+                        <p className="mt-2 text-xs leading-5 text-[#75654f]">
+                          Your order is saved in Supabase. Its complete details are still loading, but secure payment can continue now.
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
+                        <time className="font-mono text-xl font-semibold tabular-nums text-[#4f4334]" dateTime={unloadedPaymentRecovery.expiresAt}>
+                          {paymentCountdown(unloadedPaymentRemaining)}
+                        </time>
+                        <button
+                          type="button"
+                          onClick={() => void resumePaymentById(unloadedPaymentRecovery.orderId)}
+                          disabled={resumingPaymentId === unloadedPaymentRecovery.orderId}
+                          className="min-h-11 rounded-xl bg-foreground px-5 py-3 text-xs font-semibold text-background disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {resumingPaymentId === unloadedPaymentRecovery.orderId ? "Opening PayMongo…" : "Continue payment"}
+                        </button>
+                      </div>
+                    </div>
+                    {paymentRecoveryError && (
+                      <p className="mt-3 rounded-xl bg-[#f2e4d8] px-3 py-2 text-xs font-semibold text-[#855b45]">{paymentRecoveryError}</p>
+                    )}
+                  </section>
+                )}
+                {!selectedOrder && !unloadedPaymentRecovery ? (
                   <div className="mt-5 rounded-2xl border border-dashed border-border p-8 text-center">
                     <Package className="mx-auto text-muted-foreground" size={23} />
                     <p className="mt-3 text-sm font-semibold">No orders in this status.</p>

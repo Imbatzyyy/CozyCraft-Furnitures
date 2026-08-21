@@ -3,7 +3,9 @@ import type { DbOrder } from "@/services/supabase/client";
 import {
   isRecoverablePendingPayment,
   pendingPaymentRecoveryKey,
+  pendingPaymentOrderUrl,
   readPendingPaymentRecovery,
+  replaceCheckoutHistoryWithPaymentRecovery,
   writePendingPaymentRecovery,
 } from "./payment-recovery";
 
@@ -87,5 +89,20 @@ describe("pending PayMongo recovery", () => {
       pendingPaymentRecoveryKey("user-1"),
     );
   });
-});
 
+  it("synchronously replaces checkout history with the recoverable order", () => {
+    const replaceState = vi.fn();
+    const history = { state: { idx: 4 }, replaceState };
+    expect(
+      replaceCheckoutHistoryWithPaymentRecovery(history, "order / 1"),
+    ).toBe("/profile?tab=orders&order=order%20%2F%201");
+    expect(replaceState).toHaveBeenCalledWith(
+      { idx: 4 },
+      "",
+      "/profile?tab=orders&order=order%20%2F%201",
+    );
+    expect(pendingPaymentOrderUrl("order / 1")).toBe(
+      "/profile?tab=orders&order=order%20%2F%201",
+    );
+  });
+});

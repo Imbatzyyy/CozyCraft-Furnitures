@@ -95,6 +95,11 @@ import {
   toggleComparedProduct,
 } from "@/lib/catalog/compare";
 import { exactStockAvailability } from "@/lib/catalog/stock-availability";
+import {
+  isRecoverablePendingPayment,
+  pendingPaymentOrderUrl,
+  readPendingPaymentRecovery,
+} from "@/lib/commerce/payment-recovery";
 
 
 export type Product = {
@@ -507,7 +512,7 @@ export function Logo({
 }
 
 export function Header({ immersive = false }: { immersive?: boolean }) {
-  const { cart, saved, userId, user, avatar, products, profileUsername, storeSettings } = useStore();
+  const { cart, saved, userId, user, avatar, products, profileUsername, storeSettings, orders } = useStore();
   const nav = useNavigate();
   const location = useLocation();
   const [menu, setMenu] = useState(false);
@@ -516,9 +521,45 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [customerNotifications, setCustomerNotifications] = useState<DbCustomerNotification[]>([]);
   const [scrolled, setScrolled] = useState(false);
+  const [paymentClock, setPaymentClock] = useState(() => Date.now());
   const cartQty = cart.reduce((n, x) => n + x.quantity, 0);
   const profileDisplayName =
     profileUsername.trim() || user?.trim().split(/\s+/)[0] || "Member";
+  const loadedRecoverablePayment = userId
+    ? orders.find((order) =>
+        isRecoverablePendingPayment(order, paymentClock),
+      )
+    : undefined;
+  const localRecoverablePayment = userId
+    ? readPendingPaymentRecovery(window.localStorage, userId, paymentClock)
+    : null;
+  const recoverablePaymentId =
+    loadedRecoverablePayment?.id ?? localRecoverablePayment?.orderId;
+  const recoverablePaymentNumber =
+    loadedRecoverablePayment?.order_number ??
+    localRecoverablePayment?.orderNumber ??
+    "pending order";
+  const recoverablePaymentExpiresAt =
+    loadedRecoverablePayment?.payment_expires_at ??
+    localRecoverablePayment?.expiresAt ??
+    null;
+  const recoverablePaymentSeconds = recoverablePaymentExpiresAt
+    ? Math.max(
+        0,
+        Math.ceil(
+          (Date.parse(recoverablePaymentExpiresAt) - paymentClock) /
+            1000,
+        ),
+      )
+    : 0;
+  const recoverablePaymentTime = `${String(
+    Math.floor(recoverablePaymentSeconds / 60),
+  ).padStart(2, "0")}:${String(recoverablePaymentSeconds % 60).padStart(2, "0")}`;
+  useEffect(() => {
+    if (!recoverablePaymentId) return;
+    const timer = window.setInterval(() => setPaymentClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [recoverablePaymentId]);
   useEffect(() => {
     if (!immersive) return;
     const update = () => setScrolled(window.scrollY > 80);
@@ -714,6 +755,21 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             </button>
           </div>
         </div>
+        {recoverablePaymentId && recoverablePaymentExpiresAt && (
+          <Link
+            to={pendingPaymentOrderUrl(recoverablePaymentId)}
+            className="flex min-h-10 items-center justify-center gap-2 border-t border-[#d8cbb9]/25 bg-[#292622] px-3 py-2 text-center text-[11px] font-semibold text-white"
+          >
+            <span className="h-2 w-2 shrink-0 rounded-full bg-[#c9d9c3]" />
+            <span className="truncate">
+              Payment reserved for order {recoverablePaymentNumber}
+            </span>
+            <time className="shrink-0 rounded-full bg-white/10 px-2 py-1 font-mono text-[10px]" dateTime={recoverablePaymentExpiresAt}>
+              {recoverablePaymentTime}
+            </time>
+            <span className="shrink-0 underline underline-offset-4">Continue</span>
+          </Link>
+        )}
         {menu && (
           <nav
             className={`grid px-5 py-3 md:hidden ${overHero ? "border-t border-white/20 bg-[#1f1e1b]/95 text-white" : "border-t border-border bg-background"}`}

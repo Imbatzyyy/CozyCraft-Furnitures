@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -92,9 +93,12 @@ import {
 import { getDeliveryServiceAreas } from "@/services/catalog/experience.service";
 import {
   isRecoverablePendingPayment,
+  pendingPaymentOrderUrl,
   readPendingPaymentRecovery,
+  replaceCheckoutHistoryWithPaymentRecovery,
   writePendingPaymentRecovery,
 } from "@/lib/commerce/payment-recovery";
+import { findPendingPaymentRecovery } from "@/services/commerce/payment-recovery.service";
 
 import {
   Product,
@@ -128,6 +132,70 @@ import {
 import { Account } from "@/app/features/storefront/authentication/CustomerAuth";
 import { AddressManager } from "@/app/features/storefront/account/CustomerAccount";
 
+function usePendingPaymentRedirect({
+  enabled,
+  userId,
+  orders,
+  refreshOrders,
+}: {
+  enabled: boolean;
+  userId: string | null;
+  orders: DbOrder[];
+  refreshOrders: () => Promise<string | null>;
+}) {
+  const nav = useNavigate();
+  const attemptedForUser = useRef<string | null>(null);
+  const [checking, setChecking] = useState(
+    () => enabled && Boolean(userId),
+  );
+
+  useEffect(() => {
+    if (!enabled || !userId) return;
+    const localRecovery = readPendingPaymentRecovery(
+      window.localStorage,
+      userId,
+    );
+    const loadedRecovery = orders.find((order) =>
+      isRecoverablePendingPayment(order),
+    );
+    const recoveryOrderId = localRecovery?.orderId ?? loadedRecovery?.id;
+    if (recoveryOrderId) {
+      nav(pendingPaymentOrderUrl(recoveryOrderId), { replace: true });
+    }
+  }, [enabled, nav, orders, userId]);
+
+  useEffect(() => {
+    if (!enabled || !userId) {
+      setChecking(false);
+      return;
+    }
+    if (attemptedForUser.current === userId) return;
+    attemptedForUser.current = userId;
+    setChecking(true);
+    let active = true;
+
+    void findPendingPaymentRecovery(userId).then(async ({ recovery }) => {
+      if (!active) return;
+      if (recovery) {
+        writePendingPaymentRecovery(window.localStorage, userId, recovery);
+        nav(pendingPaymentOrderUrl(recovery.orderId), { replace: true });
+        return;
+      }
+
+      // Keep the normal order store current as well, but do not poll. The
+      // dedicated lookup above is the authoritative lightweight recovery path.
+      await refreshOrders();
+      if (active) setChecking(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [enabled, nav, refreshOrders, userId]);
+
+  return checking;
+}
+
 export function Cart() {
   const {
     cart,
@@ -141,8 +209,6 @@ export function Cart() {
     orders,
     refreshOrders,
   } = useStore();
-  const nav = useNavigate();
-  const [recoveryRefreshAttempted, setRecoveryRefreshAttempted] = useState(false);
   const [deliveryAreas, setDeliveryAreas] = useState<DeliveryServiceArea[]>(
     DEFAULT_DELIVERY_SERVICE_AREAS,
   );
@@ -184,37 +250,12 @@ export function Cart() {
   const total = subtotal + (deliveryFee ?? 0);
   const allSelected =
     lines.length > 0 && selectedLines.length === lines.length;
-  useEffect(() => {
-    if (lines.length || !userId) return;
-    const localRecovery = readPendingPaymentRecovery(
-      window.localStorage,
-      userId,
-    );
-    const serverRecovery = orders.find((order) =>
-      isRecoverablePendingPayment(order),
-    );
-    const recoveryOrderId = localRecovery?.orderId ?? serverRecovery?.id;
-    if (recoveryOrderId) {
-      nav(
-        `/profile?tab=orders&order=${encodeURIComponent(recoveryOrderId)}`,
-        { replace: true },
-      );
-      return;
-    }
-    if (!recoveryRefreshAttempted) {
-      // Browser Back can restore an older cart snapshot before Realtime delivers
-      // the reserved order. Refresh once, without polling or ongoing egress.
-      setRecoveryRefreshAttempted(true);
-      void refreshOrders();
-    }
-  }, [
-    lines.length,
-    nav,
-    orders,
-    recoveryRefreshAttempted,
-    refreshOrders,
+  const checkingPaymentRecovery = usePendingPaymentRedirect({
+    enabled: lines.length === 0,
     userId,
-  ]);
+    orders,
+    refreshOrders,
+  });
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const toggleSelected = (id: string) => {
     const line = cart.find((item) => item.id === id);
@@ -245,7 +286,19 @@ export function Cart() {
             </label>
           )}
         </div>
-        {!lines.length ? (
+        {!lines.length && checkingPaymentRecovery ? (
+          <section
+            role="status"
+            aria-live="polite"
+            className="mt-8 grid min-h-[340px] place-items-center rounded-3xl border border-dashed border-border bg-card px-6 text-center"
+          >
+            <div>
+              <span className="mx-auto block h-9 w-9 animate-spin rounded-full border-[3px] border-border border-t-foreground" />
+              <p className="mt-5 text-sm font-semibold">Checking for an unfinished payment…</p>
+              <p className="mt-2 text-xs text-muted-foreground">Your reserved order will open automatically.</p>
+            </div>
+          </section>
+        ) : !lines.length ? (
           <Empty
             title="Your bag is waiting."
             text="Find a piece that feels like home."
@@ -752,6 +805,17 @@ export function Checkout() {
     const item = products.find((product) => product.id === line.id);
     return item ? [{ item, quantity: line.quantity }] : [];
   });
+  const checkingPaymentRecovery = usePendingPaymentRedirect({
+    enabled:
+      authReady &&
+      Boolean(userId) &&
+      lines.length === 0 &&
+      !completed &&
+      !paymentReturn,
+    userId,
+    orders,
+    refreshOrders,
+  });
   useEffect(() => {
     if (!addresses.length) {
       setAddress("");
@@ -1026,6 +1090,20 @@ export function Checkout() {
         </main>
       </Layout>
     );
+  if (!lines.length && checkingPaymentRecovery) {
+    return (
+      <Layout>
+        <main className="mx-auto grid min-h-[calc(100vh-160px)] max-w-[760px] place-items-center px-5 py-14">
+          <section className="w-full rounded-[2rem] border border-border bg-card p-8 text-center shadow-sm" role="status" aria-live="polite">
+            <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-[3px] border-border border-t-foreground" />
+            <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">RESTORING CHECKOUT</p>
+            <h1 className="mt-2 font-serif text-4xl">Finding your reserved order.</h1>
+            <p className="mt-3 text-sm text-muted-foreground">You will be taken to the remaining payment time automatically.</p>
+          </section>
+        </main>
+      </Layout>
+    );
+  }
   if (!lines.length)
     return (
       <Layout>
@@ -1299,11 +1377,14 @@ export function Checkout() {
                   }
                   if (result.checkoutUrl) {
                     setPaymentHandoff("redirecting");
-                    if (userId && result.id && result.expiresAt) {
+                    const recoveryExpiresAt =
+                      result.expiresAt ??
+                      new Date(Date.now() + 15 * 60 * 1000).toISOString();
+                    if (userId && result.id) {
                       writePendingPaymentRecovery(window.localStorage, userId, {
                         orderId: result.id,
                         orderNumber: result.orderNumber,
-                        expiresAt: result.expiresAt,
+                        expiresAt: recoveryExpiresAt,
                       });
                     }
                     // PayMongo's own Cancel button uses cancel_url, while the
@@ -1311,15 +1392,20 @@ export function Checkout() {
                     // that history entry the recoverable order—not an emptied
                     // bag whose submitted lines have already been reserved.
                     if (result.id) {
-                      const recoveryUrl = `/profile?tab=orders&order=${encodeURIComponent(result.id)}`;
-                      await nav(recoveryUrl, { replace: true });
+                      // Data-router navigation can wait for a lazy route before
+                      // committing. PayMongo must never open first, otherwise
+                      // browser Back restores the already-submitted checkout.
+                      // Replacing the current URL at the browser-history layer
+                      // is synchronous and guarantees a durable return target.
+                      replaceCheckoutHistoryWithPaymentRecovery(
+                        window.history,
+                        result.id,
+                      );
                     }
                     // Let React paint the final handoff state before leaving
                     // CozyCraft. This avoids flashing the now-empty cart while
                     // the browser opens the external payment gateway.
-                    window.requestAnimationFrame(() => {
-                      window.location.assign(result.checkoutUrl!);
-                    });
+                    window.location.assign(result.checkoutUrl!);
                     return;
                   }
                   setPlacing(false);
