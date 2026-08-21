@@ -1334,6 +1334,7 @@ function App() {
           id: null,
           orderNumber: null,
           checkoutUrl: null,
+          expiresAt: null,
           error: message,
         };
       }
@@ -1346,14 +1347,15 @@ function App() {
         id: data.orderId ?? null,
         orderNumber: data.orderNumber ?? null,
         checkoutUrl: data.checkoutUrl ?? null,
+        expiresAt: data.expiresAt ?? null,
         error: null,
       };
     }
     if (paymentMethod !== "cod") {
-      return { id: null, orderNumber: null, checkoutUrl: null, error: "Unsupported payment method." };
+      return { id: null, orderNumber: null, checkoutUrl: null, expiresAt: null, error: "Unsupported payment method." };
     }
     const { data, error } = await supabase.rpc("place_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })), p_checkout_key: checkoutKey });
-    if (error) return { id:null, orderNumber:null, checkoutUrl:null, error:error.message };
+    if (error) return { id:null, orderNumber:null, checkoutUrl:null, expiresAt:null, error:error.message };
     const orderId = data as string;
     const { data: createdOrder } = await supabase
       .from("orders")
@@ -1380,6 +1382,7 @@ function App() {
       id: orderId,
       orderNumber: createdOrder?.order_number ?? null,
       checkoutUrl: null,
+      expiresAt: null,
       error: null,
     };
   };

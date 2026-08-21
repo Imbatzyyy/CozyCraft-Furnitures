@@ -113,6 +113,11 @@ import {
 
 import { Account } from "@/app/features/storefront/authentication/CustomerAuth";
 import { isCancellationWindowOpen, isReturnWindowOpen } from "@/lib/commerce/return-workflow";
+import {
+  clearPendingPaymentRecovery,
+  isRecoverablePendingPayment,
+  readPendingPaymentRecovery,
+} from "@/lib/commerce/payment-recovery";
 
 type PsgcRegion = {
   regCode: string;
@@ -662,6 +667,10 @@ export function Profile() {
   const nav = useNavigate();
   const passwordMinimum = storeSettings.account_settings.password_minimum_length;
   const [tab, setTab] = useState("Profile");
+  const requestedOrderId = useMemo(
+    () => new URLSearchParams(window.location.search).get("order") ?? "",
+    [],
+  );
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("tab")?.toLowerCase();
     const matching = ["Profile","Orders","Addresses","Payments","Change password","Support"].find((item)=>item.toLowerCase().replace(/\s+/g,"-")===requested || item.toLowerCase()===requested);
@@ -1053,6 +1062,26 @@ export function Profile() {
     [orderFilter, orders],
   );
   useEffect(() => {
+    if (tab !== "Orders") return;
+    void refreshOrders().then((error) => {
+      if (error) setPaymentRecoveryError(error);
+    });
+  }, [refreshOrders, tab]);
+  useEffect(() => {
+    if (!userId) return;
+    const localRecovery = readPendingPaymentRecovery(
+      window.localStorage,
+      userId,
+    );
+    if (!localRecovery) return;
+    const matchingOrder = orders.find(
+      (order) => order.id === localRecovery.orderId,
+    );
+    if (matchingOrder && !isRecoverablePendingPayment(matchingOrder)) {
+      clearPendingPaymentRecovery(window.localStorage, userId);
+    }
+  }, [orders, userId]);
+  useEffect(() => {
     const hasRecoverablePayment = orders.some(
       (order) => paymentWindowRemaining(order, Date.now()) > 0,
     );
@@ -1093,6 +1122,13 @@ export function Profile() {
   useEffect(() => {
     if (!visibleOrders.length) {
       setSelectedOrderId("");
+      return;
+    }
+    if (
+      requestedOrderId &&
+      visibleOrders.some((order) => order.id === requestedOrderId)
+    ) {
+      setSelectedOrderId(requestedOrderId);
       return;
     }
     if (!visibleOrders.some((order) => order.id === selectedOrderId)) {

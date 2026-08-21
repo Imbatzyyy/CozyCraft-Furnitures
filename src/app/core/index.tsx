@@ -362,6 +362,7 @@ export type Store = {
     id: string | null;
     orderNumber: string | null;
     checkoutUrl: string | null;
+    expiresAt: string | null;
     error: string | null;
   }>;
   updateOrderStatus: (

@@ -90,6 +90,11 @@ import {
   type DeliveryServiceArea,
 } from "@/lib/catalog/delivery";
 import { getDeliveryServiceAreas } from "@/services/catalog/experience.service";
+import {
+  isRecoverablePendingPayment,
+  readPendingPaymentRecovery,
+  writePendingPaymentRecovery,
+} from "@/lib/commerce/payment-recovery";
 
 import {
   Product,
@@ -132,7 +137,12 @@ export function Cart() {
     addresses,
     setCartSelection,
     setAllCartSelection,
+    userId,
+    orders,
+    refreshOrders,
   } = useStore();
+  const nav = useNavigate();
+  const [recoveryRefreshAttempted, setRecoveryRefreshAttempted] = useState(false);
   const [deliveryAreas, setDeliveryAreas] = useState<DeliveryServiceArea[]>(
     DEFAULT_DELIVERY_SERVICE_AREAS,
   );
@@ -174,6 +184,37 @@ export function Cart() {
   const total = subtotal + (deliveryFee ?? 0);
   const allSelected =
     lines.length > 0 && selectedLines.length === lines.length;
+  useEffect(() => {
+    if (lines.length || !userId) return;
+    const localRecovery = readPendingPaymentRecovery(
+      window.localStorage,
+      userId,
+    );
+    const serverRecovery = orders.find((order) =>
+      isRecoverablePendingPayment(order),
+    );
+    const recoveryOrderId = localRecovery?.orderId ?? serverRecovery?.id;
+    if (recoveryOrderId) {
+      nav(
+        `/profile?tab=orders&order=${encodeURIComponent(recoveryOrderId)}`,
+        { replace: true },
+      );
+      return;
+    }
+    if (!recoveryRefreshAttempted) {
+      // Browser Back can restore an older cart snapshot before Realtime delivers
+      // the reserved order. Refresh once, without polling or ongoing egress.
+      setRecoveryRefreshAttempted(true);
+      void refreshOrders();
+    }
+  }, [
+    lines.length,
+    nav,
+    orders,
+    recoveryRefreshAttempted,
+    refreshOrders,
+    userId,
+  ]);
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const toggleSelected = (id: string) => {
     const line = cart.find((item) => item.id === id);
@@ -679,7 +720,7 @@ export function CustomerOrders() {
 }
 
 export function Checkout() {
-  const { authReady, cart, user, addresses, products, placeOrder, orders, refreshOrders, storeSettings } = useStore();
+  const { authReady, cart, user, userId, addresses, products, placeOrder, orders, refreshOrders, storeSettings } = useStore();
   const location = useLocation();
   const nav = useNavigate();
   const [address, setAddress] = useState("");
@@ -747,7 +788,7 @@ export function Checkout() {
             // The order remains recoverable even when the verification request
             // is interrupted. Send the customer to the server-backed order
             // timer instead of exposing an empty post-checkout bag.
-            nav("/profile?tab=orders", { replace: true });
+            nav(`/profile?tab=orders&order=${encodeURIComponent(returnOrderId)}`, { replace: true });
             return;
           }
           if (data?.paid) {
@@ -763,7 +804,7 @@ export function Checkout() {
             setNotice(
               "Payment was paused—not cancelled. Your items remain reserved for 15 minutes, and you can continue securely from My Account → Orders on any signed-in device.",
             );
-            nav("/profile?tab=orders", { replace: true });
+            nav(`/profile?tab=orders&order=${encodeURIComponent(returnOrderId)}`, { replace: true });
             return;
           }
           setNotice("The payment window expired. No charge was made and the reserved stock was released.");
@@ -1258,6 +1299,21 @@ export function Checkout() {
                   }
                   if (result.checkoutUrl) {
                     setPaymentHandoff("redirecting");
+                    if (userId && result.id && result.expiresAt) {
+                      writePendingPaymentRecovery(window.localStorage, userId, {
+                        orderId: result.id,
+                        orderNumber: result.orderNumber,
+                        expiresAt: result.expiresAt,
+                      });
+                    }
+                    // PayMongo's own Cancel button uses cancel_url, while the
+                    // browser Back button only revisits browser history. Make
+                    // that history entry the recoverable order—not an emptied
+                    // bag whose submitted lines have already been reserved.
+                    if (result.id) {
+                      const recoveryUrl = `/profile?tab=orders&order=${encodeURIComponent(result.id)}`;
+                      await nav(recoveryUrl, { replace: true });
+                    }
                     // Let React paint the final handoff state before leaving
                     // CozyCraft. This avoids flashing the now-empty cart while
                     // the browser opens the external payment gateway.
