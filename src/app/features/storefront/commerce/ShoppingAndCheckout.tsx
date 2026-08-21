@@ -744,6 +744,10 @@ export function Checkout() {
           await refreshOrders();
           if (error || data?.error) {
             setNotice(data?.error ?? error?.message ?? "Payment status could not be verified.");
+            // The order remains recoverable even when the verification request
+            // is interrupted. Send the customer to the server-backed order
+            // timer instead of exposing an empty post-checkout bag.
+            nav("/profile?tab=orders", { replace: true });
             return;
           }
           if (data?.paid) {

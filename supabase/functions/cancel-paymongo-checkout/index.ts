@@ -54,7 +54,10 @@ Deno.serve(async (request) => {
   if (transaction?.provider_session_id) {
     const providerResponse = await fetch(
       `https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(transaction.provider_session_id)}`,
-      { headers: { Authorization: `Basic ${btoa(`${paymongoSecretKey}:`)}` } },
+      {
+        headers: { Authorization: `Basic ${btoa(`${paymongoSecretKey}:`)}` },
+        signal: AbortSignal.timeout(12_000),
+      },
     );
     if (!providerResponse.ok) {
       return json(request, { error: "Payment status could not be verified. The order was kept active for your protection." }, 502);
