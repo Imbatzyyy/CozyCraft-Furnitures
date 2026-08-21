@@ -133,6 +133,7 @@ const orderGraphSelect = [
   "status",
   "payment_method",
   "payment_status",
+  "payment_expires_at",
   "cancellation_reason",
   "cancellation_requested_at",
   "cancellation_status",
@@ -152,7 +153,7 @@ const orderGraphSelect = [
   "created_at",
   "order_items(id,product_id,product_name,unit_price,quantity,image_url)",
   "order_status_history(id,order_id,status,changed_at,changed_by)",
-  "payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,created_at,updated_at)",
+  "payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,expires_at,created_at,updated_at)",
   "profiles!orders_user_id_fkey(full_name,email,phone)",
 ].join(",");
 

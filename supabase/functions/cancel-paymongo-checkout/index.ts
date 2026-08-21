@@ -38,17 +38,17 @@ Deno.serve(async (request) => {
   const { orderId } = await request.json().catch(() => ({ orderId: "" }));
   const { data: order } = await userClient
     .from("orders")
-    .select("id,order_number,total,payment_method,payment_status,status")
+    .select("id,order_number,total,payment_method,payment_status,status,payment_expires_at")
     .eq("id", orderId)
     .eq("user_id", user.id)
     .maybeSingle();
   if (!order) return json(request, { error: "Order not found." }, 404);
-  if (order.payment_method === "cod" || order.payment_status !== "pending") {
-    return json(request, { error: "This checkout can no longer be cancelled." }, 409);
+  if (order.payment_method === "cod" || order.payment_status !== "pending" || order.status === "cancelled") {
+    return json(request, { error: "This checkout no longer has a pending online payment." }, 409);
   }
   const { data: transaction } = await adminClient
     .from("payment_transactions")
-    .select("id,provider_session_id,status")
+    .select("id,provider_session_id,status,checkout_url,expires_at")
     .eq("order_id", order.id)
     .maybeSingle();
   if (transaction?.provider_session_id) {
@@ -78,11 +78,35 @@ Deno.serve(async (request) => {
         total: Number(order.total),
       });
     }
+    if (providerPayload?.data?.attributes?.status === "expired") {
+      await adminClient.rpc("expire_paymongo_order", {
+        p_order_id: order.id,
+        p_reason: "PayMongo checkout session expired",
+      });
+      return json(request, { cancelled: true, paid: false, expired: true });
+    }
   }
-  const { error } = await adminClient.rpc("fail_paymongo_order", {
-    p_order_id: order.id,
-    p_reason: "Customer cancelled PayMongo checkout",
+
+  const expiresAt = order.payment_expires_at ?? transaction?.expires_at ?? null;
+  if (!expiresAt || Date.parse(expiresAt) <= Date.now()) {
+    const { error } = await adminClient.rpc("expire_paymongo_order", {
+      p_order_id: order.id,
+      p_reason: "PayMongo payment window expired",
+    });
+    if (error) return json(request, { error: error.message }, 500);
+    return json(request, { cancelled: true, paid: false, expired: true });
+  }
+
+  // Leaving PayMongo pauses the checkout; it does not immediately destroy the
+  // order or release inventory. The server-backed deadline lets the customer
+  // safely continue on this or another signed-in device.
+  return json(request, {
+    cancelled: false,
+    paused: true,
+    paid: false,
+    orderId: order.id,
+    orderNumber: order.order_number,
+    total: Number(order.total),
+    expiresAt,
   });
-  if (error) return json(request, { error: error.message }, 500);
-  return json(request, { cancelled: true, paid: false });
 });

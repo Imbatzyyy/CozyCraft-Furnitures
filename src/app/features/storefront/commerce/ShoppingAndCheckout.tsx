@@ -681,6 +681,7 @@ export function CustomerOrders() {
 export function Checkout() {
   const { authReady, cart, user, addresses, products, placeOrder, orders, refreshOrders, storeSettings } = useStore();
   const location = useLocation();
+  const nav = useNavigate();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
   const [notice, setNotice] = useState("");
@@ -754,7 +755,14 @@ export function Checkout() {
             setNotice("Payment was confirmed before cancellation. Your order remains active.");
             return;
           }
-          setNotice("Payment was cancelled. No charge was made.");
+          if (data?.paused && data?.expiresAt) {
+            setNotice(
+              "Payment was paused—not cancelled. Your items remain reserved for 15 minutes, and you can continue securely from My Account → Orders on any signed-in device.",
+            );
+            nav("/profile?tab=orders", { replace: true });
+            return;
+          }
+          setNotice("The payment window expired. No charge was made and the reserved stock was released.");
         });
       return;
     }
@@ -772,7 +780,7 @@ export function Checkout() {
       return;
     }
     void refreshOrders();
-  }, [paymentReturn, refreshOrders, returnOrderId]);
+  }, [nav, paymentReturn, refreshOrders, returnOrderId]);
   useEffect(() => {
     if (paymentReturn !== "success" || !returnOrderId) return;
     const returnedOrder = orders.find((order) => order.id === returnOrderId);

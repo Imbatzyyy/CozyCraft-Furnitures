@@ -155,6 +155,7 @@ export type DbPaymentTransaction = {
   livemode: boolean;
   failure_reason: string | null;
   paid_at: string | null;
+  expires_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -184,6 +185,7 @@ export type DbOrder = {
     | "cancelled";
   payment_method: string;
   payment_status: "pending" | "paid" | "failed" | "refunded";
+  payment_expires_at?: string | null;
   cancellation_reason?: string | null;
   cancellation_requested_at?: string | null;
   cancellation_status?: "pending" | "approved" | "rejected" | null;

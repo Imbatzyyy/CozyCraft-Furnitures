@@ -143,6 +143,30 @@ type ReviewPhotoDraft = {
   preview: string;
 };
 
+const paymentWindowRemaining = (order: DbOrder, now: number) => {
+  if (
+    !["card", "gcash"].includes(order.payment_method) ||
+    order.payment_status !== "pending" ||
+    order.status === "cancelled" ||
+    !order.payment_expires_at
+  ) return 0;
+  const expiresAt = Date.parse(order.payment_expires_at);
+  return Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now) : 0;
+};
+
+const hasPendingOnlinePayment = (order: DbOrder) =>
+  ["card", "gcash"].includes(order.payment_method) &&
+  order.payment_status === "pending" &&
+  order.status !== "cancelled" &&
+  Boolean(order.payment_expires_at);
+
+const paymentCountdown = (remaining: number) => {
+  const totalSeconds = Math.max(0, Math.ceil(remaining / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
+
 type PsgcBarangay = {
   munCityCode: string;
   brgyCode: string;
@@ -621,6 +645,7 @@ export function Profile() {
     saved,
     cart,
     orders,
+    refreshOrders,
     products,
     addresses,
     supportTickets,
@@ -665,6 +690,9 @@ export function Profile() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [orderFilter, setOrderFilter] = useState("all");
   const [selectedOrderId, setSelectedOrderId] = useState("");
+  const [paymentClock, setPaymentClock] = useState(() => Date.now());
+  const [resumingPaymentId, setResumingPaymentId] = useState<string | null>(null);
+  const [paymentRecoveryError, setPaymentRecoveryError] = useState("");
   const [returnRequests, setReturnRequests] = useState<Array<{ id:string; order_id:string; return_number:string; reason:string; details:string; status:string; admin_note:string|null; created_at:string }>>([]);
   const [returnOrderId, setReturnOrderId] = useState<string | null>(null);
   const [returnReason, setReturnReason] = useState("Changed my mind");
@@ -1024,6 +1052,44 @@ export function Profile() {
         : orders.filter((order) => order.status === orderFilter),
     [orderFilter, orders],
   );
+  useEffect(() => {
+    const hasRecoverablePayment = orders.some(
+      (order) => paymentWindowRemaining(order, Date.now()) > 0,
+    );
+    setPaymentClock(Date.now());
+    if (!hasRecoverablePayment) return;
+    const timer = window.setInterval(() => setPaymentClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [orders]);
+  const resumePayment = async (order: DbOrder) => {
+    if (resumingPaymentId) return;
+    setPaymentRecoveryError("");
+    setResumingPaymentId(order.id);
+    const { data, error } = await supabase.functions.invoke(
+      "resume-paymongo-checkout",
+      { body: { orderId: order.id } },
+    );
+    if (error || data?.error) {
+      setPaymentRecoveryError(
+        data?.error ?? error?.message ?? "Unable to reopen secure payment. Please try again.",
+      );
+      setResumingPaymentId(null);
+      await refreshOrders();
+      return;
+    }
+    if (data?.paid) {
+      setNotice("Payment is already confirmed. Your order is now being processed.");
+      setResumingPaymentId(null);
+      await refreshOrders();
+      return;
+    }
+    if (!data?.checkoutUrl) {
+      setPaymentRecoveryError("The secure payment link is unavailable.");
+      setResumingPaymentId(null);
+      return;
+    }
+    window.location.assign(data.checkoutUrl);
+  };
   useEffect(() => {
     if (!visibleOrders.length) {
       setSelectedOrderId("");
@@ -1671,7 +1737,9 @@ export function Profile() {
                 ) : (
                   <div className="mt-5 grid gap-4 xl:grid-cols-[.72fr_1.28fr]">
                     <div className="max-h-[630px] space-y-2 overflow-y-auto pr-1">
-                      {visibleOrders.map((order) => (
+                      {visibleOrders.map((order) => {
+                        const remaining = paymentWindowRemaining(order, paymentClock);
+                        return (
                         <button
                           type="button"
                           key={order.id}
@@ -1699,9 +1767,18 @@ export function Profile() {
                             {order.order_items.map((item) => item.product_name).join(" · ")}
                           </p>
                           <b className="mt-3 block text-sm">{money(Number(order.total))}</b>
+                          {remaining > 0 && (
+                            <span className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[#d8c8ad] bg-[#f7f1e7] px-3 py-2 text-[10px] font-semibold text-[#67563f]">
+                              <span className="flex items-center gap-1.5"><Clock size={11} /> Payment reserved</span>
+                              <time dateTime={order.payment_expires_at ?? undefined} className="tabular-nums">
+                                {paymentCountdown(remaining)}
+                              </time>
+                            </span>
+                          )}
                           {order.cancellation_status && <span className={`mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${order.cancellation_status === "pending" ? "bg-[#f2e8d7] text-[#765d3c]" : order.cancellation_status === "approved" ? "bg-[#e5eee1] text-[#45603f]" : "bg-secondary text-muted-foreground"}`}><Clock size={11}/> Cancellation {order.cancellation_status}</span>}
                         </button>
-                      ))}
+                        );
+                      })}
                     </div>
                     <article className="relative z-[1] mb-6 overflow-hidden rounded-2xl border border-border bg-[#fcfbf8] xl:mb-0">
                       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-5">
@@ -1718,6 +1795,47 @@ export function Profile() {
                         </div>
                         <Status>{selectedOrder.status.replace(/_/g, " ")}</Status>
                       </div>
+                      {paymentWindowRemaining(selectedOrder, paymentClock) > 0 && (
+                        <div className="border-b border-[#dfd2bd] bg-[#f7f1e7] p-4 sm:p-5">
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold tracking-[.16em] text-[#7b684d]">PAYMENT RESERVED</p>
+                              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                <b className="text-sm">Complete your {selectedOrder.payment_method === "gcash" ? "GCash" : "card"} payment</b>
+                                <time
+                                  dateTime={selectedOrder.payment_expires_at ?? undefined}
+                                  className="font-mono text-lg font-semibold tabular-nums text-[#4f4334]"
+                                  aria-label={`${paymentCountdown(paymentWindowRemaining(selectedOrder, paymentClock))} remaining`}
+                                >
+                                  {paymentCountdown(paymentWindowRemaining(selectedOrder, paymentClock))}
+                                </time>
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-[#75654f]">
+                                Your items remain reserved. This same deadline appears on every device signed in to your account.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void resumePayment(selectedOrder)}
+                              disabled={resumingPaymentId === selectedOrder.id}
+                              className="min-h-11 shrink-0 rounded-xl bg-foreground px-5 py-3 text-xs font-semibold text-background transition hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {resumingPaymentId === selectedOrder.id ? "Opening PayMongo…" : "Continue payment"}
+                            </button>
+                          </div>
+                          {paymentRecoveryError && (
+                            <p className="mt-3 rounded-xl bg-[#f2e4d8] px-3 py-2 text-xs font-semibold text-[#855b45]">
+                              {paymentRecoveryError}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {hasPendingOnlinePayment(selectedOrder) && paymentWindowRemaining(selectedOrder, paymentClock) === 0 && (
+                        <div className="border-b border-border bg-secondary px-4 py-3 text-xs text-muted-foreground sm:px-5">
+                          <b className="text-foreground">Payment window ended.</b>{" "}
+                          This order will close automatically and its reserved stock will return to the catalog.
+                        </div>
+                      )}
                       {selectedOrder.cancellation_status && <div className={`border-b border-border p-4 text-xs ${selectedOrder.cancellation_status === "pending" ? "bg-[#f2e8d7] text-[#765d3c]" : selectedOrder.cancellation_status === "approved" ? "bg-[#e5eee1] text-[#45603f]" : "bg-secondary text-muted-foreground"}`}><b className="block">{selectedOrder.cancellation_status === "pending" ? "Cancellation pending approval" : selectedOrder.cancellation_status === "approved" ? "Cancellation approved" : "Cancellation request not approved"}</b><span className="mt-1 block">{selectedOrder.cancellation_decision_note || (selectedOrder.cancellation_status === "pending" ? "We’ll update this order in real time after an administrator reviews the request." : "The decision is reflected in this order’s current status.")}</span>{selectedOrder.cancellation_requested_at && <time className="mt-1 block" dateTime={selectedOrder.cancellation_requested_at}>Requested {new Date(selectedOrder.cancellation_requested_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time>}</div>}
                       {selectedOrder.status === "cancelled" ? (
                         <div className="border-b border-border bg-[#f3e5d4] p-4 text-xs text-[#8b5c46]">

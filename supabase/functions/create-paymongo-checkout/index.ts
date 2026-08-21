@@ -110,7 +110,7 @@ Deno.serve(async (request) => {
     const [existingTransactionResult, orderResult] = await Promise.all([
       adminClient
         .from("payment_transactions")
-        .select("checkout_url,status")
+        .select("checkout_url,status,expires_at")
         .eq("order_id", orderId)
         .maybeSingle(),
       adminClient
@@ -122,8 +122,26 @@ Deno.serve(async (request) => {
     ]);
     const { data: existingTransaction } = existingTransactionResult;
     const { data: order, error: orderError } = orderResult;
-    if (existingTransaction?.checkout_url && existingTransaction.status === "pending") {
-      return json(request, { orderId, orderNumber: order?.order_number ?? null, checkoutUrl: existingTransaction.checkout_url, reused: true });
+    if (
+      existingTransaction?.checkout_url &&
+      existingTransaction.status === "pending" &&
+      existingTransaction.expires_at &&
+      Date.parse(existingTransaction.expires_at) > Date.now()
+    ) {
+      return json(request, {
+        orderId,
+        orderNumber: order?.order_number ?? null,
+        checkoutUrl: existingTransaction.checkout_url,
+        expiresAt: existingTransaction.expires_at,
+        reused: true,
+      });
+    }
+    if (existingTransaction?.status === "pending") {
+      await adminClient.rpc("expire_paymongo_order", {
+        p_order_id: orderId,
+        p_reason: "PayMongo payment window expired",
+      });
+      return json(request, { error: "The previous payment window expired. Please return to your bag and place the order again." }, 410);
     }
     if (orderError || !order) throw new Error("The reserved order could not be loaded.");
 
@@ -186,6 +204,7 @@ Deno.serve(async (request) => {
     const session = paymongoBody.data;
     const checkoutUrl = session?.attributes?.checkout_url;
     if (!session?.id || !checkoutUrl) throw new Error("PayMongo returned an incomplete checkout session.");
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     const { error: transactionError } = await adminClient.from("payment_transactions").insert({
       order_id: order.id,
@@ -195,8 +214,16 @@ Deno.serve(async (request) => {
       amount: order.total,
       livemode: Boolean(session.attributes?.livemode),
       raw_payload: session,
+      expires_at: expiresAt,
     });
     if (transactionError) throw transactionError;
+
+    const { error: expiryError } = await adminClient
+      .from("orders")
+      .update({ payment_expires_at: expiresAt })
+      .eq("id", order.id)
+      .eq("payment_status", "pending");
+    if (expiryError) throw expiryError;
 
     // Email delivery must never delay the customer-facing redirect. The edge
     // runtime keeps this background task alive after the response is returned.
@@ -210,6 +237,7 @@ Deno.serve(async (request) => {
       orderId: order.id,
       orderNumber: order.order_number,
       checkoutUrl,
+      expiresAt,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to start PayMongo checkout.";
