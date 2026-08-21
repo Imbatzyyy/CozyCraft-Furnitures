@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { findPaidProviderPayment, providerSessionLivemode } from "../_shared/paymongo-session.ts";
+import { reconcileElapsedPaymongoSession } from "../_shared/paymongo-expiry.ts";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
 const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com"]);
@@ -82,22 +83,56 @@ Deno.serve(async (request) => {
       });
     }
     if (providerPayload?.data?.attributes?.status === "expired") {
-      await adminClient.rpc("expire_paymongo_order", {
-        p_order_id: order.id,
-        p_reason: "PayMongo checkout session expired",
+      const reconciliation = await reconcileElapsedPaymongoSession({
+        adminClient,
+        orderId: order.id,
+        transaction,
+        secretKey: paymongoSecretKey,
+        reason: "PayMongo checkout session expired",
       });
-      return json(request, { cancelled: true, paid: false, expired: true });
+      if (reconciliation.outcome === "paid") {
+        return json(request, {
+          cancelled: false,
+          paid: true,
+          orderId: order.id,
+          orderNumber: order.order_number,
+          total: Number(order.total),
+        });
+      }
+      if (reconciliation.outcome === "expired") {
+        return json(request, { cancelled: true, paid: false, expired: true });
+      }
+      return json(request, { error: reconciliation.message, retryable: true }, 503);
     }
   }
 
   const expiresAt = order.payment_expires_at ?? transaction?.expires_at ?? null;
   if (!expiresAt || Date.parse(expiresAt) <= Date.now()) {
-    const { error } = await adminClient.rpc("expire_paymongo_order", {
-      p_order_id: order.id,
-      p_reason: "PayMongo payment window expired",
+    if (!transaction?.provider_session_id) {
+      return json(request, {
+        error: "The payment session reference is unavailable. The order was kept active for safety.",
+        retryable: true,
+      }, 503);
+    }
+    const reconciliation = await reconcileElapsedPaymongoSession({
+      adminClient,
+      orderId: order.id,
+      transaction,
+      secretKey: paymongoSecretKey,
     });
-    if (error) return json(request, { error: error.message }, 500);
-    return json(request, { cancelled: true, paid: false, expired: true });
+    if (reconciliation.outcome === "paid") {
+      return json(request, {
+        cancelled: false,
+        paid: true,
+        orderId: order.id,
+        orderNumber: order.order_number,
+        total: Number(order.total),
+      });
+    }
+    if (reconciliation.outcome === "expired") {
+      return json(request, { cancelled: true, paid: false, expired: true });
+    }
+    return json(request, { error: reconciliation.message, retryable: true }, 503);
   }
 
   // Leaving PayMongo pauses the checkout; it does not immediately destroy the

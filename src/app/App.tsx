@@ -86,6 +86,10 @@ import {
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import { recordAuthActivity } from "@/services/auth/activity.service";
+import {
+  customerAuthEventAction,
+  customerSessionRetryDelay,
+} from "@/services/auth/session-restoration";
 import { canonicalProductImages } from "@/lib/catalog/product-images";
 import { CUSTOMER_POLICY_VERSION } from "@/lib/legal/customer-policies";
 
@@ -126,6 +130,29 @@ import {
 } from "@/lib/shared/avatar-url";
 
 const splashSessionKey = "cozycraft-welcome-seen";
+const readSessionItem = (key: string) => {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const writeSessionItem = (key: string, value: string) => {
+  try {
+    window.sessionStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const removeSessionItem = (key: string) => {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts. The
+    // database-backed order remains the payment source of truth.
+  }
+};
 const orderGraphSelect = [
   "id",
   "order_number",
@@ -157,6 +184,12 @@ const orderGraphSelect = [
   "profiles!orders_user_id_fkey(full_name,email,phone)",
 ].join(",");
 
+type CustomerAccountLoadResult =
+  | "loaded"
+  | "retry"
+  | "superseded"
+  | "denied";
+
 function App() {
   const [adminPortal, setAdminPortal] = useState(() =>
     window.location.pathname.startsWith("/admin"),
@@ -170,7 +203,7 @@ function App() {
   );
   const portalSupabase = adminPortal ? adminSupabase : supabase;
   const [splash, setSplash] = useState(
-    () => window.sessionStorage.getItem(splashSessionKey) !== "1",
+    () => readSessionItem(splashSessionKey) !== "1",
   );
   const [products, setProducts] = useState<Product[]>(fallbackProducts);
   const [storeSettings, setStoreSettings] = useState<PublicStoreSettings>(
@@ -194,6 +227,7 @@ function App() {
   const [hasPassword, setHasPassword] = useState(false);
   const [role, setRole] = useState<DbRole | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const customerUserIdRef = useRef<string | null>(null);
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
   const [adminUser, setAdminUser] = useState<string | null>(null);
   const [adminUserEmail, setAdminUserEmail] = useState<string | null>(null);
@@ -214,6 +248,10 @@ function App() {
   const [fly, setFly] = useState<FlyState | null>(null);
 
   useEffect(() => {
+    customerUserIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
     // A returning session may finish restoring after the customer taps a
     // shopping action. Never leave the guest prompt mounted for a signed-in
     // customer, because its backdrop would otherwise intercept navigation.
@@ -222,8 +260,16 @@ function App() {
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
   const productsRefreshInFlight = useRef<Promise<void> | null>(null);
-  const ordersRefreshInFlight = useRef<Promise<string | null> | null>(null);
+  const ordersRefreshInFlight = useRef<{
+    scope: string;
+    request: Promise<string | null>;
+  } | null>(null);
   const singleOrderRefreshes = useRef(new Map<string, Promise<string | null>>());
+  const ordersScope = adminPortal
+    ? `admin:${adminUserId ?? "guest"}`
+    : `customer:${userId ?? "guest"}`;
+  const ordersScopeRef = useRef(ordersScope);
+  ordersScopeRef.current = ordersScope;
 
   const queueAccountWrite = useCallback((request: PromiseLike<unknown>) => {
     const pending = Promise.resolve(request);
@@ -323,30 +369,45 @@ function App() {
   }, [mapProduct, portalSupabase]);
 
   const refreshOrders = useCallback(() => {
-    if (ordersRefreshInFlight.current) return ordersRefreshInFlight.current;
+    const requestScope = adminPortal
+      ? `admin:${adminUserId ?? "guest"}`
+      : `customer:${userId ?? "guest"}`;
+    const existing = ordersRefreshInFlight.current;
+    if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
       const { data, error } = await portalSupabase
         .from("orders")
         .select(orderGraphSelect)
         .order("created_at", { ascending: false });
       if (error) return error.message;
+      // A request started for customer A (or an administrator) must never
+      // populate the collections after the active identity has changed.
+      if (ordersScopeRef.current !== requestScope) return null;
       setOrders((data ?? []) as unknown as DbOrder[]);
       return null;
     })();
-    ordersRefreshInFlight.current = request;
+    ordersRefreshInFlight.current = { scope: requestScope, request };
     void request.then(
       () => {
-        if (ordersRefreshInFlight.current === request) ordersRefreshInFlight.current = null;
+        if (ordersRefreshInFlight.current?.request === request) {
+          ordersRefreshInFlight.current = null;
+        }
       },
       () => {
-        if (ordersRefreshInFlight.current === request) ordersRefreshInFlight.current = null;
+        if (ordersRefreshInFlight.current?.request === request) {
+          ordersRefreshInFlight.current = null;
+        }
       },
     );
     return request;
-  }, [portalSupabase]);
+  }, [adminPortal, adminUserId, portalSupabase, userId]);
 
   const refreshOrder = useCallback((orderId: string) => {
-    const existing = singleOrderRefreshes.current.get(orderId);
+    const requestScope = adminPortal
+      ? `admin:${adminUserId ?? "guest"}`
+      : `customer:${userId ?? "guest"}`;
+    const requestKey = `${requestScope}:${orderId}`;
+    const existing = singleOrderRefreshes.current.get(requestKey);
     if (existing) return existing;
     const request = (async () => {
       const { data, error } = await portalSupabase
@@ -356,6 +417,7 @@ function App() {
         .maybeSingle();
       if (error) return error.message;
       if (!data) return null;
+      if (ordersScopeRef.current !== requestScope) return null;
       const refreshed = data as unknown as DbOrder;
       setOrders((current) =>
         [refreshed, ...current.filter((order) => order.id !== refreshed.id)].sort(
@@ -364,13 +426,13 @@ function App() {
       );
       return null;
     })();
-    singleOrderRefreshes.current.set(orderId, request);
+    singleOrderRefreshes.current.set(requestKey, request);
     void request.then(
-      () => singleOrderRefreshes.current.delete(orderId),
-      () => singleOrderRefreshes.current.delete(orderId),
+      () => singleOrderRefreshes.current.delete(requestKey),
+      () => singleOrderRefreshes.current.delete(requestKey),
     );
     return request;
-  }, [portalSupabase]);
+  }, [adminPortal, adminUserId, portalSupabase, userId]);
 
   const refreshAccountCollections = useCallback(async (id: string) => {
     const [cartResult, wishlistResult] = await Promise.all([
@@ -383,6 +445,7 @@ function App() {
         .select("product_id")
         .eq("user_id", id),
     ]);
+    if (customerUserIdRef.current !== id) return;
     if (!cartResult.error) {
       setCart(
         (cartResult.data ?? []).map((item) => ({
@@ -400,6 +463,9 @@ function App() {
   }, []);
 
   const refreshCustomers = useCallback(async () => {
+    const requestScope = adminPortal
+      ? `admin:${adminUserId ?? "guest"}`
+      : `customer:${userId ?? "guest"}`;
     const { data, error } = await portalSupabase
       .from("profiles")
       .select(
@@ -417,11 +483,15 @@ function App() {
           ...profile,
           avatar_url: signedAvatars[index],
         }));
+      if (ordersScopeRef.current !== requestScope) return;
       setCustomerProfiles(protectedProfiles);
     }
-  }, [portalSupabase]);
+  }, [adminPortal, adminUserId, portalSupabase, userId]);
 
   const refreshTickets = useCallback(async () => {
+    const requestScope = adminPortal
+      ? `admin:${adminUserId ?? "guest"}`
+      : `customer:${userId ?? "guest"}`;
     const { data, error } = await portalSupabase
       .from("support_tickets")
       .select(
@@ -435,15 +505,46 @@ function App() {
           ? ticket.profiles[0] ?? null
           : ticket.profiles,
       }));
+      if (ordersScopeRef.current !== requestScope) return;
       setSupportTickets(tickets as unknown as DbSupportTicket[]);
     }
-  }, [portalSupabase]);
+  }, [adminPortal, adminUserId, portalSupabase, userId]);
+
+  const clearCustomerAccount = useCallback(() => {
+    customerUserIdRef.current = null;
+    setUserId(null);
+    setUser(null);
+    setUserEmail(null);
+    setRole(null);
+    setAvatar(null);
+    setAvatarPath(null);
+    setProfilePhone("");
+    setProfileUsername("");
+    setProfileGender("");
+    setProfileBirth("");
+    setHasPassword(false);
+    setProfilePaymentMethod("cod");
+    setCart([]);
+    setSaved([]);
+    setAddresses([]);
+    // These collections are shared with the administrator portal. Customer
+    // auth restoration must not erase an already-loaded admin workspace when
+    // the isolated customer client correctly resolves as a guest there.
+    if (!window.location.pathname.startsWith("/admin")) {
+      ordersScopeRef.current = "customer:guest";
+      ordersRefreshInFlight.current = null;
+      singleOrderRefreshes.current.clear();
+      setOrders([]);
+      setCustomerProfiles([]);
+      setSupportTickets([]);
+    }
+  }, []);
 
   const loadAccount = useCallback(async (
     id: string,
     email: string | null,
     metadata: Record<string, unknown> = {},
-  ) => {
+  ): Promise<CustomerAccountLoadResult> => {
     let profileResult = await supabase
       .from("profiles")
       .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at")
@@ -458,7 +559,35 @@ function App() {
         .eq("id", id)
         .single();
     }
-    const [cartResult, wishlistResult, addressResult, passwordStatusResult] = await Promise.all([
+    const {
+      data: { session: activeSession },
+      error: activeSessionError,
+    } = await supabase.auth.getSession();
+    if (activeSessionError) return "retry";
+    if (activeSession?.user.id !== id) return "superseded";
+
+    const profile = profileResult.data;
+    if (profileResult.error || !profile?.role) {
+      return "retry";
+    }
+    const accountRole = (profile.role as DbRole) ?? "customer";
+    if (accountRole !== "customer") {
+      await supabase.auth.signOut({ scope: "local" });
+      return "denied";
+    }
+    if (profile.customer_active === false) {
+      writeSessionItem("cozycraft-customer-access-notice", "This customer account is currently suspended. Contact CozyCraft Care for assistance.");
+      await supabase.auth.signOut({ scope: "local" });
+      return "denied";
+    }
+
+    const [
+      cartResult,
+      wishlistResult,
+      addressResult,
+      passwordStatusResult,
+      signedAvatar,
+    ] = await Promise.all([
       supabase
         .from("cart_items")
         .select("product_id, quantity, selected_for_checkout")
@@ -473,35 +602,22 @@ function App() {
         .eq("user_id", id)
         .order("is_primary", { ascending: false }),
       supabase.rpc("current_user_has_password"),
+      privateAvatarUrl(profile.avatar_url, supabase).catch(() => null),
     ]);
     const {
-      data: { session: activeSession },
+      data: { session: confirmedSession },
+      error: confirmedSessionError,
     } = await supabase.auth.getSession();
-    if (activeSession?.user.id !== id) return;
-    const profile = profileResult.data;
-    if (profileResult.error || !profile?.role) {
-      setUserId(null);
-      setUser(null);
-      setUserEmail(null);
-      setRole(null);
-      return;
-    }
-    const accountRole = (profile.role as DbRole) ?? "customer";
-    if (accountRole !== "customer") {
-      await supabase.auth.signOut({ scope: "local" });
-      return;
-    }
-    if (profile.customer_active === false) {
-      window.sessionStorage.setItem("cozycraft-customer-access-notice", "This customer account is currently suspended. Contact CozyCraft Care for assistance.");
-      await supabase.auth.signOut({ scope: "local" });
-      return;
-    }
+    if (confirmedSessionError) return "retry";
+    if (confirmedSession?.user.id !== id) return "superseded";
+
+    customerUserIdRef.current = id;
     setUserId(id);
     setUserEmail(email);
     setUser(profile?.full_name || email?.split("@")[0] || "Member");
     setRole((profile?.role as DbRole) ?? "customer");
     setAvatarPath(profile?.avatar_url ?? null);
-    setAvatar(await privateAvatarUrl(profile?.avatar_url, supabase));
+    setAvatar(signedAvatar);
     setProfilePhone(profile?.phone ?? "");
     setProfileUsername(profile?.username ?? String(metadata.username ?? ""));
     setProfileGender(profile?.gender ?? String(metadata.gender ?? ""));
@@ -532,21 +648,85 @@ function App() {
       note: item.delivery_note,
       primary: item.is_primary,
     })));
+    return "loaded";
   }, []);
 
   useEffect(() => {
-    const hydrate = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await loadAccount(
-          session.user.id,
-          session.user.email ?? null,
-          session.user.user_metadata ?? {},
-        );
-      }
-      setAuthReady(true);
+    let disposed = false;
+    let sessionRetryTimer: number | undefined;
+    let retryAttempt = 0;
+    let restoreGeneration = 0;
+
+    const cancelScheduledRestore = () => {
+      window.clearTimeout(sessionRetryTimer);
+      sessionRetryTimer = undefined;
     };
-    void hydrate();
+
+    const scheduleRestore = (generation: number) => {
+      if (disposed || generation !== restoreGeneration) return;
+      cancelScheduledRestore();
+      const delay = customerSessionRetryDelay(retryAttempt);
+      retryAttempt += 1;
+      sessionRetryTimer = window.setTimeout(() => {
+        if (disposed || generation !== restoreGeneration) return;
+        void restoreSession();
+      }, delay);
+    };
+
+    async function restoreSession() {
+      const generation = ++restoreGeneration;
+      cancelScheduledRestore();
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (disposed || generation !== restoreGeneration) return;
+      if (error) {
+        // A temporary storage/network failure is not a confirmed sign-out.
+        // Keep the route neutral and retry at a capped interval.
+        setAuthReady(false);
+        scheduleRestore(generation);
+        return;
+      }
+
+      if (!session?.user) {
+        // A successful getSession with no user is the sole initial authority
+        // for guest state. Null INITIAL_SESSION events are intentionally ignored.
+        retryAttempt = 0;
+        clearCustomerAccount();
+        setAuthReady(true);
+        return;
+      }
+
+      if (customerUserIdRef.current !== session.user.id) {
+        // Remove the previous customer's identity-bound state immediately;
+        // do not leave it visible while the new account is being hydrated.
+        if (customerUserIdRef.current) clearCustomerAccount();
+        setAuthReady(false);
+      }
+      const result = await loadAccount(
+        session.user.id,
+        session.user.email ?? null,
+        session.user.user_metadata ?? {},
+      );
+      if (disposed || generation !== restoreGeneration) return;
+
+      if (result === "loaded") {
+        retryAttempt = 0;
+        setAuthReady(true);
+        return;
+      }
+      if (result === "denied") {
+        retryAttempt = 0;
+        clearCustomerAccount();
+        setAuthReady(true);
+        return;
+      }
+
+      // A profile/RLS/network failure or a session that changed during the
+      // fetch must never downgrade a valid session to guest state.
+      setAuthReady(false);
+      scheduleRestore(generation);
+    }
+
+    void restoreSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (
         event === "PASSWORD_RECOVERY" &&
@@ -555,78 +735,88 @@ function App() {
         window.location.replace("/reset-password");
         return;
       }
-      if (session?.user) setAuthReady(false);
+      const action = customerAuthEventAction(event, Boolean(session?.user));
+      if (action === "clear") {
+        restoreGeneration += 1;
+        retryAttempt = 0;
+        cancelScheduledRestore();
+        clearCustomerAccount();
+        setAuthReady(true);
+        return;
+      }
+      if (action === "ignore") return;
+
+      if (session?.user && customerUserIdRef.current !== session.user.id) {
+        if (customerUserIdRef.current) clearCustomerAccount();
+        setAuthReady(false);
+      }
       window.setTimeout(() => {
-        if (session?.user) {
-          const googleSignInPending =
-            window.sessionStorage.getItem("cozycraft-google-sign-in-pending") === "1";
-          const pendingPolicyConsent = window.sessionStorage.getItem(
-            "cozycraft-policy-consent-pending",
-          );
-          if (googleSignInPending) {
-            window.sessionStorage.removeItem("cozycraft-google-sign-in-pending");
-            void recordAuthActivity(supabase, "customer_sign_in", {
-              name: "Google sign-in",
-              provider: "google",
-            });
-          }
-          if (pendingPolicyConsent) {
-            window.sessionStorage.removeItem("cozycraft-policy-consent-pending");
-            try {
-              const consent = JSON.parse(pendingPolicyConsent) as {
-                termsVersion?: string;
-                privacyVersion?: string;
-                source?: string;
-              };
-              if (
-                consent.termsVersion === CUSTOMER_POLICY_VERSION &&
-                consent.privacyVersion === CUSTOMER_POLICY_VERSION
-              ) {
-                void Promise.all([
-                  supabase.auth.updateUser({
-                    data: {
-                      customer_policy_accepted: true,
-                      terms_version: CUSTOMER_POLICY_VERSION,
-                      privacy_version: CUSTOMER_POLICY_VERSION,
-                      policy_accepted_at: new Date().toISOString(),
-                      policy_acceptance_source:
-                        consent.source ?? "web_google_signup",
-                    },
-                  }),
-                  supabase.rpc("accept_current_customer_policies", {
-                    p_terms_version: CUSTOMER_POLICY_VERSION,
-                    p_privacy_version: CUSTOMER_POLICY_VERSION,
-                    p_source: consent.source ?? "web_google_signup",
-                    p_context: {
-                      user_agent: window.navigator.userAgent.slice(0, 500),
-                      locale: window.navigator.language,
-                    },
-                  }),
-                ]);
-              }
-            } catch {
-              // Invalid browser state never blocks a valid OAuth sign-in.
+        if (disposed || !session?.user) return;
+        const googleSignInPending =
+          readSessionItem("cozycraft-google-sign-in-pending") === "1";
+        const pendingPolicyConsent = readSessionItem(
+          "cozycraft-policy-consent-pending",
+        );
+        if (googleSignInPending) {
+          removeSessionItem("cozycraft-google-sign-in-pending");
+          void recordAuthActivity(supabase, "customer_sign_in", {
+            name: "Google sign-in",
+            provider: "google",
+          });
+        }
+        if (pendingPolicyConsent) {
+          removeSessionItem("cozycraft-policy-consent-pending");
+          try {
+            const consent = JSON.parse(pendingPolicyConsent) as {
+              termsVersion?: string;
+              privacyVersion?: string;
+              source?: string;
+            };
+            if (
+              consent.termsVersion === CUSTOMER_POLICY_VERSION &&
+              consent.privacyVersion === CUSTOMER_POLICY_VERSION
+            ) {
+              void Promise.all([
+                supabase.auth.updateUser({
+                  data: {
+                    customer_policy_accepted: true,
+                    terms_version: CUSTOMER_POLICY_VERSION,
+                    privacy_version: CUSTOMER_POLICY_VERSION,
+                    policy_accepted_at: new Date().toISOString(),
+                    policy_acceptance_source:
+                      consent.source ?? "web_google_signup",
+                  },
+                }),
+                supabase.rpc("accept_current_customer_policies", {
+                  p_terms_version: CUSTOMER_POLICY_VERSION,
+                  p_privacy_version: CUSTOMER_POLICY_VERSION,
+                  p_source: consent.source ?? "web_google_signup",
+                  p_context: {
+                    user_agent: window.navigator.userAgent.slice(0, 500),
+                    locale: window.navigator.language,
+                  },
+                }),
+              ]);
             }
+          } catch {
+            // Invalid browser state never blocks a valid OAuth sign-in.
           }
-          void loadAccount(
-            session.user.id,
-            session.user.email ?? null,
-            session.user.user_metadata ?? {},
-          ).finally(() => setAuthReady(true));
         }
-        else {
-          setUserId(null); setUser(null); setUserEmail(null); setRole(null);
-          setAvatar(null); setAvatarPath(null); setProfilePhone(""); setProfileUsername("");
-          setProfileGender(""); setProfileBirth(""); setHasPassword(false);
-          setProfilePaymentMethod("cod");
-          setCart([]); setSaved([]); setAddresses([]); setOrders([]);
-          setCustomerProfiles([]); setSupportTickets([]);
-          setAuthReady(true);
-        }
+        void restoreSession();
       }, 0);
     });
-    return () => subscription.unsubscribe();
-  }, [loadAccount]);
+    const handlePageShow = () => {
+      void restoreSession();
+    };
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      disposed = true;
+      restoreGeneration += 1;
+      cancelScheduledRestore();
+      window.removeEventListener("pageshow", handlePageShow);
+      subscription.unsubscribe();
+    };
+  }, [clearCustomerAccount, loadAccount]);
 
   const clearAdminAccount = useCallback(() => {
     setAdminUserId(null);
@@ -846,7 +1036,7 @@ function App() {
   useEffect(() => {
     const timer = splash
       ? window.setTimeout(() => {
-          window.sessionStorage.setItem(splashSessionKey, "1");
+          writeSessionItem(splashSessionKey, "1");
           setSplash(false);
         }, 1500)
       : undefined;
@@ -1294,10 +1484,12 @@ function App() {
     const { selected: orderCart, remaining: remainingCart } = selectCheckoutLines(cart, productIds);
     const signature = checkoutSignature(orderCart);
     const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${signature}`;
-    let checkoutKey = window.sessionStorage.getItem(checkoutStorageKey);
+    let checkoutKey = readSessionItem(checkoutStorageKey);
     if (!checkoutKey) {
       checkoutKey = crypto.randomUUID();
-      window.sessionStorage.setItem(checkoutStorageKey, checkoutKey);
+      // Idempotency remains valid for this invocation even if the browser
+      // refuses sessionStorage. The server still receives a unique key.
+      writeSessionItem(checkoutStorageKey, checkoutKey);
     }
     if (["card", "gcash"].includes(paymentMethod)) {
       const { data, error } = await supabase.functions.invoke(
@@ -1328,7 +1520,7 @@ function App() {
         // to a failed/cancelled order forever. Network-unknown failures retain
         // the key so the original request remains safely idempotent.
         if (data?.error || isHandledFunctionResponse(error)) {
-          window.sessionStorage.removeItem(checkoutStorageKey);
+          removeSessionItem(checkoutStorageKey);
         }
         return {
           id: null,
@@ -1342,7 +1534,7 @@ function App() {
       // and reserves inventory atomically. Do not block the PayMongo handoff
       // with redundant cart writes, catalog refreshes, or email delivery.
       // Realtime subscriptions reconcile the local stores in the background.
-      window.sessionStorage.removeItem(checkoutStorageKey);
+      removeSessionItem(checkoutStorageKey);
       return {
         id: data.orderId ?? null,
         orderNumber: data.orderNumber ?? null,
@@ -1373,7 +1565,7 @@ function App() {
       );
     }
     setCart(remainingCart);
-    window.sessionStorage.removeItem(checkoutStorageKey);
+    removeSessionItem(checkoutStorageKey);
     await Promise.all([refreshOrders(), refreshProducts()]);
     await supabase.functions.invoke("send-transactional-email", {
       body: { eventType: "order_confirmation", orderId },
@@ -1951,7 +2143,7 @@ function RouteErrorBoundary() {
         <button
           type="button"
           onClick={() => {
-            window.sessionStorage.removeItem("cozycraft-deployment-reload");
+            removeSessionItem("cozycraft-deployment-reload");
             window.location.reload();
           }}
           className="mt-7 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background"
@@ -1985,6 +2177,15 @@ const router = createBrowserRouter([
   { path: "/compare", lazy: () => storefrontCatalogRoute("ComparePage") },
   { path: "/products/:productId", lazy: () => storefrontCatalogRoute("ProductPage") },
   { path: "/cart", lazy: () => storefrontCommerceRoute("Cart") },
+  {
+    path: "/payment-return",
+    lazy: async () => {
+      const { PaymentReturn } = await import(
+        "./features/storefront/commerce/PaymentReturn"
+      );
+      return { Component: PaymentReturn };
+    },
+  },
   {
     path: "/checkout",
     lazy: async () => {

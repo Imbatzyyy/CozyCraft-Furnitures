@@ -274,6 +274,19 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   const [error, setError] = useState("");
   const [verificationNotice, setVerificationNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const customerDestination = useMemo(() => {
+    const requested = new URLSearchParams(location.search).get("next");
+    if (requested?.startsWith("/") && !requested.startsWith("//")) {
+      return requested;
+    }
+    // Account can also be rendered as a signed-out fallback inside Profile.
+    // Preserve its exact Orders/payment query instead of stripping it once the
+    // restored session becomes available.
+    if (location.pathname === "/profile") {
+      return `${location.pathname}${location.search}`;
+    }
+    return "/profile";
+  }, [location.pathname, location.search]);
   useEffect(() => {
     if (new URLSearchParams(location.search).get("reason") === "invalid-login") {
       setError("Incorrect email or password. Please check your credentials.");
@@ -282,13 +295,13 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   useEffect(() => {
     if (!authReady || !user || !role) return;
     if (role === "customer") {
-      nav("/profile", { replace: true });
+      nav(customerDestination, { replace: true });
       return;
     }
     void signOut().then(() => {
       setError("Incorrect email or password. Please check your credentials.");
     });
-  }, [authReady, nav, role, signOut, user]);
+  }, [authReady, customerDestination, nav, role, signOut, user]);
   const passwordMinimum = storeSettings.account_settings.password_minimum_length;
   const score = [
     password.length >= passwordMinimum,
@@ -323,7 +336,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
         );
         return;
       }
-      nav("/profile");
+      nav(customerDestination);
       return;
     }
     const result = await supabase.auth.signUp({

@@ -14,15 +14,20 @@ export type PendingPaymentRecoveryLookup = {
 export async function findPendingPaymentRecovery(
   userId: string,
   now = new Date(),
+  orderId?: string,
 ): Promise<PendingPaymentRecoveryLookup> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("orders")
     .select("id,order_number,payment_expires_at")
     .eq("user_id", userId)
     .in("payment_method", ["card", "gcash"])
     .eq("payment_status", "pending")
     .neq("status", "cancelled")
-    .gt("payment_expires_at", now.toISOString())
+    .gt("payment_expires_at", now.toISOString());
+  if (orderId) {
+    query = query.eq("id", orderId);
+  }
+  const { data, error } = await query
     .order("payment_expires_at", { ascending: false })
     .limit(1)
     .maybeSingle();

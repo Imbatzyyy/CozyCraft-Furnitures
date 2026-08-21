@@ -12,6 +12,7 @@ import {
 import {
   createBrowserRouter,
   Link,
+  Navigate,
   RouterProvider,
   useLocation,
   useNavigate,
@@ -93,11 +94,13 @@ import {
 import { getDeliveryServiceAreas } from "@/services/catalog/experience.service";
 import {
   isRecoverablePendingPayment,
+  paymentHandoffUrl,
+  paymentReturnUrl,
   pendingPaymentOrderUrl,
   readPendingPaymentRecovery,
-  replaceCheckoutHistoryWithPaymentRecovery,
   writePendingPaymentRecovery,
 } from "@/lib/commerce/payment-recovery";
+import { stagePaymentHandoff } from "@/lib/commerce/payment-handoff";
 import { findPendingPaymentRecovery } from "@/services/commerce/payment-recovery.service";
 
 import {
@@ -144,10 +147,32 @@ function usePendingPaymentRedirect({
   refreshOrders: () => Promise<string | null>;
 }) {
   const nav = useNavigate();
-  const attemptedForUser = useRef<string | null>(null);
-  const [checking, setChecking] = useState(
-    () => enabled && Boolean(userId),
-  );
+  const inFlightLookup = useRef<{
+    key: string;
+    token: symbol;
+  } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const lookupKey = enabled && userId ? `${userId}:${attempt}` : null;
+  const [settledLookupKey, setSettledLookupKey] = useState<string | null>(null);
+  const checking = Boolean(lookupKey && settledLookupKey !== lookupKey);
+  const [error, setError] = useState("");
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+
+  useEffect(() => {
+    if (!enabled || !userId) return;
+    const retryOnPageRestore = () => retry();
+    const retryWhenVisible = () => {
+      if (document.visibilityState === "visible") retry();
+    };
+    window.addEventListener("pageshow", retryOnPageRestore);
+    window.addEventListener("focus", retryOnPageRestore);
+    document.addEventListener("visibilitychange", retryWhenVisible);
+    return () => {
+      window.removeEventListener("pageshow", retryOnPageRestore);
+      window.removeEventListener("focus", retryOnPageRestore);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    };
+  }, [enabled, retry, userId]);
 
   useEffect(() => {
     if (!enabled || !userId) return;
@@ -166,34 +191,81 @@ function usePendingPaymentRedirect({
 
   useEffect(() => {
     if (!enabled || !userId) {
-      setChecking(false);
+      setSettledLookupKey(null);
+      setError("");
+      inFlightLookup.current = null;
       return;
     }
-    if (attemptedForUser.current === userId) return;
-    attemptedForUser.current = userId;
-    setChecking(true);
+    const currentLookupKey = `${userId}:${attempt}`;
+    if (inFlightLookup.current?.key === currentLookupKey) return;
+    const requestToken = Symbol(currentLookupKey);
+    inFlightLookup.current = { key: currentLookupKey, token: requestToken };
+    setError("");
     let active = true;
 
-    void findPendingPaymentRecovery(userId).then(async ({ recovery }) => {
-      if (!active) return;
-      if (recovery) {
-        writePendingPaymentRecovery(window.localStorage, userId, recovery);
-        nav(pendingPaymentOrderUrl(recovery.orderId), { replace: true });
-        return;
-      }
+    void (async () => {
+      try {
+        const localRecovery = readPendingPaymentRecovery(
+          window.localStorage,
+          userId,
+        );
+        if (localRecovery) {
+          if (active) {
+            nav(pendingPaymentOrderUrl(localRecovery.orderId), {
+              replace: true,
+            });
+          }
+          return;
+        }
 
-      // Keep the normal order store current as well, but do not poll. The
-      // dedicated lookup above is the authoritative lightweight recovery path.
-      await refreshOrders();
-      if (active) setChecking(false);
-    });
+        const { recovery, error: lookupError } =
+          await findPendingPaymentRecovery(userId);
+        if (!active) return;
+        if (recovery) {
+          writePendingPaymentRecovery(window.localStorage, userId, recovery);
+          nav(pendingPaymentOrderUrl(recovery.orderId), { replace: true });
+          return;
+        }
+        if (lookupError) {
+          setError(
+            "We could not check your reserved payment just now. Please try again.",
+          );
+          setSettledLookupKey(currentLookupKey);
+          return;
+        }
+
+        // Keep the normal order store current as well, but do not poll. The
+        // dedicated lookup above is the authoritative lightweight recovery path.
+        const refreshError = await refreshOrders();
+        if (!active) return;
+        if (refreshError) {
+          setError(
+            "We could not refresh your orders just now. Your payment reservation is still safe.",
+          );
+        }
+        setSettledLookupKey(currentLookupKey);
+      } catch {
+        if (!active) return;
+        setSettledLookupKey(currentLookupKey);
+        setError(
+          "We could not check your reserved payment just now. Please try again.",
+        );
+      } finally {
+        if (inFlightLookup.current?.token === requestToken) {
+          inFlightLookup.current = null;
+        }
+      }
+    })();
 
     return () => {
       active = false;
+      if (inFlightLookup.current?.token === requestToken) {
+        inFlightLookup.current = null;
+      }
     };
-  }, [enabled, nav, refreshOrders, userId]);
+  }, [attempt, enabled, nav, refreshOrders, userId]);
 
-  return checking;
+  return { checking, error, retry };
 }
 
 export function Cart() {
@@ -205,6 +277,7 @@ export function Cart() {
     addresses,
     setCartSelection,
     setAllCartSelection,
+    authReady,
     userId,
     orders,
     refreshOrders,
@@ -250,8 +323,13 @@ export function Cart() {
   const total = subtotal + (deliveryFee ?? 0);
   const allSelected =
     lines.length > 0 && selectedLines.length === lines.length;
-  const checkingPaymentRecovery = usePendingPaymentRedirect({
-    enabled: lines.length === 0,
+  const cartCatalogHydrating = cart.length > 0 && lines.length === 0;
+  const paymentRecovery = usePendingPaymentRedirect({
+    enabled:
+      authReady &&
+      Boolean(userId) &&
+      cart.length === 0 &&
+      !cartCatalogHydrating,
     userId,
     orders,
     refreshOrders,
@@ -286,7 +364,7 @@ export function Cart() {
             </label>
           )}
         </div>
-        {!lines.length && checkingPaymentRecovery ? (
+        {!authReady || cartCatalogHydrating || (!lines.length && paymentRecovery.checking) ? (
           <section
             role="status"
             aria-live="polite"
@@ -294,8 +372,32 @@ export function Cart() {
           >
             <div>
               <span className="mx-auto block h-9 w-9 animate-spin rounded-full border-[3px] border-border border-t-foreground" />
-              <p className="mt-5 text-sm font-semibold">Checking for an unfinished payment…</p>
-              <p className="mt-2 text-xs text-muted-foreground">Your reserved order will open automatically.</p>
+              <p className="mt-5 text-sm font-semibold">
+                {!authReady
+                  ? "Restoring your CozyCraft account…"
+                  : cartCatalogHydrating
+                    ? "Restoring your saved bag…"
+                    : "Checking for an unfinished payment…"}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Your saved pieces and reserved orders remain safe.
+              </p>
+            </div>
+          </section>
+        ) : !lines.length && paymentRecovery.error ? (
+          <section className="mt-8 grid min-h-[300px] place-items-center rounded-3xl border border-border bg-card px-6 text-center">
+            <div className="max-w-md">
+              <p className="text-sm font-semibold">Payment check interrupted</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {paymentRecovery.error}
+              </p>
+              <button
+                type="button"
+                onClick={paymentRecovery.retry}
+                className="mt-5 rounded-xl bg-foreground px-5 py-3 text-xs font-semibold text-background"
+              >
+                Check again
+              </button>
             </div>
           </section>
         ) : !lines.length ? (
@@ -775,7 +877,6 @@ export function CustomerOrders() {
 export function Checkout() {
   const { authReady, cart, user, userId, addresses, products, placeOrder, orders, refreshOrders, storeSettings } = useStore();
   const location = useLocation();
-  const nav = useNavigate();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
   const [notice, setNotice] = useState("");
@@ -792,8 +893,14 @@ export function Checkout() {
     total: number;
   } | null>(null);
   const searchParams = new URLSearchParams(location.search);
-  const paymentReturn = searchParams.get("payment");
-  const returnOrderId = searchParams.get("order");
+  const legacyPaymentReturn = searchParams.get("payment");
+  const legacyReturnOrderId = searchParams.get("order");
+  const legacyReturnState =
+    legacyPaymentReturn === "success"
+      ? "success"
+      : legacyPaymentReturn === "cancelled"
+        ? "cancelled"
+        : null;
   const requestedIds = searchParams
     .get("items")
     ?.split(",")
@@ -805,13 +912,16 @@ export function Checkout() {
     const item = products.find((product) => product.id === line.id);
     return item ? [{ item, quantity: line.quantity }] : [];
   });
-  const checkingPaymentRecovery = usePendingPaymentRedirect({
+  const checkoutCatalogHydrating =
+    checkoutCart.length > 0 && lines.length === 0;
+  const paymentRecovery = usePendingPaymentRedirect({
     enabled:
       authReady &&
       Boolean(userId) &&
       lines.length === 0 &&
       !completed &&
-      !paymentReturn,
+      !checkoutCatalogHydrating &&
+      !legacyReturnState,
     userId,
     orders,
     refreshOrders,
@@ -840,66 +950,6 @@ export function Checkout() {
       active = false;
     };
   }, []);
-  useEffect(() => {
-    if (!returnOrderId || !paymentReturn) return;
-    if (paymentReturn === "cancelled") {
-      void supabase.functions
-        .invoke("cancel-paymongo-checkout", { body: { orderId: returnOrderId } })
-        .then(async ({ data, error }) => {
-          await refreshOrders();
-          if (error || data?.error) {
-            setNotice(data?.error ?? error?.message ?? "Payment status could not be verified.");
-            // The order remains recoverable even when the verification request
-            // is interrupted. Send the customer to the server-backed order
-            // timer instead of exposing an empty post-checkout bag.
-            nav(`/profile?tab=orders&order=${encodeURIComponent(returnOrderId)}`, { replace: true });
-            return;
-          }
-          if (data?.paid) {
-            setCompleted({
-              id: data.orderId,
-              orderNumber: data.orderNumber,
-              total: Number(data.total),
-            });
-            setNotice("Payment was confirmed before cancellation. Your order remains active.");
-            return;
-          }
-          if (data?.paused && data?.expiresAt) {
-            setNotice(
-              "Payment was paused—not cancelled. Your items remain reserved for 15 minutes, and you can continue securely from My Account → Orders on any signed-in device.",
-            );
-            nav(`/profile?tab=orders&order=${encodeURIComponent(returnOrderId)}`, { replace: true });
-            return;
-          }
-          setNotice("The payment window expired. No charge was made and the reserved stock was released.");
-        });
-      return;
-    }
-    if (paymentReturn === "success") {
-      void supabase.functions
-        .invoke("sync-paymongo-payments", { body: { orderIds: [returnOrderId] } })
-        .then(async ({ data, error }) => {
-          if (!error && !data?.error) {
-            await supabase.functions.invoke("send-transactional-email", {
-              body: { eventType: "payment_received", orderId: returnOrderId },
-            });
-          }
-        })
-        .finally(() => void refreshOrders());
-      return;
-    }
-    void refreshOrders();
-  }, [nav, paymentReturn, refreshOrders, returnOrderId]);
-  useEffect(() => {
-    if (paymentReturn !== "success" || !returnOrderId) return;
-    const returnedOrder = orders.find((order) => order.id === returnOrderId);
-    if (!returnedOrder) return;
-    setCompleted({
-      id: returnedOrder.id,
-      orderNumber: returnedOrder.order_number,
-      total: Number(returnedOrder.total),
-    });
-  }, [orders, paymentReturn, returnOrderId]);
   const subtotal = lines.reduce(
     (sum, line) => sum + line.item.price * line.quantity,
     0,
@@ -944,6 +994,16 @@ export function Checkout() {
     "en-PH",
     { month: "long", day: "numeric", year: "numeric" },
   );
+  // Compatibility bridge for PayMongo sessions created before the dedicated
+  // return route was deployed. Never let an old callback render Checkout.
+  if (legacyReturnState && legacyReturnOrderId) {
+    return (
+      <Navigate
+        replace
+        to={paymentReturnUrl(legacyReturnState, legacyReturnOrderId)}
+      />
+    );
+  }
   if (!authReady) {
     return (
       <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
@@ -1090,7 +1150,7 @@ export function Checkout() {
         </main>
       </Layout>
     );
-  if (!lines.length && checkingPaymentRecovery) {
+  if (checkoutCatalogHydrating || (!lines.length && paymentRecovery.checking)) {
     return (
       <Layout>
         <main className="mx-auto grid min-h-[calc(100vh-160px)] max-w-[760px] place-items-center px-5 py-14">
@@ -1099,6 +1159,27 @@ export function Checkout() {
             <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">RESTORING CHECKOUT</p>
             <h1 className="mt-2 font-serif text-4xl">Finding your reserved order.</h1>
             <p className="mt-3 text-sm text-muted-foreground">You will be taken to the remaining payment time automatically.</p>
+          </section>
+        </main>
+      </Layout>
+    );
+  }
+  if (!lines.length && paymentRecovery.error) {
+    return (
+      <Layout>
+        <main className="mx-auto grid min-h-[calc(100vh-160px)] max-w-[760px] place-items-center px-5 py-14 text-center">
+          <section className="w-full rounded-[2rem] border border-border bg-card p-8 shadow-sm">
+            <p className="text-sm font-semibold">Payment check interrupted</p>
+            <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-muted-foreground">
+              {paymentRecovery.error}
+            </p>
+            <button
+              type="button"
+              onClick={paymentRecovery.retry}
+              className="mt-5 rounded-xl bg-foreground px-5 py-3 text-xs font-semibold text-background"
+            >
+              Check again
+            </button>
           </section>
         </main>
       </Layout>
@@ -1376,36 +1457,43 @@ export function Checkout() {
                     return;
                   }
                   if (result.checkoutUrl) {
+                    if (!result.id) {
+                      setPaymentHandoff(null);
+                      setPlacing(false);
+                      setNotice(
+                        "The secure payment order was created without a recovery reference. Please open My Account → Orders before trying again.",
+                      );
+                      return;
+                    }
                     setPaymentHandoff("redirecting");
                     const recoveryExpiresAt =
                       result.expiresAt ??
                       new Date(Date.now() + 15 * 60 * 1000).toISOString();
-                    if (userId && result.id) {
+                    if (userId) {
                       writePendingPaymentRecovery(window.localStorage, userId, {
                         orderId: result.id,
                         orderNumber: result.orderNumber,
                         expiresAt: recoveryExpiresAt,
                       });
                     }
-                    // PayMongo's own Cancel button uses cancel_url, while the
-                    // browser Back button only revisits browser history. Make
-                    // that history entry the recoverable order—not an emptied
-                    // bag whose submitted lines have already been reserved.
-                    if (result.id) {
-                      // Data-router navigation can wait for a lazy route before
-                      // committing. PayMongo must never open first, otherwise
-                      // browser Back restores the already-submitted checkout.
-                      // Replacing the current URL at the browser-history layer
-                      // is synchronous and guarantees a durable return target.
-                      replaceCheckoutHistoryWithPaymentRecovery(
-                        window.history,
-                        result.id,
-                      );
-                    }
-                    // Let React paint the final handoff state before leaving
-                    // CozyCraft. This avoids flashing the now-empty cart while
-                    // the browser opens the external payment gateway.
-                    window.location.assign(result.checkoutUrl!);
+                    // Commit a real, cart-independent same-origin document
+                    // before leaving CozyCraft. Browser Back/BFCache will then
+                    // restore the payment timer route rather than the submitted
+                    // Checkout component whose cart rows were already consumed.
+                    const handoffStaged = userId
+                      ? stagePaymentHandoff(window.sessionStorage, {
+                          userId,
+                          orderId: result.id,
+                          orderNumber: result.orderNumber,
+                          checkoutUrl: result.checkoutUrl,
+                          expiresAt: recoveryExpiresAt,
+                        })
+                      : false;
+                    window.location.replace(
+                      handoffStaged
+                        ? paymentHandoffUrl(result.id)
+                        : paymentReturnUrl("pending", result.id),
+                    );
                     return;
                   }
                   setPlacing(false);

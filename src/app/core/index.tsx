@@ -97,6 +97,7 @@ import {
 import { exactStockAvailability } from "@/lib/catalog/stock-availability";
 import {
   isRecoverablePendingPayment,
+  pendingPaymentRecoveryEvent,
   pendingPaymentOrderUrl,
   readPendingPaymentRecovery,
 } from "@/lib/commerce/payment-recovery";
@@ -560,6 +561,23 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
     const timer = window.setInterval(() => setPaymentClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [recoverablePaymentId]);
+  useEffect(() => {
+    const refreshRecoveryMarker = () => setPaymentClock(Date.now());
+    window.addEventListener(
+      pendingPaymentRecoveryEvent,
+      refreshRecoveryMarker,
+    );
+    window.addEventListener("storage", refreshRecoveryMarker);
+    window.addEventListener("pageshow", refreshRecoveryMarker);
+    return () => {
+      window.removeEventListener(
+        pendingPaymentRecoveryEvent,
+        refreshRecoveryMarker,
+      );
+      window.removeEventListener("storage", refreshRecoveryMarker);
+      window.removeEventListener("pageshow", refreshRecoveryMarker);
+    };
+  }, []);
   useEffect(() => {
     if (!immersive) return;
     const update = () => setScrolled(window.scrollY > 80);

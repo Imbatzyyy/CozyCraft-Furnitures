@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { findPaidProviderPayment, providerSessionLivemode } from "../_shared/paymongo-session.ts";
+import { reconcileElapsedPaymongoSession } from "../_shared/paymongo-expiry.ts";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
 const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com"]);
@@ -61,15 +62,6 @@ Deno.serve(async (request) => {
     return json(request, { error: "This order no longer has a pending online payment." }, 409);
   }
 
-  const expiry = order.payment_expires_at ? Date.parse(order.payment_expires_at) : Number.NaN;
-  if (!Number.isFinite(expiry) || expiry <= Date.now()) {
-    await adminClient.rpc("expire_paymongo_order", {
-      p_order_id: order.id,
-      p_reason: "PayMongo payment window expired",
-    });
-    return json(request, { error: "The 15-minute payment window has expired.", expired: true }, 410);
-  }
-
   const { data: transaction, error: transactionError } = await adminClient
     .from("payment_transactions")
     .select("id,provider_session_id,checkout_url,status,expires_at")
@@ -78,6 +70,31 @@ Deno.serve(async (request) => {
   if (transactionError) return json(request, { error: transactionError.message }, 500);
   if (!transaction?.provider_session_id || !transaction.checkout_url || transaction.status !== "pending") {
     return json(request, { error: "The secure payment session is no longer available." }, 409);
+  }
+
+  const expiry = order.payment_expires_at ? Date.parse(order.payment_expires_at) : Number.NaN;
+  if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+    const reconciliation = await reconcileElapsedPaymongoSession({
+      adminClient,
+      orderId: order.id,
+      transaction,
+      secretKey: paymongoSecretKey,
+    });
+    if (reconciliation.outcome === "paid") {
+      return json(request, {
+        paid: true,
+        orderId: order.id,
+        orderNumber: order.order_number,
+        total: Number(order.total),
+      });
+    }
+    if (reconciliation.outcome === "expired") {
+      return json(request, { error: "The 15-minute payment window has expired.", expired: true }, 410);
+    }
+    return json(request, {
+      error: "The payment session could not be safely closed yet. Please try again shortly.",
+      retryable: true,
+    }, 503);
   }
 
   // Verify once, only when the customer asks to continue. The visible timer
@@ -113,11 +130,25 @@ Deno.serve(async (request) => {
 
   const providerStatus = providerPayload?.data?.attributes?.status;
   if (providerStatus === "expired") {
-    await adminClient.rpc("expire_paymongo_order", {
-      p_order_id: order.id,
-      p_reason: "PayMongo checkout session expired",
+    const reconciliation = await reconcileElapsedPaymongoSession({
+      adminClient,
+      orderId: order.id,
+      transaction,
+      secretKey: paymongoSecretKey,
+      reason: "PayMongo checkout session expired",
     });
-    return json(request, { error: "The secure PayMongo session has expired.", expired: true }, 410);
+    if (reconciliation.outcome === "paid") {
+      return json(request, {
+        paid: true,
+        orderId: order.id,
+        orderNumber: order.order_number,
+        total: Number(order.total),
+      });
+    }
+    if (reconciliation.outcome === "expired") {
+      return json(request, { error: "The secure PayMongo session has expired.", expired: true }, 410);
+    }
+    return json(request, { error: reconciliation.message, retryable: true }, 503);
   }
 
   return json(request, {

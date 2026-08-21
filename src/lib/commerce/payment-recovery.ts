@@ -8,20 +8,42 @@ export type PendingPaymentRecovery = {
 
 const keyPrefix = "cozycraft-pending-payment";
 
+export const pendingPaymentRecoveryEvent =
+  "cozycraft:pending-payment-recovery-changed";
+
+export type PaymentReturnState =
+  | "handoff"
+  | "pending"
+  | "success"
+  | "cancelled";
+
+export type PendingPaymentRecoveryEventDetail = {
+  userId: string;
+  recovery: PendingPaymentRecovery | null;
+};
+
 export const pendingPaymentRecoveryKey = (userId: string) =>
   `${keyPrefix}:${userId}`;
 
 export const pendingPaymentOrderUrl = (orderId: string) =>
   `/profile?tab=orders&order=${encodeURIComponent(orderId)}`;
 
-export const replaceCheckoutHistoryWithPaymentRecovery = (
-  history: Pick<History, "state" | "replaceState">,
+export const paymentReturnUrl = (
+  state: PaymentReturnState,
   orderId: string,
-) => {
-  const recoveryUrl = pendingPaymentOrderUrl(orderId);
-  history.replaceState(history.state, "", recoveryUrl);
-  return recoveryUrl;
-};
+) => `/payment-return?payment=${state}&order=${encodeURIComponent(orderId)}`;
+
+export const pendingPaymentReturnUrl = (orderId: string) =>
+  paymentReturnUrl("pending", orderId);
+
+export const paymentHandoffUrl = (orderId: string) =>
+  paymentReturnUrl("handoff", orderId);
+
+export const successfulPaymentReturnUrl = (orderId: string) =>
+  paymentReturnUrl("success", orderId);
+
+export const cancelledPaymentReturnUrl = (orderId: string) =>
+  paymentReturnUrl("cancelled", orderId);
 
 export const isRecoverablePendingPayment = (
   order: DbOrder,
@@ -39,6 +61,14 @@ export const readPendingPaymentRecovery = (
   now = Date.now(),
 ): PendingPaymentRecovery | null => {
   const key = pendingPaymentRecoveryKey(userId);
+  const removeInvalidMarker = () => {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // Recovery is best-effort. A blocked storage API must not break checkout.
+    }
+  };
+
   try {
     const raw = storage.getItem(key);
     if (!raw) return null;
@@ -50,7 +80,7 @@ export const readPendingPaymentRecovery = (
       !Number.isFinite(Date.parse(value.expiresAt)) ||
       Date.parse(value.expiresAt) <= now
     ) {
-      storage.removeItem(key);
+      removeInvalidMarker();
       return null;
     }
     return {
@@ -60,8 +90,31 @@ export const readPendingPaymentRecovery = (
       expiresAt: value.expiresAt,
     };
   } catch {
-    storage.removeItem(key);
+    removeInvalidMarker();
     return null;
+  }
+};
+
+const dispatchPendingPaymentRecoveryEvent = (
+  detail: PendingPaymentRecoveryEventDetail,
+) => {
+  if (
+    typeof window === "undefined" ||
+    typeof window.dispatchEvent !== "function" ||
+    typeof CustomEvent !== "function"
+  ) {
+    return;
+  }
+
+  try {
+    window.dispatchEvent(
+      new CustomEvent<PendingPaymentRecoveryEventDetail>(
+        pendingPaymentRecoveryEvent,
+        { detail },
+      ),
+    );
+  } catch {
+    // Same-window notification is an enhancement, never a checkout dependency.
   }
 };
 
@@ -70,10 +123,27 @@ export const writePendingPaymentRecovery = (
   userId: string,
   recovery: PendingPaymentRecovery,
 ) => {
-  storage.setItem(pendingPaymentRecoveryKey(userId), JSON.stringify(recovery));
+  try {
+    storage.setItem(
+      pendingPaymentRecoveryKey(userId),
+      JSON.stringify(recovery),
+    );
+    dispatchPendingPaymentRecoveryEvent({ userId, recovery });
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export const clearPendingPaymentRecovery = (
   storage: Pick<Storage, "removeItem">,
   userId: string,
-) => storage.removeItem(pendingPaymentRecoveryKey(userId));
+) => {
+  try {
+    storage.removeItem(pendingPaymentRecoveryKey(userId));
+    dispatchPendingPaymentRecoveryEvent({ userId, recovery: null });
+    return true;
+  } catch {
+    return false;
+  }
+};

@@ -3,7 +3,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -116,9 +118,31 @@ import { isCancellationWindowOpen, isReturnWindowOpen } from "@/lib/commerce/ret
 import {
   clearPendingPaymentRecovery,
   isRecoverablePendingPayment,
+  pendingPaymentRecoveryEvent,
   readPendingPaymentRecovery,
+  writePendingPaymentRecovery,
   type PendingPaymentRecovery,
 } from "@/lib/commerce/payment-recovery";
+import { isTrustedPayMongoCheckoutUrl } from "@/lib/commerce/payment-handoff";
+import { findPendingPaymentRecovery } from "@/services/commerce/payment-recovery.service";
+
+const profileTabFromSearch = (search: string) => {
+  const requested = new URLSearchParams(search).get("tab")?.toLowerCase();
+  return (
+    [
+      "Profile",
+      "Orders",
+      "Addresses",
+      "Payments",
+      "Change password",
+      "Support",
+    ].find(
+      (item) =>
+        item.toLowerCase().replace(/\s+/g, "-") === requested ||
+        item.toLowerCase() === requested,
+    ) ?? "Profile"
+  );
+};
 
 type PsgcRegion = {
   regCode: string;
@@ -633,6 +657,11 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
 }
 
 export function Profile() {
+  const { userId } = useStore();
+  return <CustomerProfile key={userId ?? "guest"} />;
+}
+
+function CustomerProfile() {
   const {
     userId,
     user,
@@ -668,15 +697,13 @@ export function Profile() {
   const nav = useNavigate();
   const location = useLocation();
   const passwordMinimum = storeSettings.account_settings.password_minimum_length;
-  const [tab, setTab] = useState("Profile");
+  const [tab, setTab] = useState(() => profileTabFromSearch(location.search));
   const requestedOrderId = useMemo(
     () => new URLSearchParams(location.search).get("order") ?? "",
     [location.search],
   );
   useEffect(() => {
-    const requested = new URLSearchParams(location.search).get("tab")?.toLowerCase();
-    const matching = ["Profile","Orders","Addresses","Payments","Change password","Support"].find((item)=>item.toLowerCase().replace(/\s+/g,"-")===requested || item.toLowerCase()===requested);
-    if (matching) setTab(matching);
+    setTab(profileTabFromSearch(location.search));
   }, [location.search]);
   const [notice, setNotice] = useState("");
   const emptyBilling = useMemo<DbBillingProfile>(() => ({
@@ -704,6 +731,15 @@ export function Profile() {
   const [paymentClock, setPaymentClock] = useState(() => Date.now());
   const [pendingPaymentRecovery, setPendingPaymentRecovery] =
     useState<PendingPaymentRecovery | null>(null);
+  const paymentRecoveryRequestRef = useRef<{
+    userId: string;
+    orderId: string;
+    request: Promise<void>;
+  } | null>(null);
+  const activePaymentRecoveryKeyRef = useRef("");
+  activePaymentRecoveryKeyRef.current = `${userId ?? ""}:${requestedOrderId}`;
+  const paymentRecoveryAutoSelectedRef = useRef<string | null>(null);
+  const paymentRecoveryIdentityRef = useRef<string | null>(userId);
   const [resumingPaymentId, setResumingPaymentId] = useState<string | null>(null);
   const [paymentRecoveryError, setPaymentRecoveryError] = useState("");
   const [returnRequests, setReturnRequests] = useState<Array<{ id:string; order_id:string; return_number:string; reason:string; details:string; status:string; admin_note:string|null; created_at:string }>>([]);
@@ -732,6 +768,18 @@ export function Profile() {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
   const [passwordSetupSending, setPasswordSetupSending] = useState(false);
+  useLayoutEffect(() => {
+    if (paymentRecoveryIdentityRef.current === userId) return;
+    paymentRecoveryIdentityRef.current = userId;
+    paymentRecoveryRequestRef.current = null;
+    paymentRecoveryAutoSelectedRef.current = null;
+    setOrderFilter("all");
+    setSelectedOrderId("");
+    setPendingPaymentRecovery(null);
+    setResumingPaymentId(null);
+    setPaymentRecoveryError("");
+    setPaymentClock(Date.now());
+  }, [userId]);
   const defaultUsername =
     profileUsername.trim() || (user ?? "").trim().split(/\s+/)[0] || "";
   const loadBilling = useCallback(async () => {
@@ -1065,51 +1113,245 @@ export function Profile() {
         : orders.filter((order) => order.status === orderFilter),
     [orderFilter, orders],
   );
-  useEffect(() => {
-    if (tab !== "Orders") return;
-    void refreshOrders().then((error) => {
-      if (error) setPaymentRecoveryError(error);
-    });
-  }, [refreshOrders, tab]);
-  useEffect(() => {
-    if (!userId) return;
-    const localRecovery = readPendingPaymentRecovery(
-      window.localStorage,
-      userId,
-    );
-    setPendingPaymentRecovery(localRecovery);
-    if (!localRecovery) return;
-    const matchingOrder = orders.find(
-      (order) => order.id === localRecovery.orderId,
-    );
-    if (matchingOrder && !isRecoverablePendingPayment(matchingOrder)) {
-      clearPendingPaymentRecovery(window.localStorage, userId);
+  const refreshPendingPaymentRecovery = useCallback(async () => {
+    if (!authReady || !userId || tab !== "Orders") return;
+
+    let locallySavedRecovery: PendingPaymentRecovery | null = null;
+    try {
+      locallySavedRecovery = readPendingPaymentRecovery(
+        window.localStorage,
+        userId,
+      );
+    } catch {
+      // Private browsing and strict storage policies must not block the
+      // server-backed recovery lookup below.
+    }
+    const relevantLocalRecovery =
+      locallySavedRecovery &&
+      (!requestedOrderId || locallySavedRecovery.orderId === requestedOrderId)
+        ? locallySavedRecovery
+        : null;
+    if (relevantLocalRecovery) {
+      setPendingPaymentRecovery(relevantLocalRecovery);
+    } else if (requestedOrderId) {
+      // Never show a different order's local recovery card while the customer
+      // opened a specific order from a PayMongo return URL.
       setPendingPaymentRecovery(null);
     }
-  }, [orders, userId]);
+
+    if (
+      paymentRecoveryRequestRef.current?.userId === userId &&
+      paymentRecoveryRequestRef.current.orderId === requestedOrderId
+    ) {
+      await paymentRecoveryRequestRef.current.request;
+      return;
+    }
+
+    const requestedUserId = userId;
+    const requestedPaymentOrderId = requestedOrderId;
+    const requestedPaymentKey = `${requestedUserId}:${requestedPaymentOrderId}`;
+    const request = findPendingPaymentRecovery(
+      requestedUserId,
+      new Date(),
+      requestedPaymentOrderId || undefined,
+    )
+      .then(({ recovery, error }) => {
+        if (activePaymentRecoveryKeyRef.current !== requestedPaymentKey) return;
+        if (error) {
+          if (!relevantLocalRecovery) {
+            setPaymentRecoveryError(
+              "Your reserved payment could not be checked just now. Reopen this page to try again.",
+            );
+          }
+          return;
+        }
+
+        setPaymentRecoveryError("");
+        if (recovery) {
+          try {
+            writePendingPaymentRecovery(
+              window.localStorage,
+              requestedUserId,
+              recovery,
+            );
+          } catch {
+            // The server result still keeps this screen recoverable even when
+            // the browser refuses persistent storage.
+          }
+          setPendingPaymentRecovery(recovery);
+          return;
+        }
+
+        if (!requestedPaymentOrderId || relevantLocalRecovery) {
+          try {
+            clearPendingPaymentRecovery(window.localStorage, requestedUserId);
+          } catch {
+            // A stale browser marker is harmless when storage is unavailable.
+          }
+          setPendingPaymentRecovery(null);
+        }
+      })
+      .finally(() => {
+        if (paymentRecoveryRequestRef.current?.request === request) {
+          paymentRecoveryRequestRef.current = null;
+        }
+      });
+    paymentRecoveryRequestRef.current = {
+      userId: requestedUserId,
+      orderId: requestedPaymentOrderId,
+      request,
+    };
+    await request;
+  }, [authReady, requestedOrderId, tab, userId]);
   useEffect(() => {
-    const hasRecoverablePayment = orders.some(
-      (order) => paymentWindowRemaining(order, Date.now()) > 0,
-    ) || Boolean(
-      pendingPaymentRecovery &&
-        Date.parse(pendingPaymentRecovery.expiresAt) > Date.now(),
+    if (!authReady || !userId || tab !== "Orders") return;
+    void refreshPendingPaymentRecovery();
+    void refreshOrders().then((error) => {
+      if (error) {
+        setPaymentRecoveryError((current) =>
+          current ||
+          "Your complete order history is taking longer than expected. Any reserved payment is still available below.",
+        );
+      }
+    });
+  }, [authReady, refreshOrders, refreshPendingPaymentRecovery, tab, userId]);
+  useEffect(() => {
+    if (!authReady || !userId || tab !== "Orders") return;
+
+    const retryRecovery = () => {
+      // Browser Back may restore the exact React heap that was displaying
+      // “Opening PayMongo…”. That navigation flag is transient and must never
+      // survive a BFCache restore.
+      setResumingPaymentId(null);
+      void refreshPendingPaymentRecovery();
+    };
+    const retryFromPageShow = (event: PageTransitionEvent) => {
+      retryRecovery();
+      if (event.persisted) {
+        // A BFCache restore can skip the normal focus transition. Refresh the
+        // order graph once so a payment completed in another tab/device does
+        // not leave a stale countdown or Continue button behind.
+        void refreshOrders();
+      }
+    };
+    const retryWhenVisible = () => {
+      if (document.visibilityState === "visible") retryRecovery();
+    };
+    const retryFromRecoveryEvent = (event: Event) => {
+      const eventUserId = (
+        event as CustomEvent<{ userId?: string }>
+      ).detail?.userId;
+      if (!eventUserId || eventUserId === userId) retryRecovery();
+    };
+
+    window.addEventListener("pageshow", retryFromPageShow);
+    window.addEventListener("focus", retryRecovery);
+    window.addEventListener(
+      pendingPaymentRecoveryEvent,
+      retryFromRecoveryEvent,
     );
-    setPaymentClock(Date.now());
-    if (!hasRecoverablePayment) return;
-    const timer = window.setInterval(() => setPaymentClock(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [orders, pendingPaymentRecovery]);
+    document.addEventListener("visibilitychange", retryWhenVisible);
+    return () => {
+      window.removeEventListener("pageshow", retryFromPageShow);
+      window.removeEventListener("focus", retryRecovery);
+      window.removeEventListener(
+        pendingPaymentRecoveryEvent,
+        retryFromRecoveryEvent,
+      );
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    };
+  }, [authReady, refreshOrders, refreshPendingPaymentRecovery, tab, userId]);
+  useEffect(() => {
+    if (!userId || !pendingPaymentRecovery) return;
+    const matchingOrder = orders.find(
+      (order) => order.id === pendingPaymentRecovery.orderId,
+    );
+    if (matchingOrder && !isRecoverablePendingPayment(matchingOrder)) {
+      try {
+        clearPendingPaymentRecovery(window.localStorage, userId);
+      } catch {
+        // The in-memory state below remains authoritative for this screen.
+      }
+      setPendingPaymentRecovery(null);
+    }
+  }, [orders, pendingPaymentRecovery, userId]);
+  useEffect(() => {
+    const orderExpiries = orders
+      .filter(
+        (order) =>
+          ["card", "gcash"].includes(order.payment_method) &&
+          order.payment_status === "pending" &&
+          order.status !== "cancelled",
+      )
+      .map((order) => Date.parse(order.payment_expires_at ?? ""))
+      .filter(Number.isFinite);
+    const pendingExpiry = pendingPaymentRecovery
+      ? Date.parse(pendingPaymentRecovery.expiresAt)
+      : Number.NaN;
+    const latestExpiry = Math.max(
+      ...orderExpiries,
+      ...(Number.isFinite(pendingExpiry) ? [pendingExpiry] : []),
+      0,
+    );
+    let timer: number | undefined;
+    const tick = () => {
+      const currentTime = Date.now();
+      setPaymentClock(currentTime);
+      if (
+        pendingPaymentRecovery &&
+        Number.isFinite(pendingExpiry) &&
+        pendingExpiry <= currentTime
+      ) {
+        if (userId) {
+          clearPendingPaymentRecovery(window.localStorage, userId);
+        }
+        setPendingPaymentRecovery((current) =>
+          current?.orderId === pendingPaymentRecovery.orderId ? null : current,
+        );
+        setResumingPaymentId((current) =>
+          current === pendingPaymentRecovery.orderId ? null : current,
+        );
+      }
+      if (timer !== undefined && latestExpiry <= currentTime) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+    tick();
+    if (latestExpiry > Date.now()) {
+      timer = window.setInterval(tick, 1000);
+    }
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer);
+    };
+  }, [orders, pendingPaymentRecovery, userId]);
   const resumePaymentById = async (orderId: string) => {
     if (resumingPaymentId) return;
     setPaymentRecoveryError("");
     setResumingPaymentId(orderId);
-    const { data, error } = await supabase.functions.invoke(
-      "resume-paymongo-checkout",
-      { body: { orderId } },
-    );
+    let data: Record<string, unknown> | null = null;
+    let error: { message?: string } | null = null;
+    try {
+      const response = await supabase.functions.invoke(
+        "resume-paymongo-checkout",
+        { body: { orderId } },
+      );
+      data = (response.data as Record<string, unknown> | null) ?? null;
+      error = response.error;
+    } catch (resumeError) {
+      setPaymentRecoveryError(
+        resumeError instanceof Error
+          ? resumeError.message
+          : "Unable to reopen secure payment. Please try again.",
+      );
+      setResumingPaymentId(null);
+      return;
+    }
     if (error || data?.error) {
       setPaymentRecoveryError(
-        data?.error ?? error?.message ?? "Unable to reopen secure payment. Please try again.",
+        typeof data?.error === "string"
+          ? data.error
+          : error?.message ?? "Unable to reopen secure payment. Please try again.",
       );
       setResumingPaymentId(null);
       await refreshOrders();
@@ -1118,14 +1360,63 @@ export function Profile() {
     if (data?.paid) {
       setNotice("Payment is already confirmed. Your order is now being processed.");
       setResumingPaymentId(null);
+      if (userId) {
+        try {
+          clearPendingPaymentRecovery(window.localStorage, userId);
+        } catch {
+          // Clearing browser storage is optional; the server remains the
+          // source of truth for the settled order.
+        }
+        setPendingPaymentRecovery(null);
+      }
       await refreshOrders();
       return;
     }
-    if (!data?.checkoutUrl) {
+    if (
+      typeof data?.checkoutUrl !== "string" ||
+      !isTrustedPayMongoCheckoutUrl(data.checkoutUrl)
+    ) {
       setPaymentRecoveryError("The secure payment link is unavailable.");
       setResumingPaymentId(null);
       return;
     }
+
+    const returnedOrderId =
+      typeof data?.orderId === "string" && data.orderId
+        ? data.orderId
+        : orderId;
+    const returnedExpiry =
+      typeof data?.expiresAt === "string" ? data.expiresAt : "";
+    if (
+      !userId ||
+      !returnedExpiry ||
+      !Number.isFinite(Date.parse(returnedExpiry)) ||
+      Date.parse(returnedExpiry) <= Date.now()
+    ) {
+      setPaymentRecoveryError(
+        "The secure payment deadline could not be restored. Please refresh your orders and try again.",
+      );
+      setResumingPaymentId(null);
+      return;
+    }
+    const resumedRecovery: PendingPaymentRecovery = {
+      orderId: returnedOrderId,
+      orderNumber:
+        typeof data?.orderNumber === "string" ? data.orderNumber : null,
+      expiresAt: returnedExpiry,
+    };
+    try {
+      writePendingPaymentRecovery(
+        window.localStorage,
+        userId,
+        resumedRecovery,
+      );
+    } catch {
+      // The in-memory copy and server order still provide recovery when local
+      // storage is disabled.
+    }
+    setPendingPaymentRecovery(resumedRecovery);
+    setResumingPaymentId(null);
     window.location.assign(data.checkoutUrl);
   };
   const resumePayment = (order: DbOrder) => resumePaymentById(order.id);
@@ -1141,10 +1432,34 @@ export function Profile() {
       setSelectedOrderId(requestedOrderId);
       return;
     }
+    if (
+      !requestedOrderId &&
+      pendingPaymentRecovery &&
+      paymentRecoveryAutoSelectedRef.current !==
+        pendingPaymentRecovery.orderId &&
+      visibleOrders.some(
+        (order) => order.id === pendingPaymentRecovery.orderId,
+      )
+    ) {
+      paymentRecoveryAutoSelectedRef.current =
+        pendingPaymentRecovery.orderId;
+      setSelectedOrderId(pendingPaymentRecovery.orderId);
+      return;
+    }
     if (!visibleOrders.some((order) => order.id === selectedOrderId)) {
       setSelectedOrderId(visibleOrders[0].id);
     }
-  }, [requestedOrderId, selectedOrderId, visibleOrders]);
+  }, [
+    pendingPaymentRecovery,
+    requestedOrderId,
+    selectedOrderId,
+    visibleOrders,
+  ]);
+  useEffect(() => {
+    if (!pendingPaymentRecovery) {
+      paymentRecoveryAutoSelectedRef.current = null;
+    }
+  }, [pendingPaymentRecovery]);
   const selectedOrder =
     visibleOrders.find((order) => order.id === selectedOrderId) ??
     visibleOrders[0] ??
@@ -1161,6 +1476,25 @@ export function Profile() {
         Date.parse(unloadedPaymentRecovery.expiresAt) - paymentClock,
       )
     : 0;
+  if (!authReady) {
+    return (
+      <main
+        className="grid min-h-screen place-items-center bg-[#e9e5de] px-6 text-center"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div>
+          <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground" />
+          <p className="mt-4 text-sm font-semibold text-foreground">
+            Restoring your secure CozyCraft session…
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Your order and payment window are being kept in place.
+          </p>
+        </div>
+      </main>
+    );
+  }
   if (!user) return <Account mode="login" />;
   if (role && role !== "customer") {
     return (
@@ -1815,14 +2149,16 @@ export function Profile() {
                     )}
                   </section>
                 )}
-                {!selectedOrder && !unloadedPaymentRecovery ? (
-                  <div className="mt-5 rounded-2xl border border-dashed border-border p-8 text-center">
+                {!selectedOrder ? (
+                  unloadedPaymentRecovery ? null : (
+                    <div className="mt-5 rounded-2xl border border-dashed border-border p-8 text-center">
                     <Package className="mx-auto text-muted-foreground" size={23} />
                     <p className="mt-3 text-sm font-semibold">No orders in this status.</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Orders will move here automatically as CozyCraft updates fulfillment.
                     </p>
-                  </div>
+                    </div>
+                  )
                 ) : (
                   <div className="mt-5 grid gap-4 xl:grid-cols-[.72fr_1.28fr]">
                     <div className="max-h-[630px] space-y-2 overflow-y-auto pr-1">
