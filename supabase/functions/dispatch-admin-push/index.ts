@@ -86,12 +86,33 @@ const appleAccessToken = async () => {
   return appleAccess.token;
 };
 
+const destinationRoute = (notification: PushRecord) => {
+  const id = notification.entity_id ? encodeURIComponent(notification.entity_id) : "";
+  const entityType = (notification.entity_type ?? "").trim().toLowerCase();
+  if (id && (entityType === "orders" || entityType === "return_requests" || notification.kind === "order")) return `/app/orders/${id}`;
+  if (id && (entityType === "reviews" || notification.kind === "review")) return `/app/reviews?review=${id}`;
+  if (id && (entityType === "support_tickets" || notification.kind === "support")) return `/app/support/${id}`;
+  if (id && entityType === "products" && notification.kind === "inventory") return `/app/inventory?product=${id}`;
+  if (id && entityType === "products") return `/app/products/${id}`;
+  if (id && (entityType === "profiles" || entityType === "customers")) return `/app/customers/${id}`;
+  if (entityType === "errors" || entityType === "client_errors") return "/app/activity?scope=errors";
+  return ({
+    order: "/app/orders",
+    review: "/app/reviews",
+    support: "/app/support",
+    inventory: "/app/inventory",
+    report: "/app/reports",
+    system: "/app/activity",
+  } as Record<string, string>)[notification.kind] ?? "/app/notifications";
+};
+
 const dataPayload = (notification: PushRecord) => ({
   notification_id: String(notification.id),
   kind: notification.kind,
   entity_type: notification.entity_type ?? "",
   entity_id: notification.entity_id ?? "",
   route: notification.route ?? "/app/notifications",
+  destination: destinationRoute(notification),
 });
 
 const androidChannel = (notification: PushRecord) =>
