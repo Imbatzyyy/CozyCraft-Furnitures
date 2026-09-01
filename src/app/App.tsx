@@ -2457,6 +2457,12 @@ const router = createBrowserRouter([
   { path: "/admin/support", lazy: () => adminOperationsRoute("SupportPage") },
   { path: "/admin/settings", lazy: () => adminTeamRoute("StoreSettingsPage") },
   { path: "*", lazy: () => storefrontCatalogRoute("Home") },
-].map((route) => ({ ...route, errorElement: <RouteErrorBoundary /> })));
+].map((route) => ({
+  ...route,
+  hydrateFallbackElement: <Splash />,
+  ...(route.path === "/checkout"
+    ? {}
+    : { errorElement: <RouteErrorBoundary /> }),
+})));
 
 export default App;
