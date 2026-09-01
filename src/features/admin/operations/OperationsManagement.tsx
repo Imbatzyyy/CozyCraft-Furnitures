@@ -54,6 +54,7 @@ import {
   PackagePlus,
   Pencil,
   Plus,
+  Printer,
   Search,
   ServerCog,
   Settings,
@@ -100,6 +101,7 @@ import {
   type AdminOrderView,
 } from "@/lib/admin/order-desk";
 import { buildAdminAttentionItems } from "@/lib/admin/operations-attention";
+import { buildPackingListData } from "@/lib/admin/packing-list";
 import {
   buildOperationsHealthSnapshot,
   type ClientErrorSummary,
@@ -954,6 +956,129 @@ function adminOrderFiltersFromParams(params: URLSearchParams): AdminOrderDeskFil
   };
 }
 
+function AdminPackingList({
+  order,
+  printedAt,
+}: {
+  order: DbOrder;
+  printedAt: Date;
+}) {
+  const packingList = buildPackingListData(order, printedAt);
+  return createPortal(
+    <section
+      className="admin-packing-list"
+      aria-hidden="true"
+      data-order-number={packingList.orderNumber}
+    >
+      <header className="admin-packing-list__header">
+        <div>
+          <img
+            src={cozyCraftLogo}
+            alt="CozyCraft Furnitures"
+            className="admin-packing-list__logo"
+          />
+          <p className="admin-packing-list__eyebrow">FULFILLMENT DOCUMENT</p>
+          <h1>Packing list</h1>
+        </div>
+        <div className="admin-packing-list__order-number">
+          <span>ORDER</span>
+          <strong>#{packingList.orderNumber}</strong>
+        </div>
+      </header>
+
+      <div className="admin-packing-list__meta">
+        <div>
+          <span>Placed</span>
+          <strong>
+            {new Date(packingList.placedAt).toLocaleString("en-PH", {
+              timeZone: "Asia/Manila",
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </strong>
+        </div>
+        <div>
+          <span>Payment</span>
+          <strong>{packingList.paymentSummary}</strong>
+        </div>
+        <div>
+          <span>Contents</span>
+          <strong>
+            {packingList.itemCount} {packingList.itemCount === 1 ? "line" : "lines"} ·{" "}
+            {packingList.unitCount} {packingList.unitCount === 1 ? "unit" : "units"}
+          </strong>
+        </div>
+        <div>
+          <span>Printed</span>
+          <strong>
+            {new Date(packingList.printedAt).toLocaleString("en-PH", {
+              timeZone: "Asia/Manila",
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </strong>
+        </div>
+      </div>
+
+      <section className="admin-packing-list__delivery">
+        <div>
+          <p className="admin-packing-list__eyebrow">DELIVER TO</p>
+          <h2>{packingList.customerName}</h2>
+          <p>{packingList.deliveryAddress}</p>
+        </div>
+        <dl>
+          <div>
+            <dt>Mobile</dt>
+            <dd>{packingList.customerMobile}</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd>{packingList.customerEmail}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <table className="admin-packing-list__items">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Product</th>
+            <th scope="col">Product ID</th>
+            <th scope="col">Qty</th>
+            <th scope="col">Packed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {packingList.lines.map((line) => (
+            <tr key={`${line.id}-${line.productId}`}>
+              <td>{line.id}</td>
+              <td><strong>{line.productName}</strong></td>
+              <td>{line.productId}</td>
+              <td><strong>{line.quantity}</strong></td>
+              <td><span className="admin-packing-list__checkbox" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <section className="admin-packing-list__note">
+        <p className="admin-packing-list__eyebrow">DELIVERY NOTE</p>
+        <p>{packingList.deliveryNote}</p>
+      </section>
+
+      <footer className="admin-packing-list__footer">
+        <div><span>Prepared by</span><i /></div>
+        <div><span>Checked by</span><i /></div>
+        <div><span>Date / time</span><i /></div>
+        <p>
+          Internal CozyCraft fulfillment document · Reference {packingList.orderId}
+        </p>
+      </footer>
+    </section>,
+    document.body,
+  );
+}
+
 export function OrdersWorkspacePage() {
   const {
     orders,
@@ -984,6 +1109,7 @@ export function OrdersWorkspacePage() {
   const [ordersLoadError, setOrdersLoadError] = useState("");
   const [ordersReloadKey, setOrdersReloadKey] = useState(0);
   const [invoiceDownloadId, setInvoiceDownloadId] = useState<string | null>(null);
+  const [packingListPrintedAt, setPackingListPrintedAt] = useState(() => new Date());
   const ordersPerPage = 8;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
@@ -1315,6 +1441,13 @@ export function OrdersWorkspacePage() {
         )
       ]
     : "pending";
+  const printPackingList = () => {
+    if (!selected) return;
+    setPackingListPrintedAt(new Date());
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => window.print());
+    });
+  };
 
   return (
     <AdminShell title="Orders">
@@ -1328,13 +1461,6 @@ export function OrdersWorkspacePage() {
             Select an order to review its customer, products, and live delivery status.
           </p>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold shadow-sm"
-        >
-          <Download size={15} />
-          Print packing list
-        </button>
         <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${ordersRealtimeConnected ? "bg-[#e5eee1] text-[#45603f]" : "bg-[#f2e8d7] text-[#765d3c]"}`} aria-live="polite">
           <span className={`h-2 w-2 rounded-full ${ordersRealtimeConnected ? "bg-[#5f7d57]" : "animate-pulse bg-[#a87943]"}`} />
           {ordersRealtimeConnected ? "Live order updates" : "Reconnecting…"}
@@ -1579,25 +1705,36 @@ export function OrdersWorkspacePage() {
                   {money(Number(selected.total))}
                 </p>
               </div>
-              <button
-                onClick={() => void update(nextStatus)}
-                disabled={
-                  selected.status === "delivered" || selected.status === "cancelled" || selected.cancellation_status === "pending"
-                }
-                className="rounded-xl bg-foreground px-3.5 py-2 text-xs font-semibold text-background disabled:opacity-40"
-              >
-                {selected.status === "pending"
-                  ? "Begin fulfillment"
-                  : selected.status === "processing"
-                    ? "Mark as packed"
-                    : selected.status === "packed"
-                      ? "Mark as shipped"
-                      : selected.status === "shipped"
-                        ? "Mark as delivered"
-                        : selected.status === "cancelled"
-                          ? "Cancelled"
-                          : "Delivered"}
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={printPackingList}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold transition hover:bg-secondary"
+                  aria-label={`Print packing list for order ${selected.order_number}`}
+                >
+                  <Printer size={14}/>
+                  Print packing list
+                </button>
+                <button
+                  onClick={() => void update(nextStatus)}
+                  disabled={
+                    selected.status === "delivered" || selected.status === "cancelled" || selected.cancellation_status === "pending"
+                  }
+                  className="min-h-10 rounded-xl bg-foreground px-3.5 py-2 text-xs font-semibold text-background disabled:opacity-40"
+                >
+                  {selected.status === "pending"
+                    ? "Begin fulfillment"
+                    : selected.status === "processing"
+                      ? "Mark as packed"
+                      : selected.status === "packed"
+                        ? "Mark as shipped"
+                        : selected.status === "shipped"
+                          ? "Mark as delivered"
+                          : selected.status === "cancelled"
+                            ? "Cancelled"
+                            : "Delivered"}
+                </button>
+              </div>
             </div>
 
             <div className="p-5">
@@ -1886,6 +2023,9 @@ export function OrdersWorkspacePage() {
             </div>
           </section>
         </div>
+      )}
+      {selected && (
+        <AdminPackingList order={selected} printedAt={packingListPrintedAt} />
       )}
       {notice && <Toast message={notice} close={() => setNotice("")} />}
     </AdminShell>
