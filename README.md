@@ -43,13 +43,13 @@ Production: [www.cozycraftfurnitures.com](https://www.cozycraftfurnitures.com)
 ├── public/                     Static browser assets and application icons
 ├── scripts/                    Repeatable project utility and production smoke scripts
 ├── src/
-│   ├── app/                    Application startup, routes, contexts, and feature modules
-│   │   ├── core/               Shared domain types, state, layouts, and cross-feature helpers
-│   │   └── features/
-│   │       ├── admin/          Protected administration workspace
-│   │       └── storefront/     Customer-facing shopping and account experiences
+│   ├── app/                    Application startup, routes, and shared runtime context
+│   │   └── core/               Shared domain types, state, layouts, and cross-feature helpers
 │   ├── assets/                 Source-controlled brand and content assets
 │   ├── components/             Reusable media and UI building blocks
+│   ├── features/
+│   │   ├── admin/              Protected administration workspace
+│   │   └── storefront/         Customer-facing shopping and account experiences
 │   ├── lib/                    Pure domain logic grouped by business area
 │   ├── services/               Supabase and authentication integration boundaries
 │   └── styles/                 Global styles, design tokens, fonts, and Tailwind entry points

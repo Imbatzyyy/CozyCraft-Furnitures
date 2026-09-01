@@ -1,0 +1,54 @@
+block-beta
+    columns 2
+
+    block:PEOPLE:1
+        columns 1
+        H1["<b>1. SYSTEM USERS</b>"]
+        CUSTOMER["<b>Customer / Buyer</b><br/>Browses, purchases, tracks, reviews, and requests support"]
+        TEAM["<b>Operations Team</b><br/>Super Administrator · Administrator · Staff"]
+    end
+
+    block:EXPERIENCE:1
+        columns 1
+        H2["<b>2. COZYCRAFT EXPERIENCES</b>"]
+        STOREFRONT["<b>Customer Storefront</b><br/>Authentication · discovery · cart · wishlist · checkout<br/>orders · profile · support · rewards"]
+        ADMINAPP["<b>Admin Workspace</b><br/>Dashboard · catalog · inventory · orders · payments<br/>customers · reviews · support · team · settings"]
+    end
+
+    block:RECORDS:1
+        columns 1
+        H4["<b>4. DATA AND CONNECTED SERVICES</b>"]
+        DATABASE["<b>PostgreSQL System of Record</b><br/>Identity · catalog · shopping · orders · payments<br/>engagement · administration · loyalty"]
+        PROVIDERS["<b>External Providers</b><br/>Google OAuth · PayMongo · Resend · Groq AI<br/>Philippine address data"]
+    end
+
+    block:PLATFORM:1
+        columns 1
+        H3["<b>3. APPLICATION AND BACKEND PLATFORM</b>"]
+        WEBAPP["<b>React + TypeScript + Vite</b><br/>Routes · shared context · domain services · responsive UI"]
+        CLIENT["<b>Supabase Client Boundary</b><br/>Authenticated API · RPC · Realtime · Storage"]
+        CORE["<b>Supabase Core Services</b><br/>Auth · Data API · PostgreSQL RPC · Realtime · Storage · Edge Functions"]
+        SECURITY["<b>Security Boundary</b><br/>RLS · role policies · ownership checks · server-only secrets"]
+    end
+
+    PEOPLE --> EXPERIENCE
+    EXPERIENCE --> PLATFORM
+    PLATFORM --> RECORDS
+
+    classDef heading fill:#D4C8B8,color:#1F1D19,stroke:#8D7E69,stroke-width:2px;
+    classDef actor fill:#E9E2D7,color:#1F1D19,stroke:#8D7E69,stroke-width:1.5px;
+    classDef customer fill:#E5EBEF,color:#1F2A31,stroke:#748795,stroke-width:1.5px;
+    classDef admin fill:#EEE2D2,color:#2A241D,stroke:#9B8164,stroke-width:1.5px;
+    classDef app fill:#F6F2EB,color:#211F1B,stroke:#9F927F,stroke-width:1.5px;
+    classDef backend fill:#E1EBDD,color:#24311F,stroke:#6F8666,stroke-width:1.5px;
+    classDef resource fill:#E9E2D7,color:#27221C,stroke:#8D7E69,stroke-width:1.5px;
+    classDef external fill:#E8E2EC,color:#2C2731,stroke:#82748A,stroke-width:1.5px;
+
+    class H1,H2,H3,H4 heading
+    class CUSTOMER,TEAM actor
+    class STOREFRONT customer
+    class ADMINAPP admin
+    class WEBAPP,CLIENT app
+    class CORE,SECURITY backend
+    class DATABASE resource
+    class PROVIDERS external

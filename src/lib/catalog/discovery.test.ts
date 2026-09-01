@@ -3,6 +3,8 @@ import {
   catalogValuesMatch,
   matchesCatalogSearch,
   matchesCatalogSubcategory,
+  rankCatalogSearch,
+  scoreCatalogSearch,
 } from "./discovery";
 
 const champagne = {
@@ -31,5 +33,39 @@ describe("catalog discovery", () => {
     expect(matchesCatalogSearch(champagne, "velvet dining")).toBe(true);
     expect(matchesCatalogSearch(champagne, "upholstered")).toBe(true);
     expect(matchesCatalogSearch(champagne, "sofa|velvet")).toBe(true);
+  });
+
+  it("ranks actual product types above incidental description mentions", () => {
+    const sofa = {
+      id: "sofa",
+      name: "HEMLINGBY",
+      category: "Living room",
+      subcategory: "2-Seater Fabric Sofa",
+      description: "A compact seat for two.",
+    };
+    const nightstand = {
+      id: "nightstand",
+      name: "KNARREVIK",
+      category: "Bedroom",
+      subcategory: "Metal Nightstand",
+      description: "A useful table beside a sofa or bed.",
+    };
+
+    expect(scoreCatalogSearch(sofa, "sofa")).toBeGreaterThan(
+      scoreCatalogSearch(nightstand, "sofa"),
+    );
+    expect(rankCatalogSearch([nightstand, sofa], "sofa")).toEqual([
+      sofa,
+      nightstand,
+    ]);
+  });
+
+  it("keeps stable catalog order when products have the same search score", () => {
+    const first = { ...champagne, id: "first", name: "Velvet One" };
+    const second = { ...champagne, id: "second", name: "Velvet Two" };
+    expect(rankCatalogSearch([first, second], "velvet")).toEqual([
+      first,
+      second,
+    ]);
   });
 });

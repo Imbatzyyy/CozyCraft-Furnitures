@@ -2,7 +2,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
-const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com"]);
+const allowedOrigins = new Set([
+  canonicalOrigin,
+  "https://cozycraftfurnitures.com",
+  "capacitor://localhost",
+  "ionic://localhost",
+  "http://localhost",
+  "https://localhost",
+]);
 const corsHeaders = (request: Request) => ({
   "Access-Control-Allow-Origin": allowedOrigins.has(request.headers.get("Origin") ?? "")
     ? request.headers.get("Origin")!
@@ -64,21 +71,47 @@ Deno.serve(async (request) => {
   });
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired." }, 401);
-  const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["admin", "superadmin"].includes(profile.role)) {
+  const [profileResult, securityResult] = await Promise.all([
+    adminClient.from("profiles").select("role,staff_active").eq("id", user.id).single(),
+    adminClient.from("admin_security_settings").select("require_admin_mfa").eq("id", true).maybeSingle(),
+  ]);
+  const profile = profileResult.data;
+  const security = securityResult.data;
+  if (securityResult.error || !security) {
+    return json(request, { error: "Administrator security policy is unavailable. Try again shortly." }, 503);
+  }
+  const assurance = String(user.aud ?? "") === "authenticated"
+    ? ((user as unknown as { aal?: string }).aal ?? String(user.app_metadata?.aal ?? ""))
+    : "";
+  const jwtAal = authorization.startsWith("Bearer ")
+    ? (() => {
+        try {
+          const encoded = authorization.slice(7).split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+          const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=")));
+          return String(payload.aal ?? "aal1");
+        } catch { return assurance || "aal1"; }
+      })()
+    : assurance || "aal1";
+  if (!profile?.staff_active || !["admin", "superadmin"].includes(profile.role)) {
     return json(request, { error: "An administrator must approve or reject cancellation requests." }, 403);
+  }
+  if ((security.require_admin_mfa ?? true) && jwtAal !== "aal2") {
+    return json(request, { error: "Complete administrator MFA before approving financial changes." }, 403);
   }
 
   const body = await request.json().catch(() => ({}));
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
-  const action = body.action === "reject" ? "reject" : "approve";
+  if (body.action !== "approve" && body.action !== "reject") {
+    return json(request, { error: "Action must be approve or reject." }, 400);
+  }
+  const action: "approve" | "reject" = body.action;
   const suppliedReason = typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
   const decisionNote = typeof body.note === "string" ? body.note.trim().slice(0, 500) : "";
   if (!orderId) return json(request, { error: "Order is required." }, 400);
 
   const { data: order, error: orderError } = await adminClient
     .from("orders")
-    .select("id,order_number,user_id,status,payment_method,payment_status,total,created_at,cancellation_status,cancellation_reason,cancellation_requested_at,profiles(email),payment_transactions(id,status,provider_payment_id,livemode,paid_at,updated_at)")
+    .select("id,order_number,user_id,status,payment_method,payment_status,total,created_at,cancellation_status,cancellation_reason,cancellation_requested_at,refund_status,provider_refund_id,profiles(email),payment_transactions(id,status,provider_payment_id,livemode,paid_at,updated_at)")
     .eq("id", orderId)
     .single();
   if (orderError || !order) return json(request, { error: "Order not found." }, 404);
@@ -92,28 +125,18 @@ Deno.serve(async (request) => {
   if (["shipped", "delivered"].includes(order.status)) {
     return json(request, { error: "This order has already shipped and can no longer be cancelled." }, 409);
   }
-  if (order.status === "cancelled") return json(request, { error: "This order is already cancelled." }, 409);
 
   if (action === "reject") {
     if (order.cancellation_status !== "pending") {
       return json(request, { error: "There is no pending cancellation request to reject." }, 409);
     }
-    const reviewedAt = new Date().toISOString();
-    const { error } = await adminClient.from("orders").update({
-      cancellation_status: "rejected",
-      cancellation_reviewed_at: reviewedAt,
-      cancellation_reviewed_by: user.id,
-      cancellation_decision_note: decisionNote || "The order is continuing through fulfillment.",
-    }).eq("id", order.id).eq("cancellation_status", "pending");
-    if (error) return json(request, { error: error.message }, 500);
-    await adminClient.from("customer_notifications").insert({
-      user_id: order.user_id,
-      kind: "cancellation_rejected",
-      title: `Cancellation request reviewed for ${order.order_number}`,
-      message: decisionNote || "Your cancellation request was not approved. The order will continue through fulfillment.",
-      entity_type: "orders",
-      entity_id: order.id,
+    const { data: reviewed, error } = await adminClient.rpc("reject_admin_order_cancellation", {
+      p_order_id: order.id,
+      p_reviewer: user.id,
+      p_note: decisionNote || null,
     });
+    if (error) return json(request, { error: error.message }, 500);
+    if (!reviewed) return json(request, { error: "This cancellation request was already reviewed." }, 409);
     return json(request, { reviewed: true, cancellationStatus: "rejected" });
   }
 
@@ -121,103 +144,111 @@ Deno.serve(async (request) => {
     ? order.payment_transactions
     : order.payment_transactions ? [order.payment_transactions] : [];
   const transaction = [...transactions]
-    .filter((candidate) => candidate.status === "paid" && candidate.provider_payment_id)
+    .filter((candidate) => candidate.provider_payment_id)
     .sort((left, right) => Date.parse(right.paid_at ?? right.updated_at) - Date.parse(left.paid_at ?? left.updated_at))[0];
-  const commonUpdate = {
-    cancellation_reason: reason,
-    cancellation_requested_at: order.cancellation_requested_at ?? new Date().toISOString(),
-    cancellation_status: "approved",
-    cancellation_reviewed_at: new Date().toISOString(),
-    cancellation_reviewed_by: user.id,
-    cancellation_decision_note: decisionNote || null,
-    cancelled_by: user.id,
-  };
-
-  if (order.payment_method === "cod" || order.payment_status !== "paid") {
-    const { error } = await adminClient.from("orders").update({
-      ...commonUpdate,
-      status: "cancelled",
-      payment_status: order.payment_status === "pending" ? "failed" : order.payment_status,
-    }).eq("id", order.id);
-    if (error) return json(request, { error: error.message }, 500);
-    await adminClient.from("customer_notifications").insert({
-      user_id: order.user_id,
-      kind: "order_cancelled",
-      title: `Order ${order.order_number} cancelled`,
-      message: "Your order was cancelled before payment settlement. No refund is required.",
-      entity_type: "orders",
-      entity_id: order.id,
-    });
-    return json(request, { cancelled: true, refundStatus: null });
-  }
-
-  if (!transaction?.provider_payment_id) {
+  const requiresRefund = order.payment_method !== "cod" && ["paid", "refunded"].includes(order.payment_status);
+  if (requiresRefund && !transaction?.provider_payment_id) {
     return json(request, { error: "The settled PayMongo payment reference is missing. Cancellation was not applied." }, 409);
   }
-  await adminClient.from("orders").update({ refund_status: "processing" }).eq("id", order.id);
+  if (requiresRefund && order.payment_status === "paid" && transaction.status !== "paid") {
+    return json(request, { error: "The PayMongo ledger is not in a settled state. Cancellation was not applied." }, 409);
+  }
+  const claimToken = crypto.randomUUID();
+  const { data: claim, error: claimError } = await adminClient.rpc("claim_admin_order_cancellation", {
+    p_order_id: order.id,
+    p_reviewer: user.id,
+    p_reason: reason,
+    p_claim_token: claimToken,
+    p_note: decisionNote || null,
+  });
+  if (claimError) return json(request, { error: claimError.message }, 409);
+  if (claim?.alreadyProcessing) {
+    return json(request, { error: "A refund is already processing for this order. Refresh shortly before retrying." }, 409);
+  }
 
-  let refundId = `demo_refund_${crypto.randomUUID()}`;
-  let demo = !transaction.livemode;
-  let refundPayload: Record<string, unknown> = { demo: true };
-  if (!demo) {
-    if (!paymongoSecretKey) {
-      await adminClient.from("orders").update({ refund_status: "failed" }).eq("id", order.id);
-      return json(request, { error: "PayMongo refunds are not configured. The order remains active." }, 503);
-    }
-    const response = await fetch("https://api.paymongo.com/v1/refunds", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${btoa(`${paymongoSecretKey}:`)}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": `cancel-${order.id}`,
-      },
-      body: JSON.stringify({
-        data: { attributes: {
-          amount: Math.round(Number(order.total) * 100),
-          payment_id: transaction.provider_payment_id,
-          reason: "others",
-          notes: `Admin cancellation for CozyCraft order ${order.order_number}: ${reason}`,
-        } },
-      }),
+  if (!requiresRefund) {
+    const { data: ledger, error } = await adminClient.rpc("finalize_admin_order_cancellation", {
+      p_order_id: order.id,
+      p_reviewer: user.id,
+      p_reason: reason,
+      p_claim_token: claimToken,
+      p_note: decisionNote || null,
+      p_refund_id: null,
+      p_demo: false,
+      p_raw_payload: {},
     });
+    if (error) return json(request, { error: error.message }, 500);
+    return json(request, { cancelled: true, refundStatus: null, ledger, claim });
+  }
+
+  const releaseClaim = async (message: string) => {
+    const { error } = await adminClient.rpc("release_admin_order_cancellation_claim", {
+      p_order_id: order.id,
+      p_reviewer: user.id,
+      p_claim_token: claimToken,
+      p_failure: message,
+    });
+    return error
+      ? `${message} The cancellation claim could not be released automatically: ${error.message}`
+      : message;
+  };
+
+  let refundId = String(order.provider_refund_id ?? "") || `demo_refund_${crypto.randomUUID()}`;
+  let demo = order.refund_status === "demo_succeeded" || !transaction.livemode;
+  let refundPayload: Record<string, unknown> = order.provider_refund_id ? { repaired: true } : { demo: true };
+  if (!order.provider_refund_id && !demo) {
+    if (!paymongoSecretKey) {
+      const message = await releaseClaim("PayMongo refunds are not configured. The order remains active and queued for review.");
+      return json(request, { error: message }, 503);
+    }
+    let response: Response;
+    try {
+      response = await fetch("https://api.paymongo.com/v1/refunds", {
+        method: "POST",
+        signal: AbortSignal.timeout(30_000),
+        headers: {
+          Authorization: `Basic ${btoa(`${paymongoSecretKey}:`)}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": `cancel-${order.id}`,
+        },
+        body: JSON.stringify({
+          data: { attributes: {
+            amount: Math.round(Number(order.total) * 100),
+            payment_id: transaction.provider_payment_id,
+            reason: "others",
+            notes: `Admin cancellation for CozyCraft order ${order.order_number}: ${reason}`,
+          } },
+        }),
+      });
+    } catch {
+      return json(request, { error: "The payment provider could not be reached. The order remains locked for an idempotent retry." }, 503);
+    }
     refundPayload = await response.json();
     if (!response.ok) {
-      const message = (refundPayload as any)?.errors?.[0]?.detail ?? "PayMongo rejected the refund.";
-      await adminClient.from("orders").update({ refund_status: "failed" }).eq("id", order.id);
-      return json(request, { error: `${message} The order remains active and inventory was not restored.` }, 502);
+      const providerMessage = (refundPayload as any)?.errors?.[0]?.detail ?? "PayMongo rejected the refund.";
+      if (response.status >= 500 || [409, 429].includes(response.status)) {
+        return json(request, { error: `${providerMessage} The order remains locked for an idempotent retry.` }, 502);
+      }
+      const message = await releaseClaim(`${providerMessage} The order remains active and inventory was not restored.`);
+      return json(request, { error: message }, 502);
     }
     refundId = String((refundPayload as any)?.data?.id ?? "");
     if (!refundId) {
-      await adminClient.from("orders").update({ refund_status: "failed" }).eq("id", order.id);
-      return json(request, { error: "PayMongo returned an incomplete refund. The order remains active." }, 502);
+      return json(request, { error: "PayMongo returned an incomplete refund. The order remains locked for safe retry." }, 502);
     }
   }
 
-  const timestamp = new Date().toISOString();
-  const { error: finalizeError } = await adminClient.from("orders").update({
-    ...commonUpdate,
-    status: "cancelled",
-    payment_status: "refunded",
-    refund_status: demo ? "demo_succeeded" : "succeeded",
-    provider_refund_id: refundId,
-    refunded_at: timestamp,
-  }).eq("id", order.id);
-  if (finalizeError) return json(request, { error: finalizeError.message }, 500);
-  await adminClient.from("payment_transactions").update({
-    status: "refunded",
-    updated_at: timestamp,
-    raw_payload: refundPayload,
-  }).eq("id", transaction.id);
-  await adminClient.from("customer_notifications").insert({
-    user_id: order.user_id,
-    kind: "refund_completed",
-    title: `Refund recorded for ${order.order_number}`,
-    message: demo
-      ? "Your test payment refund was completed for this demo order."
-      : "Your refund was submitted to the original payment method.",
-    entity_type: "orders",
-    entity_id: order.id,
+  const { data: ledger, error: finalizeError } = await adminClient.rpc("finalize_admin_order_cancellation", {
+    p_order_id: order.id,
+    p_reviewer: user.id,
+    p_reason: reason,
+    p_claim_token: claimToken,
+    p_note: decisionNote || null,
+    p_refund_id: refundId,
+    p_demo: demo,
+    p_raw_payload: refundPayload,
   });
+  if (finalizeError) return json(request, { error: `The provider refund was accepted, but the CozyCraft ledger could not finalize. Retry safely: ${finalizeError.message}` }, 500);
   const customerProfile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
   const emailResult = settings?.email_event_settings?.cancelled_refunded === false
     ? { sent: false, id: null, error: "Refund confirmation emails are disabled in Store Settings." }
@@ -231,6 +262,8 @@ Deno.serve(async (request) => {
     cancelled: true,
     refundStatus: demo ? "demo_succeeded" : "succeeded",
     demo,
+    ledger,
+    claim,
     emailSent: emailResult.sent,
     emailError: emailResult.error,
   });

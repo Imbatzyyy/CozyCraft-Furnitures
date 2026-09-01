@@ -1,0 +1,52 @@
+block-beta
+    columns 2
+
+    block:CLIENTS:1
+        columns 1
+        H1["<b>1. APPLICATION CLIENTS</b>"]
+        USERAPPS["<b>Customer Storefront · Admin Workspace · Mobile Client</b>"]
+        GATEWAY["<b>Domain Data Services</b><br/>Shared Supabase client · authentication service<br/>validated queries · PostgreSQL RPC · function invocation"]
+    end
+
+    block:BACKEND:1
+        columns 1
+        H2["<b>2. SUPABASE BACKEND BOUNDARY</b>"]
+        CORE["<b>Core Services</b><br/>Auth · Data API · PostgreSQL RPC · Realtime · Storage"]
+        EDGE["<b>Protected Edge Functions</b><br/>Payments and orders · cancellation and refunds<br/>administration · customer care · mobile payment return"]
+        POLICY["<b>Authorization</b><br/>RLS · grants · ownership checks · staff and administrator policies"]
+    end
+
+    block:PROVIDERSIDE:1
+        columns 1
+        H4["<b>4. SERVER-ONLY PROVIDER BOUNDARY</b>"]
+        SECRETS["<b>Function Secrets</b><br/>Provider credentials never enter browser bundles"]
+        PROVIDERS["<b>External Providers</b><br/>PayMongo · Resend · Google OAuth · Groq AI · address data"]
+    end
+
+    block:DATA:1
+        columns 1
+        H3["<b>3. PROTECTED DATA RESOURCES</b>"]
+        DB["<b>PostgreSQL System of Record</b><br/>Validated relational data and audit history"]
+        MEDIA["<b>Storage Buckets</b><br/>Catalog · avatars · reviews · return evidence"]
+        EVENTS["<b>Scoped Realtime Events</b><br/>Targeted order, inventory, notification, and support refresh"]
+    end
+
+    CLIENTS --> BACKEND
+    BACKEND --> DATA
+    DATA --> PROVIDERSIDE
+
+    classDef heading fill:#D4C8B8,color:#1F1D19,stroke:#8D7E69,stroke-width:2px;
+    classDef client fill:#E5EBEF,color:#1F2A31,stroke:#748795,stroke-width:1.5px;
+    classDef gateway fill:#F3EADC,color:#28221C,stroke:#9B8164,stroke-width:1.8px;
+    classDef core fill:#E1EBDD,color:#24311F,stroke:#6F8666,stroke-width:1.5px;
+    classDef edge fill:#E9E3ED,color:#2C2731,stroke:#82748A,stroke-width:1.5px;
+    classDef secure fill:#E9E2D7,color:#27221C,stroke:#8D7E69,stroke-width:1.5px;
+    classDef external fill:#DDD8E6,color:#2C2731,stroke:#786B83,stroke-width:1.8px;
+
+    class H1,H2,H3,H4 heading
+    class USERAPPS client
+    class GATEWAY gateway
+    class CORE,POLICY,EVENTS core
+    class EDGE edge
+    class DB,MEDIA,SECRETS secure
+    class PROVIDERS external

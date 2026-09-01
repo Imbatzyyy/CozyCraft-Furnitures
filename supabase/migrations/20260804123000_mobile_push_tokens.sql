@@ -65,4 +65,3 @@ revoke all on function public.register_mobile_push_token(text, text) from public
 revoke all on function public.unregister_mobile_push_token(text) from public;
 grant execute on function public.register_mobile_push_token(text, text) to authenticated;
 grant execute on function public.unregister_mobile_push_token(text) to authenticated;
-

@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    actor Customer
+    participant Storefront as Customer Storefront
+    participant Backend as Supabase Backend
+    participant DB as PostgreSQL
+    participant Admin as Admin Workspace
+
+    Customer->>Storefront: Confirm selected cart items and delivery details
+    Storefront->>Backend: Submit validated checkout request
+    Backend->>DB: Create order, items, totals, and initial status
+    DB-->>Backend: Return order number and stored totals
+    Backend-->>Storefront: Return confirmed order
+    Storefront-->>Customer: Show order confirmation
+    DB-->>Admin: Realtime INSERT event for new order
+    Admin->>DB: Set Processing or Packed with timestamp
+    DB-->>Storefront: Publish status and timestamp update
+    Storefront-->>Customer: Refresh delivery progress
+    Admin->>DB: Set Shipped or Delivered with timestamp
+    DB-->>Storefront: Publish current order state
+    Storefront-->>Customer: Show final tracking and review eligibility

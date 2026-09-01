@@ -57,4 +57,3 @@ for each row
 when (old.status is distinct from new.status)
 execute function private.notify_customer_order_status_change();
 
-

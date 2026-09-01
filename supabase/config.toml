@@ -38,3 +38,39 @@ verify_jwt = true
 
 [functions.send-transactional-email]
 verify_jwt = true
+
+[functions.dispatch-admin-push]
+verify_jwt = false
+
+[functions.review-avatar]
+# The function performs its own authorization: it only serves an avatar when
+# the supplied review exists and is approved for public display.
+verify_jwt = false
+
+[functions.newsletter-subscribe]
+# Newsletter registration is available to signed-out storefront visitors. The
+# function validates the request and writes through a server-only client.
+enabled = true
+verify_jwt = false
+import_map = "./functions/newsletter-subscribe/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/newsletter-subscribe/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/newsletter-subscribe/*.html" ]
+
+[functions.newsletter-preferences]
+enabled = true
+verify_jwt = false
+
+[functions.newsletter-admin]
+enabled = true
+verify_jwt = true
+
+[functions.newsletter-worker]
+enabled = true
+verify_jwt = false
+
+[functions.verify-customer-phone]
+verify_jwt = true

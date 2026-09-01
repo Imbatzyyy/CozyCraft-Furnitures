@@ -8,4 +8,3 @@ on public.products (
   lower(regexp_replace(btrim(category), '[[:space:]]+', ' ', 'g')),
   lower(regexp_replace(btrim(subcategory), '[[:space:]]+', ' ', 'g'))
 );
-

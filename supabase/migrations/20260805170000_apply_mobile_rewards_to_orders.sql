@@ -77,4 +77,3 @@ drop trigger if exists restore_mobile_order_reward_trigger on public.orders;
 create trigger restore_mobile_order_reward_trigger
 after update of status, payment_status on public.orders
 for each row execute function private.restore_mobile_order_reward();
-

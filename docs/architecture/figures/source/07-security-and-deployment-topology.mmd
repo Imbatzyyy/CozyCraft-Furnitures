@@ -1,0 +1,69 @@
+flowchart TB
+    subgraph DELIVERY["PRODUCTION DELIVERY"]
+        direction LR
+        USERS["Customer and<br/>Admin Browsers"] --> CLOUDFLARE["Cloudflare<br/>DNS · Domain · TLS"] --> NETLIFY["Netlify<br/>CDN · SPA Rewrite<br/>Security Headers"] --> APP["Versioned React/Vite<br/>Static Application"]
+    end
+
+    subgraph BROWSER_BOUNDARY["BROWSER-SAFE BOUNDARY"]
+        direction LR
+        PUBLISHABLE["Supabase Project URL<br/>and Publishable Key"]
+        JWT["Authenticated User JWT"]
+        CLIENT_RULES["Route Guards and<br/>Interface Permissions"]
+    end
+
+    subgraph SUPABASE_BOUNDARY["SUPABASE SECURITY BOUNDARY"]
+        direction LR
+        AUTH["Supabase Auth<br/>Sessions · OAuth · MFA"]
+        RLS["RLS · Grants · Role Checks<br/>Ownership Policies"]
+        RPC["Protected RPC<br/>Atomic Business Rules"]
+        EDGE["Edge Functions<br/>Privileged Operations"]
+        DB[("PostgreSQL<br/>Protected Records")]
+        STORAGE["Storage Policies<br/>Public Catalog / Private Media"]
+    end
+
+    subgraph SECRET_BOUNDARY["SERVER-ONLY CREDENTIALS"]
+        direction LR
+        SECRETS["Supabase Function Secrets"]
+        PROVIDER_KEYS["PayMongo · Resend<br/>Google Provider · Groq Keys"]
+        SERVICE_ROLE["Service-Role Access<br/>Used only by authorized functions"]
+    end
+
+    subgraph RELEASE["CONTROLLED RELEASE FLOW"]
+        direction LR
+        GITHUB["GitHub Repository"] --> BUILD["Tests and Vite Build"] --> WEBDEPLOY["Netlify Deployment"]
+        GITHUB --> MIGRATIONS["Supabase Migrations"] --> BACKENDDEPLOY["Database and<br/>Function Deployment"]
+    end
+
+    APP --> PUBLISHABLE
+    APP --> JWT
+    APP --> CLIENT_RULES
+
+    PUBLISHABLE --> AUTH
+    JWT --> RLS
+    CLIENT_RULES --> RLS
+    AUTH --> RLS
+    RLS --> DB
+    RPC --> DB
+    EDGE --> DB
+    RLS --> STORAGE
+
+    SECRETS --> EDGE
+    PROVIDER_KEYS --> SECRETS
+    SERVICE_ROLE --> EDGE
+
+    WEBDEPLOY --> NETLIFY
+    BACKENDDEPLOY --> RPC
+    BACKENDDEPLOY --> EDGE
+    BACKENDDEPLOY --> RLS
+
+    classDef delivery fill:#E5EBEF,color:#1F2A31,stroke:#748795,stroke-width:1.5px;
+    classDef browser fill:#F6F2EB,color:#211F1B,stroke:#9F927F,stroke-width:1.5px;
+    classDef backend fill:#E1EBDD,color:#24311F,stroke:#6F8666,stroke-width:1.5px;
+    classDef secret fill:#E8E2EC,color:#2C2731,stroke:#82748A,stroke-width:1.5px;
+    classDef release fill:#EEE2D2,color:#2A241D,stroke:#9B8164,stroke-width:1.5px;
+
+    class USERS,CLOUDFLARE,NETLIFY,APP delivery;
+    class PUBLISHABLE,JWT,CLIENT_RULES browser;
+    class AUTH,RLS,RPC,EDGE,DB,STORAGE backend;
+    class SECRETS,PROVIDER_KEYS,SERVICE_ROLE secret;
+    class GITHUB,BUILD,WEBDEPLOY,MIGRATIONS,BACKENDDEPLOY release;

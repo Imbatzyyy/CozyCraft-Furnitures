@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { checkoutSignature, clampCartQuantity, selectCheckoutLines } from "./checkout";
+import {
+  checkoutSignature,
+  clampCartQuantity,
+  isCodOrderPlacementInFlight,
+  selectCheckoutLines,
+} from "./checkout";
 
 const cart = [
   { id: "chair", quantity: 2, selectedForCheckout: true },
@@ -22,5 +27,12 @@ describe("checkout invariants", () => {
     expect(clampCartQuantity(9, 3)).toBe(3);
     expect(clampCartQuantity(-2, 3)).toBe(0);
     expect(clampCartQuantity(2, 0)).toBe(0);
+  });
+
+  it("keeps COD checkout in its processing state when realtime clears purchased cart rows", () => {
+    expect(isCodOrderPlacementInFlight(true, "cod", null)).toBe(true);
+    expect(isCodOrderPlacementInFlight(false, "cod", null)).toBe(false);
+    expect(isCodOrderPlacementInFlight(true, "gcash", null)).toBe(false);
+    expect(isCodOrderPlacementInFlight(true, "cod", "order-123")).toBe(false);
   });
 });

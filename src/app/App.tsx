@@ -86,12 +86,21 @@ import {
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import { recordAuthActivity } from "@/services/auth/activity.service";
+import { syncCurrentCustomerDevice } from "@/services/auth/device-session.service";
 import {
   customerAuthEventAction,
   customerSessionRetryDelay,
 } from "@/services/auth/session-restoration";
 import { canonicalProductImages } from "@/lib/catalog/product-images";
+import {
+  readProductAvailabilityChange,
+  removeUnavailableProduct,
+} from "@/lib/catalog/product-availability";
 import { CUSTOMER_POLICY_VERSION } from "@/lib/legal/customer-policies";
+import {
+  passwordStatusFromRpc,
+  writePasswordRecoveryGrant,
+} from "@/lib/auth/account-security";
 
 
 import {
@@ -175,6 +184,7 @@ const orderGraphSelect = [
   "refund_email_error",
   "subtotal",
   "delivery_fee",
+  "reward_discount",
   "total",
   "shipping_address",
   "created_at",
@@ -219,12 +229,13 @@ function App() {
   const [user, setUser] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [profilePhone, setProfilePhone] = useState("");
+  const [profilePhoneVerifiedAt, setProfilePhoneVerifiedAt] = useState<string | null>(null);
   const [profileUsername, setProfileUsername] = useState("");
   const [profileGender, setProfileGender] = useState("");
   const [profileBirth, setProfileBirth] = useState("");
   const [profilePaymentMethod, setProfilePaymentMethod] =
     useState<"cod">("cod");
-  const [hasPassword, setHasPassword] = useState(false);
+  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
   const [role, setRole] = useState<DbRole | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const customerUserIdRef = useRef<string | null>(null);
@@ -265,6 +276,7 @@ function App() {
     request: Promise<string | null>;
   } | null>(null);
   const singleOrderRefreshes = useRef(new Map<string, Promise<string | null>>());
+  const unavailableProductIds = useRef(new Set<string>());
   const ordersScope = adminPortal
     ? `admin:${adminUserId ?? "guest"}`
     : `customer:${userId ?? "guest"}`;
@@ -349,6 +361,7 @@ function App() {
         mapped.filter(
           (item) =>
             item.status === "active" &&
+            !unavailableProductIds.current.has(item.id) &&
             (!activeCategories.size ||
               [...activeCategories].some((category) =>
                 catalogValuesMatch(category, item.category),
@@ -519,10 +532,11 @@ function App() {
     setAvatar(null);
     setAvatarPath(null);
     setProfilePhone("");
+    setProfilePhoneVerifiedAt(null);
     setProfileUsername("");
     setProfileGender("");
     setProfileBirth("");
-    setHasPassword(false);
+    setHasPassword(null);
     setProfilePaymentMethod("cod");
     setCart([]);
     setSaved([]);
@@ -545,9 +559,18 @@ function App() {
     email: string | null,
     metadata: Record<string, unknown> = {},
   ): Promise<CustomerAccountLoadResult> => {
+    const deviceSession = await syncCurrentCustomerDevice();
+    if (!deviceSession.active) {
+      writeSessionItem(
+        "cozycraft-customer-access-notice",
+        "This browser was signed out from Account Security. Sign in again to continue.",
+      );
+      await supabase.auth.signOut({ scope: "local" });
+      return "denied";
+    }
     let profileResult = await supabase
       .from("profiles")
-      .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at")
+      .select("id,full_name,email,phone,phone_verified_at,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at")
       .eq("id", id)
       .single();
     for (const retryDelay of [150, 350]) {
@@ -555,7 +578,7 @@ function App() {
       await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
       profileResult = await supabase
         .from("profiles")
-        .select("id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at")
+        .select("id,full_name,email,phone,phone_verified_at,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at")
         .eq("id", id)
         .single();
     }
@@ -619,6 +642,7 @@ function App() {
     setAvatarPath(profile?.avatar_url ?? null);
     setAvatar(signedAvatar);
     setProfilePhone(profile?.phone ?? "");
+    setProfilePhoneVerifiedAt(profile?.phone_verified_at ?? null);
     setProfileUsername(profile?.username ?? String(metadata.username ?? ""));
     setProfileGender(profile?.gender ?? String(metadata.gender ?? ""));
     // The profile row is the source of truth for birthdays. Auth metadata can
@@ -626,7 +650,10 @@ function App() {
     setProfileBirth(profile?.date_of_birth ?? "");
     setProfilePaymentMethod(profile?.preferred_payment_method ?? "cod");
     setHasPassword(
-      !passwordStatusResult.error && passwordStatusResult.data === true,
+      passwordStatusFromRpc(
+        passwordStatusResult.data,
+        passwordStatusResult.error,
+      ),
     );
     setCart((cartResult.data ?? []).map((item) => ({
       id: item.product_id,
@@ -728,6 +755,9 @@ function App() {
 
     void restoreSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" && session?.user) {
+        writePasswordRecoveryGrant(window.sessionStorage, session.user.id);
+      }
       if (
         event === "PASSWORD_RECOVERY" &&
         window.location.pathname !== "/reset-password"
@@ -808,12 +838,17 @@ function App() {
     const handlePageShow = () => {
       void restoreSession();
     };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void restoreSession();
+    };
     window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       disposed = true;
       restoreGeneration += 1;
       cancelScheduledRestore();
       window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       subscription.unsubscribe();
     };
   }, [clearCustomerAccount, loadAccount]);
@@ -963,6 +998,7 @@ function App() {
       full_name: string | null;
       email: string | null;
       phone: string | null;
+      phone_verified_at: string | null;
       avatar_url: string | null;
       username: string | null;
       gender: string | null;
@@ -979,6 +1015,7 @@ function App() {
       setUserEmail(profile.email);
       setRole(profile.role as DbRole);
       setProfilePhone(profile.phone ?? "");
+      setProfilePhoneVerifiedAt(profile.phone_verified_at ?? null);
       setProfileUsername(profile.username ?? "");
       setProfileGender(profile.gender ?? "");
       setProfileBirth(profile.date_of_birth ?? "");
@@ -992,7 +1029,7 @@ function App() {
       const { data: profile, error } = await supabase
         .from("profiles")
         .select(
-          "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role",
+          "id,full_name,email,phone,phone_verified_at,avatar_url,username,gender,date_of_birth,preferred_payment_method,role",
         )
         .eq("id", userId)
         .single();
@@ -1046,13 +1083,90 @@ function App() {
   }, [splash]);
 
   useEffect(() => {
-    const channel = portalSupabase
+    let availabilityCursor = new Date().toISOString();
+    let availabilityRefresh: Promise<void> | null = null;
+
+    const applyAvailability = (value: unknown) => {
+      const change = readProductAvailabilityChange(value);
+      if (!change) return;
+      if (change.updatedAt && change.updatedAt > availabilityCursor) {
+        availabilityCursor = change.updatedAt;
+      }
+      if (change.available) {
+        unavailableProductIds.current.delete(change.productId);
+        void refreshProducts();
+        return;
+      }
+      unavailableProductIds.current.add(change.productId);
+      setProducts((current) => removeUnavailableProduct(current, change));
+    };
+
+    const refreshMissedAvailability = () => {
+      if (adminPortal || availabilityRefresh) return availabilityRefresh;
+      const request = (async () => {
+        const { data } = await portalSupabase
+          .from("product_availability")
+          .select("product_id,available,updated_at")
+          .gt("updated_at", availabilityCursor)
+          .order("updated_at", { ascending: true });
+        for (const row of data ?? []) applyAvailability(row);
+      })();
+      availabilityRefresh = request;
+      void request.finally(() => {
+        if (availabilityRefresh === request) availabilityRefresh = null;
+      });
+      return request;
+    };
+
+    const handleProductChange = (payload: {
+      eventType: string;
+      new: Record<string, unknown>;
+      old: Record<string, unknown>;
+    }) => {
+      if (!adminPortal) {
+        const nextStatus = payload.new?.status;
+        const productId = String(payload.new?.id ?? payload.old?.id ?? "");
+        if (
+          productId &&
+          (payload.eventType === "DELETE" ||
+            (typeof nextStatus === "string" && nextStatus !== "active"))
+        ) {
+          const change = {
+            productId,
+            available: false,
+            updatedAt: null,
+          };
+          unavailableProductIds.current.add(productId);
+          setProducts((current) => removeUnavailableProduct(current, change));
+          return;
+        }
+      }
+      void refreshProducts();
+    };
+
+    let channel = portalSupabase
       .channel(`cozycraft-live-catalog-${adminPortal ? "admin" : "storefront"}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => void refreshProducts())
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleProductChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, () => void refreshProducts())
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, () => void refreshProducts())
-      .subscribe();
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, () => void refreshProducts());
+    if (!adminPortal) {
+      channel = channel.on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "product_availability",
+        },
+        (payload) => applyAvailability(payload.new),
+      );
+    }
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") void refreshMissedAvailability();
+    });
+    const recoverAvailabilityOnFocus = () => void refreshMissedAvailability();
+    window.addEventListener("focus", recoverAvailabilityOnFocus);
     return () => {
+      window.removeEventListener("focus", recoverAvailabilityOnFocus);
       void portalSupabase.removeChannel(channel);
     };
   }, [adminPortal, portalSupabase, refreshProducts]);
@@ -1555,21 +1669,31 @@ function App() {
       .eq("id", orderId)
       .single();
     if (userId && remainingCart.length) {
-      await supabase.from("cart_items").upsert(
-        remainingCart.map((item) => ({
-          user_id: userId,
-          product_id: item.id,
-          quantity: item.quantity,
-          selected_for_checkout: item.selectedForCheckout,
-        })),
-      );
+      void Promise.resolve(
+        supabase.from("cart_items").upsert(
+          remainingCart.map((item) => ({
+            user_id: userId,
+            product_id: item.id,
+            quantity: item.quantity,
+            selected_for_checkout: item.selectedForCheckout,
+          })),
+        ),
+      ).catch(() => undefined);
     }
     setCart(remainingCart);
     removeSessionItem(checkoutStorageKey);
-    await Promise.all([refreshOrders(), refreshProducts()]);
-    await supabase.functions.invoke("send-transactional-email", {
-      body: { eventType: "order_confirmation", orderId },
-    });
+    // Order creation is already complete and atomic at this point. Realtime
+    // will reconcile the stores, while refreshes and the confirmation email
+    // continue in the background so they cannot delay the success screen or
+    // expose the now-empty purchased cart as an intermediate page.
+    void Promise.all([refreshOrders(), refreshProducts()]).catch(
+      () => undefined,
+    );
+    void supabase.functions
+      .invoke("send-transactional-email", {
+        body: { eventType: "order_confirmation", orderId },
+      })
+      .catch(() => undefined);
     return {
       id: orderId,
       orderNumber: createdOrder?.order_number ?? null,
@@ -1810,7 +1934,6 @@ function App() {
 
   const saveProfile = async (details: {
     fullName: string;
-    phone: string;
     username: string;
     gender: string;
     birth: string;
@@ -1832,7 +1955,6 @@ function App() {
       .from("profiles")
       .update({
         full_name: details.fullName,
-        phone: details.phone,
         username: normalizedUsername,
         gender: details.gender,
         date_of_birth: details.birth || null,
@@ -1841,12 +1963,70 @@ function App() {
       .eq("id", userId);
     if (profileError) return profileError.message;
     setUser(details.fullName);
-    setProfilePhone(details.phone);
     setProfileUsername(normalizedUsername);
     setProfileGender(details.gender);
     setProfileBirth(details.birth);
     setProfilePaymentMethod("cod");
     return null;
+  };
+  const requestPhoneVerification = async (phone: string) => {
+    const fallback = {
+      challengeId: null,
+      expiresAt: null,
+      maskedPhone: null,
+      alreadyVerified: false,
+      retryAfter: 0,
+      error: "The verification message could not be sent. Please try again.",
+    };
+    if (!userId) return { ...fallback, error: "Please sign in first." };
+    const { data, error } = await supabase.functions.invoke(
+      "verify-customer-phone",
+      { body: { action: "request", phone } },
+    );
+    if (error) {
+      return {
+        ...fallback,
+        retryAfter: Number(data?.retryAfter ?? 0),
+        error: await functionErrorMessage(error, fallback.error),
+      };
+    }
+    const alreadyVerified = data?.status === "already_verified";
+    if (alreadyVerified && typeof data?.phone === "string") {
+      setProfilePhone(data.phone);
+      setProfilePhoneVerifiedAt(new Date().toISOString());
+    }
+    return {
+      challengeId: typeof data?.challengeId === "string" ? data.challengeId : null,
+      expiresAt: typeof data?.expiresAt === "string" ? data.expiresAt : null,
+      maskedPhone: typeof data?.maskedPhone === "string" ? data.maskedPhone : null,
+      alreadyVerified,
+      retryAfter: Number(data?.resendAfter ?? 0),
+      error: null,
+    };
+  };
+  const confirmPhoneVerification = async (challengeId: string, code: string) => {
+    const fallback = {
+      phone: null,
+      phoneVerifiedAt: null,
+      error: "The verification code could not be checked. Please try again.",
+    };
+    if (!userId) return { ...fallback, error: "Please sign in first." };
+    const { data, error } = await supabase.functions.invoke(
+      "verify-customer-phone",
+      { body: { action: "verify", challengeId, code } },
+    );
+    if (error) {
+      return { ...fallback, error: await functionErrorMessage(error, fallback.error) };
+    }
+    const verifiedPhone = typeof data?.phone === "string" ? data.phone : null;
+    const verifiedAt = typeof data?.phoneVerifiedAt === "string"
+      ? data.phoneVerifiedAt
+      : null;
+    if (verifiedPhone && verifiedAt) {
+      setProfilePhone(verifiedPhone);
+      setProfilePhoneVerifiedAt(verifiedAt);
+    }
+    return { phone: verifiedPhone, phoneVerifiedAt: verifiedAt, error: null };
   };
   const requestEmailChange = useCallback(async (email: string) => {
     const { error } = await supabase.auth.updateUser(
@@ -1883,23 +2063,40 @@ function App() {
     currentPassword: string,
     newPassword: string,
   ) => {
-    if (hasPassword) {
-      if (!userEmail) return "Your account email is unavailable.";
-      const { error: verificationError } =
-        await supabase.auth.signInWithPassword({
-          email: userEmail,
-          password: currentPassword,
-        });
-      if (verificationError) return "Your current password is incorrect.";
+    if (hasPassword === null) {
+      return "Your password status could not be confirmed. Refresh Account Security and try again.";
     }
     const { error } = await supabase.auth.updateUser({
       password: newPassword,
+      ...(hasPassword ? { current_password: currentPassword } : {}),
     });
     if (!error) setHasPassword(true);
+    if (error?.message.toLowerCase().includes("current password")) {
+      return "Your current password is incorrect.";
+    }
     return error?.message ?? null;
   };
+  const refreshPasswordStatus = useCallback(async () => {
+    const { data, error } = await supabase.rpc("current_user_has_password");
+    const nextStatus = passwordStatusFromRpc(data, error);
+    setHasPassword(nextStatus);
+    return nextStatus === null
+      ? "Your password status could not be checked. Check your connection and try again."
+      : null;
+  }, []);
   const requestPasswordSetup = async () => {
     if (!userEmail) return "Your account email is unavailable.";
+    const { data: passwordStatus, error: statusError } = await supabase.rpc(
+      "current_user_has_password",
+    );
+    const nextStatus = passwordStatusFromRpc(passwordStatus, statusError);
+    setHasPassword(nextStatus);
+    if (nextStatus === null) {
+      return "Your password status could not be confirmed. Check your connection and try again.";
+    }
+    if (nextStatus) {
+      return "A CozyCraft password is already set for this account. Use Change password instead.";
+    }
     const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
       redirectTo: `${window.location.origin}/reset-password?mode=setup`,
     });
@@ -1916,6 +2113,7 @@ function App() {
     user,
     userEmail,
     profilePhone,
+    profilePhoneVerifiedAt,
     profileUsername,
     profileGender,
     profileBirth,
@@ -1955,10 +2153,13 @@ function App() {
     replyToTicket,
     updateTicketStatus,
     saveProfile,
+    requestPhoneVerification,
+    confirmPhoneVerification,
     requestEmailChange,
     confirmEmailChange,
     changePassword,
     requestPasswordSetup,
+    refreshPasswordStatus,
   };
   return (
     <StoreContext.Provider value={store}>
@@ -1986,7 +2187,7 @@ function App() {
 }
 
 function UsernameSetupGate() {
-  const { authReady, userId, user, role, profileUsername, profilePhone, profileGender, profileBirth, saveProfile, storeSettings } = useStore();
+  const { authReady, userId, user, role, profileUsername, profileGender, profileBirth, saveProfile, storeSettings } = useStore();
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1996,7 +2197,7 @@ function UsernameSetupGate() {
     const normalized=username.trim();
     if(!/^[A-Za-z0-9._-]{3,24}$/.test(normalized)){setError("Use 3–24 letters, numbers, dots, underscores, or hyphens.");return;}
     setSaving(true); setError("");
-    const issue=await saveProfile({fullName:user??"Member",phone:profilePhone,username:normalized,gender:profileGender,birth:profileBirth});
+    const issue=await saveProfile({fullName:user??"Member",username:normalized,gender:profileGender,birth:profileBirth});
     setSaving(false);
     if(issue)setError(issue.includes("duplicate")||issue.includes("unique")?"That username is already taken. Try another.":issue);
   };
@@ -2061,47 +2262,47 @@ function FlyToNav({ fly, done }: { fly: FlyState; done: () => void }) {
 }
 
 const storefrontCatalogRoute = async (name: string) => {
-  const pages = await import("./features/storefront/catalog/StorefrontCatalog");
+  const pages = await import("@/features/storefront/catalog/StorefrontCatalog");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const storefrontCommerceRoute = async (name: string) => {
-  const pages = await import("./features/storefront/commerce/ShoppingAndCheckout");
+  const pages = await import("@/features/storefront/commerce/ShoppingAndCheckout");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const storefrontAuthRoute = async (name: string) => {
-  const pages = await import("./features/storefront/authentication/CustomerAuth");
+  const pages = await import("@/features/storefront/authentication/CustomerAuth");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const storefrontProfileRoute = async (name: string) => {
-  const pages = await import("./features/storefront/account/CustomerAccount");
+  const pages = await import("@/features/storefront/account/CustomerAccount");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminShellRoute = async (name: string) => {
-  const pages = await import("./features/admin/shell/AdminShell");
+  const pages = await import("@/features/admin/shell/AdminShell");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminCatalogRoute = async (name: string) => {
-  const pages = await import("./features/admin/catalog/CatalogManagement");
+  const pages = await import("@/features/admin/catalog/CatalogManagement");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminOperationsRoute = async (name: string) => {
-  const pages = await import("./features/admin/operations/OperationsManagement");
+  const pages = await import("@/features/admin/operations/OperationsManagement");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminTeamRoute = async (name: string) => {
-  const pages = await import("./features/admin/team-settings/TeamAndSettings");
+  const pages = await import("@/features/admin/team-settings/TeamAndSettings");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
 const adminLoyaltyRoute = async (name: string) => {
-  const pages = await import("./features/admin/loyalty/MemberTierMonitoring");
+  const pages = await import("@/features/admin/loyalty/MemberTierMonitoring");
   return { Component: pages[name as keyof typeof pages] as React.ComponentType };
 };
 
@@ -2181,7 +2382,7 @@ const router = createBrowserRouter([
     path: "/payment-return",
     lazy: async () => {
       const { PaymentReturn } = await import(
-        "./features/storefront/commerce/PaymentReturn"
+        "@/features/storefront/commerce/PaymentReturn"
       );
       return { Component: PaymentReturn };
     },
@@ -2190,7 +2391,7 @@ const router = createBrowserRouter([
     path: "/checkout",
     lazy: async () => {
       const { Checkout, CheckoutErrorBoundary } = await import(
-        "./features/storefront/commerce/ShoppingAndCheckout"
+        "@/features/storefront/commerce/ShoppingAndCheckout"
       );
       return {
         Component: Checkout,
@@ -2204,7 +2405,7 @@ const router = createBrowserRouter([
     path: "/login",
     lazy: async () => {
       const { Account } = await import(
-        "./features/storefront/authentication/CustomerAuth"
+        "@/features/storefront/authentication/CustomerAuth"
       );
       return { Component: () => <Account mode="login" /> };
     },
@@ -2213,7 +2414,7 @@ const router = createBrowserRouter([
     path: "/signup",
     lazy: async () => {
       const { Account } = await import(
-        "./features/storefront/authentication/CustomerAuth"
+        "@/features/storefront/authentication/CustomerAuth"
       );
       return { Component: () => <Account mode="signup" /> };
     },
@@ -2236,7 +2437,7 @@ const router = createBrowserRouter([
     path: "/admin/experience",
     lazy: async () => {
       const { MerchandisingExperiencePage } = await import(
-        "./features/admin/merchandising/MerchandisingExperience"
+        "@/features/admin/merchandising/MerchandisingExperience"
       );
       return { Component: MerchandisingExperiencePage };
     },
@@ -2245,7 +2446,7 @@ const router = createBrowserRouter([
     path: "/admin/content",
     lazy: async () => {
       const { ContentManagementPage } = await import(
-        "./features/admin/content/ContentManagement"
+        "@/features/admin/content/ContentManagement"
       );
       return { Component: ContentManagementPage };
     },

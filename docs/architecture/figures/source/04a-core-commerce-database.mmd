@@ -1,0 +1,121 @@
+erDiagram
+    AUTH_USERS ||--|| PROFILES : "owns"
+    PROFILES ||--o{ ADDRESSES : "saves"
+    PROFILES ||--o| CUSTOMER_PREFERENCES : "configures"
+
+    CATEGORIES ||--o{ PRODUCTS : "contains"
+    PRODUCTS ||--o{ INVENTORY_MOVEMENTS : "records"
+    PRODUCTS ||--o{ PRODUCT_VIEWS : "receives"
+
+    PROFILES ||--o{ CART_ITEMS : "selects"
+    PRODUCTS ||--o{ CART_ITEMS : "selected as"
+    PROFILES ||--o{ WISHLIST_ITEMS : "saves"
+    PRODUCTS ||--o{ WISHLIST_ITEMS : "saved as"
+
+    PROFILES ||--o{ ORDERS : "places"
+    ADDRESSES ||--o{ ORDERS : "used by"
+    ORDERS ||--|{ ORDER_ITEMS : "contains"
+    PRODUCTS ||--o{ ORDER_ITEMS : "purchased as"
+    ORDERS ||--o{ ORDER_STATUS_HISTORY : "progresses through"
+    ORDERS ||--o{ PAYMENT_TRANSACTIONS : "paid by"
+    ORDERS ||--o{ RETURN_REQUESTS : "may have"
+
+    AUTH_USERS {
+        uuid id PK
+        text email
+        timestamp created_at
+    }
+    PROFILES {
+        uuid id PK,FK
+        text username
+        text role
+        text full_name
+        text avatar_url
+    }
+    ADDRESSES {
+        uuid id PK
+        uuid user_id FK
+        text city
+        text barangay
+        boolean is_default
+    }
+    CUSTOMER_PREFERENCES {
+        uuid user_id PK,FK
+        boolean email_updates
+        jsonb preferences
+    }
+    CATEGORIES {
+        uuid id PK
+        uuid parent_id FK
+        text room
+        text name
+    }
+    PRODUCTS {
+        uuid id PK
+        uuid category_id FK
+        text name
+        numeric price
+        integer stock
+        text status
+    }
+    INVENTORY_MOVEMENTS {
+        uuid id PK
+        uuid product_id FK
+        integer quantity_change
+        text reason
+        timestamp created_at
+    }
+    PRODUCT_VIEWS {
+        uuid id PK
+        uuid product_id FK
+        uuid user_id FK
+        timestamp viewed_at
+    }
+    CART_ITEMS {
+        uuid id PK
+        uuid user_id FK
+        uuid product_id FK
+        integer quantity
+        boolean selected
+    }
+    WISHLIST_ITEMS {
+        uuid id PK
+        uuid user_id FK
+        uuid product_id FK
+        timestamp created_at
+    }
+    ORDERS {
+        uuid id PK
+        uuid user_id FK
+        uuid address_id FK
+        text status
+        numeric total
+        timestamp created_at
+    }
+    ORDER_ITEMS {
+        uuid id PK
+        uuid order_id FK
+        uuid product_id FK
+        integer quantity
+        numeric unit_price
+    }
+    ORDER_STATUS_HISTORY {
+        uuid id PK
+        uuid order_id FK
+        text status
+        timestamp changed_at
+    }
+    PAYMENT_TRANSACTIONS {
+        uuid id PK
+        uuid order_id FK
+        text provider
+        text status
+        numeric amount
+    }
+    RETURN_REQUESTS {
+        uuid id PK
+        uuid order_id FK
+        text status
+        text reason
+        timestamp created_at
+    }

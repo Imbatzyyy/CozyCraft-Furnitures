@@ -1,0 +1,35 @@
+flowchart TB
+    SECRETS["<b>SUPABASE FUNCTION SECRETS</b><br/>All provider credentials remain server-side"]
+
+    subgraph TOP["CUSTOMER IDENTITY AND TRANSACTIONS"]
+        direction LR
+        GOOGLE["<b>Google Authentication</b><br/>Continue with Google<br/>→ Supabase OAuth handler<br/>→ Google OAuth<br/>→ customer session and profile"]
+        PAYMONGO["<b>PayMongo Payments</b><br/>Card or GCash checkout<br/>→ protected Edge Functions<br/>→ PayMongo API and webhook<br/>→ payment and order status"]
+    end
+
+    subgraph MIDDLE["COMMUNICATION AND CUSTOMER CARE"]
+        direction LR
+        RESEND["<b>Resend Transactional Email</b><br/>Account, order, support, or refund event<br/>→ transactional-email function<br/>→ customer or staff inbox"]
+        GROQ["<b>Groq AI Customer Care</b><br/>Customer message<br/>→ CozyCraft assistant function<br/>→ grounded, concise response"]
+    end
+
+    ADDRESS["<b>Philippine Delivery Address Data</b><br/>Address form → barangays Edge Function → validated dataset<br/>→ region, province, city, and barangay options"]
+    DB[("<b>POSTGRESQL SYSTEM OF RECORD</b><br/>Validated outcomes · provider references · audit history")]
+
+    SECRETS --> GOOGLE
+    SECRETS --> PAYMONGO
+    SECRETS --> RESEND
+    SECRETS --> GROQ
+    GOOGLE --> DB
+    PAYMONGO <--> DB
+    RESEND --> DB
+    GROQ --> DB
+    ADDRESS --> DB
+
+    classDef function fill:#E1EBDD,color:#24311F,stroke:#6F8666,stroke-width:1.5px;
+    classDef provider fill:#E8E2EC,color:#2C2731,stroke:#82748A,stroke-width:1.5px;
+    classDef secure fill:#E9E2D7,color:#27221C,stroke:#8D7E69,stroke-width:1.6px;
+
+    class GOOGLE,PAYMONGO,RESEND,GROQ provider;
+    class ADDRESS function;
+    class DB,SECRETS secure;

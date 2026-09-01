@@ -16,4 +16,3 @@ begin
     alter publication supabase_realtime add table public.order_status_history;
   end if;
 end $$;
-

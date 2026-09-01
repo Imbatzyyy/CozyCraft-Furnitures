@@ -1,0 +1,34 @@
+erDiagram
+    PROFILES ||--o{ SUPPORT_TICKETS : "opens"
+    PROFILES ||--o{ CUSTOMER_NOTIFICATIONS : "receives"
+    PROFILES ||--o{ MOBILE_PUSH_TOKENS : "registers"
+
+    PROFILES {
+        uuid id PK,FK
+        text username
+        text role
+        text full_name
+    }
+    SUPPORT_TICKETS {
+        uuid id PK
+        uuid user_id FK
+        text status
+        text subject
+        text latest_message
+        timestamp updated_at
+    }
+    CUSTOMER_NOTIFICATIONS {
+        uuid id PK
+        uuid user_id FK
+        text type
+        text message
+        boolean is_read
+        timestamp created_at
+    }
+    MOBILE_PUSH_TOKENS {
+        uuid id PK
+        uuid user_id FK
+        text platform
+        text token
+        timestamp updated_at
+    }

@@ -205,4 +205,3 @@ do $$ begin
     alter publication supabase_realtime add table public.mobile_loyalty_redemptions;
   end if;
 end $$;
-

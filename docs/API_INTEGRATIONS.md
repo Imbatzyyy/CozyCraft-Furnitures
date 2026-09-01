@@ -64,3 +64,64 @@ RLS. It must never be replaced by a secret or service-role key.
 4. Add or update database policies before exposing new data.
 5. Add unit tests for pure mapping logic and a manual provider test plan.
 6. Update this document and the deployment checklist.
+# UniSMS customer phone verification
+
+Customer profile phone numbers are verified through the
+`verify-customer-phone` Supabase Edge Function. The browser sends only the
+requested phone number and the one-time code; the UniSMS API secret stays in
+Supabase's encrypted Edge Function secrets.
+
+Required server secrets:
+
+- `UNISMS_API_SECRET` — UniSMS API Secret key used as the Basic Auth username.
+- `UNISMS_SENDER_ID` — the sender ID shown or approved by UniSMS.
+- `OTP_HASH_SECRET` — an independent high-entropy secret used to HMAC OTPs
+  before storage. Do not reuse the UniSMS key.
+
+Security and cost controls:
+
+- Philippine numbers are normalized to E.164 (`+639XXXXXXXXX`).
+- Codes expire after five minutes and allow at most five attempts.
+- Resends are limited to once per minute and five requests per hour per user
+  and phone number.
+- Raw OTPs are never stored. Challenges are hidden from `anon` and
+  `authenticated` database roles.
+- The profile phone column cannot be changed by a customer outside the
+  verification function.
+- A verified phone belongs to exactly one customer account. Ownership is
+  checked before an SMS is purchased, then enforced again by an atomic partial
+  unique index when the OTP is confirmed.
+- Replacing a verified phone requires a fresh OTP for the replacement number.
+  The current phone remains registered until the new challenge succeeds;
+  cancelling or failing the challenge leaves the account unchanged. Only the
+  newest active OTP challenge can complete the replacement.
+- Provider errors are logged without phone numbers, OTPs, or API credentials.
+
+The UniSMS testing sender may be limited by network and message count. Obtain
+an approved all-network sender ID from UniSMS before treating SMS verification
+as production-ready.
+
+# Customer account security
+
+Customer authenticator verification uses Supabase Auth TOTP factors. Enrolling
+a factor is optional, but once a factor is verified the storefront requires an
+`aal2` session after password, OAuth, token-refresh, or restored-session events.
+The challenge gate uses `getAuthenticatorAssuranceLevel()`, `listFactors()`, and
+`challengeAndVerify()`.
+
+Restrictive RLS policies call `private.customer_mfa_satisfied()` for private
+customer commerce tables. Accounts without a verified factor may use AAL1;
+accounts that opted into MFA must use AAL2. The policies cover addresses,
+billing, cart, wishlist, orders, payments, returns, reviews, support,
+notifications, preferences, push tokens, product alerts, and loyalty data.
+
+Security-page behavior:
+
+- Password changes submit `current_password` with the replacement password and
+  do not create or replace the active browser session.
+- Cancelling TOTP setup unenrolls the unfinished factor so a later setup can
+  start cleanly.
+- Removing a verified factor and signing out other devices require an explicit
+  confirmation in the customer interface.
+- `signOut({ scope: "others" })` revokes other refresh-token sessions while
+  preserving the current browser session.

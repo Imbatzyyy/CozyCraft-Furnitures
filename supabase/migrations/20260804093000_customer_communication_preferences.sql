@@ -32,4 +32,3 @@ begin
 exception
   when duplicate_object then null;
 end $$;
-

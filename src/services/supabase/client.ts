@@ -59,6 +59,7 @@ export type DbProfile = {
   full_name: string;
   email: string | null;
   phone: string | null;
+  phone_verified_at: string | null;
   avatar_url: string | null;
   username: string;
   gender: string;
@@ -200,6 +201,7 @@ export type DbOrder = {
   refund_email_error?: string | null;
   subtotal: number;
   delivery_fee: number;
+  reward_discount?: number;
   total: number;
   shipping_address: Record<string, string>;
   created_at: string;

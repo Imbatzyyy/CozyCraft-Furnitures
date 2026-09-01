@@ -1,0 +1,57 @@
+erDiagram
+    PROFILES ||--o{ ACTIVITY_LOGS : "performs"
+    ADMIN_NOTIFICATIONS ||--o{ ADMIN_NOTIFICATION_READS : "read through"
+    PROFILES ||--o{ ADMIN_NOTIFICATION_READS : "acknowledges"
+    PROFILES ||--o| ADMIN_SECURITY_SETTINGS : "protects"
+    PROFILES ||--o| MOBILE_LOYALTY_ACCOUNTS : "owns"
+    MOBILE_LOYALTY_ACCOUNTS ||--o{ MOBILE_LOYALTY_TRANSACTIONS : "records"
+    MOBILE_LOYALTY_ACCOUNTS ||--o{ MOBILE_LOYALTY_REDEMPTIONS : "redeems"
+
+    PROFILES {
+        uuid id PK,FK
+        text username
+        text role
+        text full_name
+    }
+    ACTIVITY_LOGS {
+        uuid id PK
+        uuid actor_id FK
+        text action
+        text entity_type
+        uuid entity_id
+        timestamp created_at
+    }
+    ADMIN_NOTIFICATIONS {
+        uuid id PK
+        text type
+        text message
+        timestamp created_at
+    }
+    ADMIN_NOTIFICATION_READS {
+        uuid notification_id FK
+        uuid user_id FK
+        timestamp read_at
+    }
+    ADMIN_SECURITY_SETTINGS {
+        uuid user_id PK,FK
+        integer idle_timeout_minutes
+        boolean mfa_required
+    }
+    MOBILE_LOYALTY_ACCOUNTS {
+        uuid id PK
+        uuid user_id FK
+        integer points_balance
+        text tier
+    }
+    MOBILE_LOYALTY_TRANSACTIONS {
+        uuid id PK
+        uuid account_id FK
+        integer points
+        text reason
+    }
+    MOBILE_LOYALTY_REDEMPTIONS {
+        uuid id PK
+        uuid account_id FK
+        integer points_used
+        text status
+    }

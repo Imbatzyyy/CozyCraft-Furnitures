@@ -46,4 +46,3 @@ $$;
 
 revoke all on function public.place_order(uuid, text, jsonb, uuid) from public, anon;
 grant execute on function public.place_order(uuid, text, jsonb, uuid) to authenticated;
-

@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createBrowserRouter,
   Link,
@@ -84,7 +85,7 @@ import {
 } from "@/services/supabase/client";
 import type { PublicStoreSettings } from "@/lib/settings/store-settings";
 import { functionErrorMessage } from "@/lib/shared/function-error";
-import { matchesCatalogSearch } from "@/lib/catalog/discovery";
+import { rankCatalogSearch } from "@/lib/catalog/discovery";
 import {
   primaryProductImage,
   productMainImageIndex,
@@ -95,6 +96,10 @@ import {
   toggleComparedProduct,
 } from "@/lib/catalog/compare";
 import { exactStockAvailability } from "@/lib/catalog/stock-availability";
+import {
+  authenticatorChallengeRequired,
+  shouldRecheckAuthenticator,
+} from "@/lib/auth/account-security";
 import {
   isRecoverablePendingPayment,
   pendingPaymentRecoveryEvent,
@@ -332,11 +337,12 @@ export type Store = {
   user: string | null;
   userEmail: string | null;
   profilePhone: string;
+  profilePhoneVerifiedAt: string | null;
   profileUsername: string;
   profileGender: string;
   profileBirth: string;
   profilePaymentMethod: "cod";
-  hasPassword: boolean;
+  hasPassword: boolean | null;
   role: DbRole | null;
   authReady: boolean;
   avatar: string | null;
@@ -398,11 +404,23 @@ export type Store = {
   ) => Promise<string | null>;
   saveProfile: (details: {
     fullName: string;
-    phone: string;
     username: string;
     gender: string;
     birth: string;
   }) => Promise<string | null>;
+  requestPhoneVerification: (phone: string) => Promise<{
+    challengeId: string | null;
+    expiresAt: string | null;
+    maskedPhone: string | null;
+    alreadyVerified: boolean;
+    retryAfter: number;
+    error: string | null;
+  }>;
+  confirmPhoneVerification: (challengeId: string, code: string) => Promise<{
+    phone: string | null;
+    phoneVerifiedAt: string | null;
+    error: string | null;
+  }>;
   requestEmailChange: (email: string) => Promise<string | null>;
   confirmEmailChange: (
     expectedEmail: string,
@@ -412,6 +430,7 @@ export type Store = {
     newPassword: string,
   ) => Promise<string | null>;
   requestPasswordSetup: () => Promise<string | null>;
+  refreshPasswordStatus: () => Promise<string | null>;
 };
 
 export const StoreContext = createContext<Store | null>(null);
@@ -520,6 +539,10 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLElement>(null);
+  const menuCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const searchPanelRef = useRef<HTMLDivElement>(null);
   const [customerNotifications, setCustomerNotifications] = useState<DbCustomerNotification[]>([]);
   const [scrolled, setScrolled] = useState(false);
   const [paymentClock, setPaymentClock] = useState(() => Date.now());
@@ -589,7 +612,95 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
     setNotificationOpen(false);
     setMenu(false);
     setSearchOpen(false);
-  }, [location.pathname]);
+  }, [location.key]);
+  useEffect(() => {
+    const desktopViewport = window.matchMedia("(min-width: 768px)");
+    const closeMobileMenu = (event: MediaQueryListEvent) => {
+      if (event.matches) setMenu(false);
+    };
+    desktopViewport.addEventListener("change", closeMobileMenu);
+    return () => desktopViewport.removeEventListener("change", closeMobileMenu);
+  }, []);
+  useEffect(() => {
+    if (!menu) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusTimer = window.requestAnimationFrame(() => {
+      menuCloseButtonRef.current?.focus();
+    });
+    const handleMenuKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenu(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        menuPanelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((element) => !element.hasAttribute("disabled"));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleMenuKeys);
+    return () => {
+      window.cancelAnimationFrame(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleMenuKeys);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, [menu]);
+  useEffect(() => {
+    if (!searchOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusTimer = window.requestAnimationFrame(() => {
+      searchPanelRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+    });
+    const handleSearchKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSearchOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        searchPanelRef.current?.querySelectorAll<HTMLElement>(
+          'input, a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleSearchKeys);
+    return () => {
+      window.cancelAnimationFrame(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleSearchKeys);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, [searchOpen]);
   useEffect(() => {
     if (!userId) {
       setCustomerNotifications([]);
@@ -618,16 +729,15 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
     if (notification.entity_type === "support_tickets") nav("/profile?tab=support");
     setNotificationOpen(false);
   };
-  const matches = products
-    .filter((product) => matchesCatalogSearch(product, query))
-    .slice(0, 5);
+  const matches = rankCatalogSearch(products, query).slice(0, 5);
   const announcementVisible =
     storeSettings.announcement_enabled &&
     Boolean(storeSettings.announcement_text.trim());
   const overHero = immersive && !scrolled;
+  const headerLayer = menu ? "z-[90]" : "z-30";
   const navClass = immersive
-    ? `fixed inset-x-0 top-0 z-30 transition-colors duration-300 ${overHero ? "border-b border-white/35 bg-transparent text-white" : "border-b border-border bg-background/95 text-foreground backdrop-blur"}`
-    : "sticky top-0 z-30 border-b border-border/90 bg-background/95 text-foreground backdrop-blur";
+    ? `fixed inset-x-0 top-0 ${headerLayer} transition-colors duration-300 ${overHero ? "border-b border-white/35 bg-transparent text-white" : "border-b border-border bg-background/95 text-foreground backdrop-blur"}`
+    : `sticky top-0 ${headerLayer} border-b border-border/90 bg-background/95 text-foreground backdrop-blur`;
   return (
     <>
       <header className={navClass}>
@@ -662,9 +772,13 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
           </nav>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setSearchOpen(true)}
+              onClick={() => {
+                setMenu(false);
+                setNotificationOpen(false);
+                setSearchOpen(true);
+              }}
               aria-label="Search products"
-              className={`hidden h-9 w-9 place-items-center rounded-full sm:grid ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
+              className={`grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >
               <Search size={18} />
             </button>
@@ -672,7 +786,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
               id="wishlist-nav-target"
               to="/wishlist"
               aria-label={`Wishlist${saved.length ? `, ${saved.length} saved` : ""}`}
-              className={`relative grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
+              className={`relative hidden h-9 w-9 place-items-center rounded-full md:grid ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >
               <Heart size={18} fill={saved.length ? "currentColor" : "none"} />
               {saved.length > 0 && (
@@ -700,7 +814,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             </Link>
             {user && (
               <div className="relative">
-                <button type="button" onClick={() => setNotificationOpen((value) => !value)} aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`} className={`relative grid h-9 w-9 place-items-center rounded-full ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}>
+                <button type="button" onClick={() => setNotificationOpen((value) => !value)} aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`} className={`relative hidden h-9 w-9 place-items-center rounded-full md:grid ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}>
                   <Bell size={18} />
                   {unreadNotifications > 0 && <b className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#a45f45] px-1 text-[9px] text-white">{Math.min(unreadNotifications, 9)}{unreadNotifications > 9 ? "+" : ""}</b>}
                 </button>
@@ -710,11 +824,11 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                       type="button"
                       aria-label="Close notifications"
                       onClick={() => setNotificationOpen(false)}
-                      className={`fixed inset-x-0 bottom-0 z-40 bg-black/20 sm:bg-transparent ${announcementVisible ? "top-[112px]" : "top-[76px]"}`}
+                      className={`fixed inset-x-0 bottom-0 z-40 bg-black/20 md:bg-transparent ${announcementVisible ? "top-[112px]" : "top-[76px]"}`}
                     />
                     <section
                       aria-label="Customer notifications"
-                      className={`fixed inset-x-3 bottom-3 z-50 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-11 sm:h-auto sm:max-h-[min(32rem,calc(100dvh-6rem))] sm:w-[360px] ${announcementVisible ? "top-[120px]" : "top-[84px]"}`}
+                      className={`fixed inset-x-3 bottom-[calc(var(--mobile-store-nav-height)+.75rem)] z-50 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl md:absolute md:inset-auto md:right-0 md:top-11 md:h-auto md:max-h-[min(32rem,calc(100dvh-6rem))] md:w-[360px] ${announcementVisible ? "top-[120px]" : "top-[84px]"}`}
                     >
                     <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
                       <div className="min-w-0"><b className="block text-sm">Notifications</b><span className="block text-[10px] text-muted-foreground">{unreadNotifications} unread</span></div>
@@ -735,7 +849,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             {user ? (
               <Link
                 to="/profile"
-                className={`hidden h-9 min-w-9 items-center justify-center gap-2 rounded-full px-1 sm:flex ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
+                className={`hidden h-9 min-w-9 items-center justify-center gap-2 rounded-full px-1 md:flex ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
               >
                 {avatar ? (
                   <img
@@ -757,19 +871,25 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             ) : (
               <Link
                 to="/login"
-                className={`hidden items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold sm:flex ${overHero ? "border border-white/50 hover:bg-white hover:text-foreground" : "border border-border bg-card hover:bg-secondary"}`}
+                className={`hidden items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold md:flex ${overHero ? "border border-white/50 hover:bg-white hover:text-foreground" : "border border-border bg-card hover:bg-secondary"}`}
               >
                 <UserRound size={15} />
                 Sign in
               </Link>
             )}
             <button
-              onClick={() => setMenu(!menu)}
+              ref={menuButtonRef}
+              onClick={() => {
+                setNotificationOpen(false);
+                setSearchOpen(false);
+                setMenu((open) => !open);
+              }}
               aria-label={menu ? "Close navigation menu" : "Open navigation menu"}
               aria-expanded={menu}
+              aria-controls="customer-mobile-navigation"
               className={`grid h-9 w-9 place-items-center rounded-full md:hidden ${overHero ? "hover:bg-white/15" : "hover:bg-secondary"}`}
             >
-              {menu ? <X size={19} /> : <Menu size={19} />}
+              <Menu size={19} />
             </button>
           </div>
         </div>
@@ -788,43 +908,154 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
             <span className="shrink-0 underline underline-offset-4">Continue</span>
           </Link>
         )}
-        {menu && (
-          <nav
-            className={`grid px-5 py-3 md:hidden ${overHero ? "border-t border-white/20 bg-[#1f1e1b]/95 text-white" : "border-t border-border bg-background"}`}
-          >
-            {[
-              ["Home", "/home"],
-              ["Living room", "/living-room"],
-              ["Bedroom", "/bedroom"],
-              ["Dining room", "/dining-room"],
-              ["New arrivals", "/new-arrivals"],
-            ].map(([label, path]) => (
-              <Link
-                to={path}
-                className="px-3 py-2.5 text-[12px] font-semibold tracking-[0.03em]"
-                key={path}
-              >
-                {label}
-              </Link>
-            ))}
-            <Link
-              to="/about"
-              className="px-3 py-2.5 text-[12px] font-semibold tracking-[0.03em]"
+        {menu && createPortal(
+          <div className="fixed inset-0 z-[100] md:hidden">
+            <button
+              type="button"
+              aria-label="Close navigation menu"
+              onClick={() => setMenu(false)}
+              className="absolute inset-0 bg-[#171614]/45 backdrop-blur-[2px]"
+            />
+            <aside
+              ref={menuPanelRef}
+              id="customer-mobile-navigation"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="customer-mobile-navigation-title"
+              className="absolute inset-y-0 right-0 flex w-[min(92vw,390px)] flex-col overflow-hidden border-l border-[#d9d2c7] bg-[#f8f6f2] text-foreground shadow-[-24px_0_70px_rgba(31,28,24,.22)]"
             >
-              About
-            </Link>
-            <Link
-              to={user ? "/profile" : "/login"}
-              className="px-3 py-2.5 text-[12px] font-semibold tracking-[0.03em]"
-            >
-              {user ? "My profile" : "Sign in"}
-            </Link>
-          </nav>
+              <div className="flex min-h-[76px] shrink-0 items-center justify-between border-b border-border px-5 pt-[env(safe-area-inset-top)]">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-[.2em] text-muted-foreground">
+                    CozyCraft Furnitures
+                  </p>
+                  <h2 id="customer-mobile-navigation-title" className="mt-1 text-lg font-semibold">
+                    Menu
+                  </h2>
+                </div>
+                <button
+                  ref={menuCloseButtonRef}
+                  type="button"
+                  onClick={() => setMenu(false)}
+                  aria-label="Close navigation menu"
+                  className="grid h-11 w-11 place-items-center rounded-full border border-border bg-white transition hover:bg-secondary"
+                >
+                  <X size={19} />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+                <nav aria-label="Shop by room" className="py-6">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[.19em] text-muted-foreground">
+                    Shop by room
+                  </p>
+                  {[
+                    ["Living room", "/living-room"],
+                    ["Bedroom", "/bedroom"],
+                    ["Dining room", "/dining-room"],
+                    ["New arrivals", "/new-arrivals"],
+                  ].map(([label, path]) => {
+                    const current = location.pathname === path;
+                    return (
+                      <Link
+                        to={path}
+                        aria-current={current ? "page" : undefined}
+                        className="group flex min-h-12 items-center gap-3 border-b border-border/80 py-3 text-[15px] font-semibold"
+                        key={path}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${current ? "bg-foreground" : "bg-transparent"}`} />
+                        <span className="flex-1">{label}</span>
+                        <ArrowRight size={15} className="text-muted-foreground transition group-hover:translate-x-0.5" />
+                      </Link>
+                    );
+                  })}
+                </nav>
+
+                <div className="border-t border-border py-5">
+                  {user ? (
+                    <details className="group">
+                      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-white [&::-webkit-details-marker]:hidden">
+                        {avatar ? (
+                          <img src={avatar} alt="" className="h-10 w-10 rounded-full object-cover" />
+                        ) : (
+                          <span className="grid h-10 w-10 place-items-center rounded-full bg-[#ded2c1] text-sm font-bold">
+                            {user.slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <b className="block truncate text-sm">{profileDisplayName}</b>
+                          <span className="block text-[11px] text-muted-foreground">Account & saved items</span>
+                        </span>
+                        <ChevronDown size={16} className="transition group-open:rotate-180" />
+                      </summary>
+                      <nav aria-label="My account" className="ml-5 mt-2 grid border-l border-border pl-5">
+                        <Link to="/profile" className="flex min-h-11 items-center justify-between py-2 text-sm font-medium">
+                          My profile <ArrowRight size={14} className="text-muted-foreground" />
+                        </Link>
+                        <Link to="/profile?tab=orders" className="flex min-h-11 items-center justify-between py-2 text-sm font-medium">
+                          My orders <span className="text-xs text-muted-foreground">{orders.length || ""}</span>
+                        </Link>
+                        <Link to="/wishlist" className="flex min-h-11 items-center justify-between py-2 text-sm font-medium">
+                          Wishlist <span className="text-xs text-muted-foreground">{saved.length || ""}</span>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenu(false);
+                            setNotificationOpen(true);
+                          }}
+                          className="flex min-h-11 items-center justify-between py-2 text-left text-sm font-medium"
+                        >
+                          Notifications
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] ${unreadNotifications ? "bg-[#a45f45] text-white" : "text-muted-foreground"}`}>
+                            {unreadNotifications ? `${unreadNotifications} new` : "None new"}
+                          </span>
+                        </button>
+                      </nav>
+                    </details>
+                  ) : (
+                    <section aria-labelledby="customer-mobile-account-title" className="rounded-2xl border border-border bg-white p-4">
+                      <p id="customer-mobile-account-title" className="text-sm font-semibold">Your CozyCraft account</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">See orders, saved pieces, addresses, and support in one place.</p>
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <Link to="/login" className="grid min-h-11 place-items-center whitespace-nowrap rounded-xl bg-foreground px-2 text-[11px] font-semibold text-background">Sign in</Link>
+                        <Link to="/signup" className="grid min-h-11 place-items-center whitespace-nowrap rounded-xl border border-border px-2 text-[11px] font-semibold">Create account</Link>
+                      </div>
+                    </section>
+                  )}
+                </div>
+
+                <details className="group border-t border-border py-4">
+                  <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between rounded-xl px-2 text-sm font-semibold transition hover:bg-white [&::-webkit-details-marker]:hidden">
+                    Help & about
+                    <ChevronDown size={16} className="transition group-open:rotate-180" />
+                  </summary>
+                  <nav aria-label="Help and about CozyCraft" className="ml-2 mt-1 grid border-l border-border pl-5">
+                    {[
+                      ["Contact us", "/contact"],
+                      ["Frequently asked questions", "/faq"],
+                      ["About CozyCraft", "/about"],
+                    ].map(([label, path]) => (
+                      <Link key={path} to={path} className="flex min-h-11 items-center justify-between py-2 text-sm font-medium">
+                        {label} <ArrowRight size={14} className="text-muted-foreground" />
+                      </Link>
+                    ))}
+                  </nav>
+                </details>
+
+                <div className="flex items-center gap-5 border-t border-border pt-5 text-[11px] font-medium text-muted-foreground">
+                  <Link to="/terms" className="underline-offset-4 hover:underline">Terms</Link>
+                  <Link to="/privacy" className="underline-offset-4 hover:underline">Privacy</Link>
+                </div>
+              </div>
+            </aside>
+          </div>,
+          document.body,
         )}
       </header>
       {searchOpen && (
         <div className={`fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-5 backdrop-blur-sm ${announcementVisible ? "pt-36" : "pt-24"}`} role="dialog" aria-modal="true" aria-label="Search CozyCraft products">
-          <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+          <div ref={searchPanelRef} className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
             <div className="flex items-center gap-3 border-b border-border px-5 transition-shadow focus-within:border-[#b8a58d] focus-within:ring-2 focus-within:ring-inset focus-within:ring-[#b8a58d]/30">
               <Search size={18} className="text-muted-foreground" />
               <input
@@ -902,6 +1133,155 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   );
 }
 
+function CustomerMfaGate() {
+  const { authReady, role, userId, signOut } = useStore();
+  const [required, setRequired] = useState<boolean | null>(null);
+  const [factorId, setFactorId] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const checkAssurance = useCallback(async () => {
+    if (!authReady || role !== "customer" || !userId) {
+      setRequired(false);
+      setFactorId("");
+      return;
+    }
+    const { data: assurance, error: assuranceError } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assuranceError) {
+      setRequired(true);
+      setError("We could not verify this session securely. Check your connection and retry.");
+      return;
+    }
+    if (!authenticatorChallengeRequired(assurance.currentLevel, assurance.nextLevel)) {
+      setRequired(false);
+      setFactorId("");
+      setError("");
+      return;
+    }
+    const { data: factors, error: factorError } =
+      await supabase.auth.mfa.listFactors();
+    const verifiedFactor = factors?.totp.find(
+      (factor) => factor.status === "verified",
+    );
+    if (factorError || !verifiedFactor) {
+      setRequired(true);
+      setFactorId("");
+      setError("Your authenticator could not be loaded. Sign out and try again, or contact CozyCraft Care.");
+      return;
+    }
+    setFactorId(verifiedFactor.id);
+    setRequired(true);
+    setError("");
+  }, [authReady, role, userId]);
+
+  useEffect(() => {
+    setRequired(null);
+    void checkAssurance();
+  }, [checkAssurance]);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event) => {
+        if (shouldRecheckAuthenticator(event)) {
+          window.setTimeout(() => void checkAssurance(), 0);
+        }
+      },
+    );
+    return () => subscription.unsubscribe();
+  }, [checkAssurance]);
+
+  const verify = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!factorId || !/^\d{6}$/.test(code)) return;
+    setBusy(true);
+    setError("");
+    const { error: verificationError } =
+      await supabase.auth.mfa.challengeAndVerify({ factorId, code });
+    setBusy(false);
+    if (verificationError) {
+      setError("That authenticator code is invalid or expired. Enter the newest code from your app.");
+      return;
+    }
+    setCode("");
+    await checkAssurance();
+  };
+
+  if (!authReady || role !== "customer" || !userId || required === false) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[190] grid place-items-center bg-[#211f1d]/70 p-4 backdrop-blur-md">
+      {required === null ? (
+        <section className="w-full max-w-sm rounded-[2rem] border border-border bg-card p-8 text-center shadow-2xl">
+          <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground" />
+          <p className="mt-4 text-sm text-muted-foreground">Checking account protection…</p>
+        </section>
+      ) : (
+        <form
+          onSubmit={verify}
+          className="w-full max-w-md rounded-[2rem] border border-border bg-card p-7 text-center shadow-[0_30px_90px_rgba(20,18,15,.3)] sm:p-8"
+          aria-labelledby="customer-mfa-title"
+        >
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#e9e2d7]">
+            <ShieldCheck size={21} />
+          </span>
+          <p className="mt-5 text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
+            TWO-STEP VERIFICATION
+          </p>
+          <h1 id="customer-mfa-title" className="mt-2 font-serif text-4xl">
+            Confirm it’s you.
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Enter the current six-digit code from your authenticator app to continue to your CozyCraft account.
+          </p>
+          {factorId && (
+            <label className="mt-6 grid gap-2 text-left text-sm font-semibold">
+              Authenticator code
+              <input
+                autoFocus
+                value={code}
+                onChange={(event) => {
+                  setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                  setError("");
+                }}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                aria-invalid={Boolean(error)}
+                className="h-13 rounded-xl border border-border bg-background px-4 text-center font-mono text-xl tracking-[.35em] outline-none focus:border-foreground focus:ring-4 focus:ring-[#d9c9b4]/25"
+                placeholder="000000"
+              />
+            </label>
+          )}
+          {error && (
+            <p role="alert" className="mt-4 rounded-xl border border-[#e6c9b8] bg-[#f8ebe2] p-3 text-left text-xs font-semibold leading-5 text-[#8b5c46]">
+              {error}
+            </p>
+          )}
+          <button
+            type={factorId ? "submit" : "button"}
+            onClick={factorId ? undefined : () => void checkAssurance()}
+            disabled={busy || Boolean(factorId && code.length !== 6)}
+            className="mt-5 w-full rounded-xl bg-foreground px-5 py-3.5 text-sm font-semibold text-background disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {busy ? "Verifying…" : factorId ? "Verify and continue" : "Retry secure check"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            disabled={busy}
+            className="mt-4 text-xs font-semibold underline underline-offset-4 disabled:opacity-50"
+          >
+            Sign out instead
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export function Layout({
   children,
   immersive = false,
@@ -916,9 +1296,10 @@ export function Layout({
   }
   return (
     <>
+      <CustomerMfaGate />
       <a href="#page-content" className="skip-link">Skip to main content</a>
       <Header immersive={immersive} />
-      <div id="page-content" tabIndex={-1} className={`${immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"} pb-20 md:pb-0`}>
+      <div id="page-content" tabIndex={-1} className={`${immersive ? "bg-background" : "bg-[#e9e5de] p-3 sm:p-5"} pb-[calc(var(--mobile-store-nav-height)+1rem)] md:pb-0`}>
         <div
           className={
             immersive
@@ -998,6 +1379,7 @@ function StorefrontServiceStrip() {
 function MobileStoreNav() {
   const location = useLocation();
   const { cart, saved, user } = useStore();
+  const [editing, setEditing] = useState(false);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const entries = [
     [LayoutDashboard, "Home", "/home", 0],
@@ -1006,11 +1388,29 @@ function MobileStoreNav() {
     [ShoppingBag, "Bag", "/cart", cartCount],
     [UserRound, "Account", user ? "/profile" : "/login", 0],
   ] as const;
+  useEffect(() => {
+    const isTextEntry = (target: EventTarget | null) =>
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      (target instanceof HTMLElement && target.isContentEditable);
+    const updateEditingState = () => setEditing(isTextEntry(document.activeElement));
+    const startEditing = (event: FocusEvent) => {
+      if (isTextEntry(event.target)) setEditing(true);
+    };
+    const finishEditing = () => window.setTimeout(updateEditingState, 0);
+    document.addEventListener("focusin", startEditing);
+    document.addEventListener("focusout", finishEditing);
+    return () => {
+      document.removeEventListener("focusin", startEditing);
+      document.removeEventListener("focusout", finishEditing);
+    };
+  }, []);
   return (
-    <nav aria-label="Mobile shopping navigation" className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t border-border bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_25px_rgba(35,31,27,.08)] backdrop-blur md:hidden">
+    <nav aria-label="Mobile shopping navigation" aria-hidden={editing || undefined} className={`fixed inset-x-0 bottom-0 z-40 grid h-[var(--mobile-store-nav-height)] grid-cols-5 border-t border-border bg-background/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_25px_rgba(35,31,27,.08)] backdrop-blur transition duration-200 motion-reduce:transition-none md:hidden ${editing ? "pointer-events-none translate-y-full opacity-0" : "translate-y-0 opacity-100"}`}>
       {entries.map(([Icon, label, to, count]) => {
         const active = location.pathname === to || (label === "Shop" && ["/living-room", "/bedroom", "/dining-room", "/new-arrivals"].includes(location.pathname));
-        return <Link key={label} to={to} aria-current={active ? "page" : undefined} className={`relative flex flex-col items-center justify-center gap-1 text-[9px] font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}><span className={`grid h-8 w-10 place-items-center rounded-full ${active ? "bg-secondary" : ""}`}><Icon size={17} />{count > 0 && <b className="absolute right-[20%] top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#9a6047] px-1 text-[8px] text-white">{count > 99 ? "99+" : count}</b>}</span>{label}</Link>;
+        return <Link key={label} to={to} tabIndex={editing ? -1 : undefined} aria-current={active ? "page" : undefined} className={`relative flex flex-col items-center justify-center gap-1 text-[9px] font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}><span className={`grid h-8 w-10 place-items-center rounded-full ${active ? "bg-secondary" : ""}`}><Icon size={17} />{count > 0 && <b className="absolute right-[20%] top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#9a6047] px-1 text-[8px] text-white">{count > 99 ? "99+" : count}</b>}</span>{label}</Link>;
       })}
     </nav>
   );
@@ -1088,22 +1488,51 @@ const persistCareChatMessages = (
 
 export function CareChat() {
   const { userId } = useStore();
+  const location = useLocation();
+  const [comparedCount, setComparedCount] = useState(() =>
+    readComparedProductIds().length,
+  );
   const conversationOwner = userId ?? "guest";
   const storageKey = `${CARE_CHAT_STORAGE_PREFIX}${conversationOwner}`;
+  const comparisonTrayVisible =
+    comparedCount > 0 &&
+    (["/living-room", "/bedroom", "/dining-room", "/new-arrivals"].includes(
+      location.pathname,
+    ) || location.pathname.startsWith("/collections/"));
+  const productActionsVisible = location.pathname.startsWith("/products/");
+
+  useEffect(() => {
+    const syncComparedCount = () =>
+      setComparedCount(readComparedProductIds().length);
+    window.addEventListener(COMPARE_CHANGE_EVENT, syncComparedCount);
+    window.addEventListener("storage", syncComparedCount);
+    return () => {
+      window.removeEventListener(COMPARE_CHANGE_EVENT, syncComparedCount);
+      window.removeEventListener("storage", syncComparedCount);
+    };
+  }, []);
 
   return (
     <CareChatSession
       key={conversationOwner}
       storageKey={storageKey}
+      raisedForComparison={comparisonTrayVisible || productActionsVisible}
     />
   );
 }
 
-function CareChatSession({ storageKey }: { storageKey: string }) {
+function CareChatSession({
+  storageKey,
+  raisedForComparison,
+}: {
+  storageKey: string;
+  raisedForComparison: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [pageEditing, setPageEditing] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<
     "checking" | "online" | "recovering"
   >("checking");
@@ -1168,6 +1597,25 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open]);
+
+  useEffect(() => {
+    const isTextEntry = (target: EventTarget | null) =>
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      (target instanceof HTMLElement && target.isContentEditable);
+    const update = () => setPageEditing(isTextEntry(document.activeElement));
+    const focusIn = (event: FocusEvent) => {
+      if (isTextEntry(event.target)) setPageEditing(true);
+    };
+    const focusOut = () => window.setTimeout(update, 0);
+    document.addEventListener("focusin", focusIn);
+    document.addEventListener("focusout", focusOut);
+    return () => {
+      document.removeEventListener("focusin", focusIn);
+      document.removeEventListener("focusout", focusOut);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -1278,7 +1726,9 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
         <button
           onClick={() => setOpen(true)}
           aria-label="Open CozyCraft chat"
-          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#24231f] text-white shadow-[0_16px_40px_rgba(27,25,22,.24)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#34322d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bca98e] focus-visible:ring-offset-2 md:bottom-7 md:right-7 md:z-40"
+          aria-hidden={pageEditing || undefined}
+          tabIndex={pageEditing ? -1 : undefined}
+          className={`fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#24231f] text-white shadow-[0_16px_40px_rgba(27,25,22,.24)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#34322d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bca98e] focus-visible:ring-offset-2 md:bottom-7 md:right-7 md:z-40 ${raisedForComparison ? "bottom-[calc(var(--mobile-store-nav-height)+6.5rem)]" : "bottom-[calc(var(--mobile-store-nav-height)+1rem)]"} ${pageEditing ? "pointer-events-none translate-y-4 opacity-0" : "opacity-100"}`}
         >
           <MessageCircle size={22} strokeWidth={1.8} />
           <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#24231f] bg-[#7e9d76]" />
@@ -1289,7 +1739,7 @@ function CareChatSession({ storageKey }: { storageKey: string }) {
           role="dialog"
           aria-modal="true"
           aria-label="CozyCraft customer care chat"
-          className="fixed bottom-[4.75rem] right-3 z-50 flex h-[min(620px,calc(100dvh-6rem))] w-[calc(100vw-24px)] max-w-[400px] flex-col overflow-hidden rounded-[1.5rem] border border-[#ded9d0] bg-[#fbfaf7] shadow-[0_24px_80px_rgba(31,28,24,.22)] md:bottom-7 md:right-7 md:h-[min(640px,calc(100dvh-56px))] md:w-[calc(100vw-56px)]"
+          className="fixed bottom-[calc(var(--mobile-store-nav-height)+.75rem)] right-3 z-50 flex h-[min(620px,calc(100dvh-6rem))] w-[calc(100vw-24px)] max-w-[400px] flex-col overflow-hidden rounded-[1.5rem] border border-[#ded9d0] bg-[#fbfaf7] shadow-[0_24px_80px_rgba(31,28,24,.22)] md:bottom-7 md:right-7 md:h-[min(640px,calc(100dvh-56px))] md:w-[calc(100vw-56px)]"
         >
           <header className="flex min-h-[74px] items-center justify-between border-b border-[#e4dfd7] bg-white px-5 py-4 text-foreground">
             <div className="min-w-0">
@@ -1458,19 +1908,14 @@ export function ProductCard({ product }: { product: Product }) {
         to={`/products/${product.id}`}
         className="relative block aspect-[.82] overflow-hidden rounded-xl bg-secondary"
       >
-        <div
-          className="flex h-full w-full transition-transform duration-700 ease-out"
-          style={{ transform: `translateX(-${imageIndex * 100}%)` }}
-        >
-          {product.images.map((image, index) => (
-            <ResilientImage
-              key={image}
-              src={image}
-              alt={`${product.name}, view ${index + 1}`}
-              className="h-full min-w-full object-cover"
-            />
-          ))}
-        </div>
+        <ResilientImage
+          key={`${product.id}-${imageIndex}`}
+          src={product.images[imageIndex]}
+          alt={`${product.name}, view ${imageIndex + 1}`}
+          loading="lazy"
+          sizes="(max-width: 640px) calc(50vw - 1.5rem), (max-width: 1024px) calc(50vw - 2rem), 25vw"
+          className="h-full w-full object-cover"
+        />
         <span className="absolute bottom-3 left-3 rounded-full bg-background/95 px-2.5 py-1 text-[10px] font-semibold shadow-sm">
           {exactStockAvailability(product.stockQuantity, product.stock)}
         </span>
@@ -1690,7 +2135,7 @@ export function Toast({ message, close }: { message: string; close: () => void }
     <div
       role="status"
       aria-live="polite"
-      className={`fixed bottom-3 left-3 right-3 z-[70] flex items-start gap-3 rounded-xl bg-[#201f1d] px-4 py-3 text-sm text-white shadow-xl transition-all duration-700 ease-out sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-md sm:items-center ${
+      className={`fixed bottom-[calc(var(--mobile-store-nav-height)+.75rem)] left-3 right-3 z-[70] flex items-start gap-3 rounded-xl bg-[#201f1d] px-4 py-3 text-sm text-white shadow-xl transition-all duration-700 ease-out md:bottom-6 md:left-auto md:right-6 md:max-w-md md:items-center ${
         isLeaving ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
       }`}
     >

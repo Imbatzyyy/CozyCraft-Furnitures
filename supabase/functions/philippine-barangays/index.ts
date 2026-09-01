@@ -5,7 +5,13 @@ import provinces from "npm:@jobuntux/psgc@0.2.1/data/2025-2Q/provinces.json" wit
 import municipalities from "npm:@jobuntux/psgc@0.2.1/data/2025-2Q/muncities.json" with { type: "json" };
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
-const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com"]);
+const allowedOrigins = new Set([
+  canonicalOrigin,
+  "https://cozycraftfurnitures.com",
+  "capacitor://localhost",
+  "http://localhost",
+  "https://localhost",
+]);
 const headers = (request: Request) => ({
   "Access-Control-Allow-Origin": allowedOrigins.has(request.headers.get("Origin") ?? "") ? request.headers.get("Origin")! : canonicalOrigin,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cozycraft-platform",

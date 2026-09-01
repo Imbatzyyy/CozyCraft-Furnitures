@@ -7,3 +7,5 @@ dist/
 .env.*.local
 .netlify/
 supabase/.temp/
+tmp/
+output/

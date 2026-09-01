@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 
 const canonicalOrigin="https://www.cozycraftfurnitures.com";
-const allowedOrigins=new Set([canonicalOrigin,"https://cozycraftfurnitures.com"]);
+const allowedOrigins=new Set([canonicalOrigin,"https://cozycraftfurnitures.com","capacitor://localhost","ionic://localhost","http://localhost","https://localhost"]);
 const cors=(r:Request)=>({"Access-Control-Allow-Origin":allowedOrigins.has(r.headers.get("Origin")??"")?r.headers.get("Origin")!:canonicalOrigin,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-cozycraft-platform","Access-Control-Allow-Methods":"POST, OPTIONS","Vary":"Origin"});
 const json=(r:Request,b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors(r),"Content-Type":"application/json"}});
 
@@ -12,42 +12,58 @@ Deno.serve(async(request)=>{
   const authorization=request.headers.get("Authorization");
   if(!authorization)return json(request,{error:"Authentication required."},401);
   const url=Deno.env.get("SUPABASE_URL"),anon=Deno.env.get("SUPABASE_ANON_KEY")??Deno.env.get("SUPABASE_PUBLISHABLE_KEY"),service=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??Deno.env.get("SUPABASE_SECRET_KEY"),paymongo=Deno.env.get("PAYMONGO_SECRET_KEY");
-  if(!url||!anon||!service||!paymongo)return json(request,{error:"Refund service is not configured."},503);
+  if(!url||!anon||!service)return json(request,{error:"Refund service is not configured."},503);
   const client=createClient(url,anon,{global:{headers:{Authorization:authorization}},auth:{persistSession:false,autoRefreshToken:false}});
   const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}});
   const {data:{user}}=await client.auth.getUser();
   if(!user)return json(request,{error:"Session expired."},401);
-  const {data:profile}=await admin.from("profiles").select("role").eq("id",user.id).single();
-  if(!profile||!["admin","superadmin"].includes(profile.role))return json(request,{error:"Administrator access required."},403);
+  const [profileResult,securityResult]=await Promise.all([admin.from("profiles").select("role,staff_active").eq("id",user.id).single(),admin.from("admin_security_settings").select("require_admin_mfa").eq("id",true).maybeSingle()]);
+  const profile=profileResult.data,security=securityResult.data;
+  if(securityResult.error||!security)return json(request,{error:"Administrator security policy is unavailable. Try again shortly."},503);
+  const jwtAal=(()=>{try{const encoded=authorization.slice(7).split(".")[1].replace(/-/g,"+").replace(/_/g,"/");const payload=JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length/4)*4,"=")));return String(payload.aal??"aal1");}catch{return "aal1";}})();
+  if(!profile?.staff_active||!["admin","superadmin"].includes(profile.role))return json(request,{error:"Administrator access required."},403);
+  if((security.require_admin_mfa??true)&&jwtAal!=="aal2")return json(request,{error:"Complete administrator MFA before processing a refund."},403);
   const body=await request.json().catch(()=>({}));
   const returnId=typeof body.returnId==="string"?body.returnId:"";
-  const {data:returnRequest,error:returnError}=await admin.from("return_requests").select("*,orders!inner(id,order_number,total,payment_method,payment_status,user_id,payment_transactions(id,provider_payment_id,status,livemode))").eq("id",returnId).single();
+  const {data:returnRequest,error:returnError}=await admin.from("return_requests").select("*,orders!inner(id,order_number,total,payment_method,payment_status,refund_status,provider_refund_id,user_id,payment_transactions(id,provider_payment_id,status,livemode))").eq("id",returnId).single();
   if(returnError||!returnRequest)return json(request,{error:"Return request not found."},404);
   if(!["item_received","refund_processing","refunded"].includes(returnRequest.status))return json(request,{error:"Mark the returned item as received before refunding."},409);
   const order=Array.isArray(returnRequest.orders)?returnRequest.orders[0]:returnRequest.orders;
-  if(order.payment_status==="refunded"||returnRequest.status==="refunded")return json(request,{refunded:true,reused:true});
   const transaction=Array.isArray(order.payment_transactions)?order.payment_transactions[0]:order.payment_transactions;
-  const {data:claim,error:claimError}=await admin.rpc("begin_return_refund",{p_return_id:returnId,p_reviewer:user.id});
+  if(order.payment_status==="refunded"||returnRequest.status==="refunded"){
+    const existingRefundId=String(returnRequest.provider_refund_id??order.provider_refund_id??"");
+    if(!existingRefundId)return json(request,{error:"The refund reference is missing and requires financial review."},409);
+    const {data:repaired,error:repairError}=await admin.rpc("finalize_return_refund",{p_return_id:returnId,p_reviewer:user.id,p_claim_token:null,p_refund_id:existingRefundId,p_demo:order.refund_status==="demo_succeeded",p_raw_payload:{repaired:true}});
+    if(repairError)return json(request,{error:`Refund was recorded but the ledger still needs repair: ${repairError.message}`},500);
+    return json(request,{refunded:true,reused:true,ledger:repaired});
+  }
+  if(order.payment_method!=="cod"&&(order.payment_status!=="paid"||transaction?.status!=="paid"))return json(request,{error:"Only a settled provider payment can be refunded."},409);
+  const claimToken=crypto.randomUUID();
+  const {data:claim,error:claimError}=await admin.rpc("claim_return_refund",{p_return_id:returnId,p_reviewer:user.id,p_claim_token:claimToken});
   if(claimError)return json(request,{error:claimError.message},409);
-  if(claim==="already_refunded")return json(request,{refunded:true,reused:true});
+  if(claim?.alreadyRefunded)return json(request,{refunded:true,reused:true});
+  if(claim?.alreadyProcessing)return json(request,{error:"A refund is already processing for this return. Refresh shortly before retrying."},409);
+  const releaseClaim=async(message:string)=>{
+    const {error}=await admin.rpc("release_return_refund_claim",{p_return_id:returnId,p_reviewer:user.id,p_claim_token:claimToken,p_failure:message});
+    return error?`${message} The refund claim could not be released automatically: ${error.message}`:message;
+  };
   // A repeated request is safe: PayMongo receives the return ID as its
   // idempotency key, while COD/demo settlement is itself an idempotent update.
   let refundId=`offline_refund_${crypto.randomUUID()}`,demo=order.payment_method==="cod"||!transaction?.livemode;
   let raw:Record<string,unknown>={offline:order.payment_method==="cod",demo};
   if(order.payment_method!=="cod"){
-    if(!transaction?.provider_payment_id){await admin.from("return_requests").update({status:"item_received",admin_note:"Payment reference missing; refund not processed."}).eq("id",returnId);return json(request,{error:"PayMongo payment reference is missing."},409);}
+    if(!transaction?.provider_payment_id){const message=await releaseClaim("PayMongo payment reference is missing.");return json(request,{error:message},409);}
     if(!demo){
-      const response=await fetch("https://api.paymongo.com/v1/refunds",{method:"POST",headers:{Authorization:`Basic ${btoa(`${paymongo}:`)}`,"Content-Type":"application/json","Idempotency-Key":returnRequest.id},body:JSON.stringify({data:{attributes:{amount:Math.round(Number(order.total)*100),payment_id:transaction.provider_payment_id,reason:"requested_by_customer",notes:`Return ${returnRequest.return_number} for order ${order.order_number}`}}})});
+      if(!paymongo){const message=await releaseClaim("PayMongo refunds are not configured.");return json(request,{error:message},503);}
+      let response:Response;
+      try{response=await fetch("https://api.paymongo.com/v1/refunds",{method:"POST",headers:{Authorization:`Basic ${btoa(`${paymongo}:`)}`,"Content-Type":"application/json","Idempotency-Key":returnRequest.id},body:JSON.stringify({data:{attributes:{amount:Math.round(Number(order.total)*100),payment_id:transaction.provider_payment_id,reason:"requested_by_customer",notes:`Return ${returnRequest.return_number} for order ${order.order_number}`}}}),signal:AbortSignal.timeout(30_000)});}catch{return json(request,{error:"The payment provider could not be reached. The return remains locked for an idempotent retry."},503);}
       raw=await response.json();
-      if(!response.ok){const message=(raw as any)?.errors?.[0]?.detail??"PayMongo rejected the refund.";await admin.from("return_requests").update({status:"item_received",admin_note:message}).eq("id",returnId);return json(request,{error:message},502);}
+      if(!response.ok){const providerMessage=(raw as any)?.errors?.[0]?.detail??"PayMongo rejected the refund.";if(response.status>=500||[409,429].includes(response.status))return json(request,{error:`${providerMessage} The return remains locked for an idempotent retry.`},502);const message=await releaseClaim(providerMessage);return json(request,{error:message},502);}
       refundId=String((raw as any)?.data?.id??"");
       if(!refundId)return json(request,{error:"PayMongo returned an incomplete refund."},502);
     }
   }
-  const now=new Date().toISOString();
-  const {error:finalError}=await admin.from("return_requests").update({status:"refunded",provider_refund_id:refundId,refunded_at:now,reviewed_by:user.id,reviewed_at:now}).eq("id",returnId);
-  if(finalError)return json(request,{error:finalError.message},500);
-  await admin.from("orders").update({payment_status:"refunded",refund_status:demo?"demo_succeeded":"succeeded",provider_refund_id:refundId,refunded_at:now}).eq("id",order.id);
-  if(transaction?.id)await admin.from("payment_transactions").update({status:"refunded",raw_payload:raw,updated_at:now}).eq("id",transaction.id);
-  return json(request,{refunded:true,demo,refundId});
+  const {data:ledger,error:finalError}=await admin.rpc("finalize_return_refund",{p_return_id:returnId,p_reviewer:user.id,p_claim_token:claimToken,p_refund_id:refundId,p_demo:demo,p_raw_payload:raw});
+  if(finalError)return json(request,{error:`The provider refund was accepted, but the CozyCraft ledger could not finalize. Retry safely: ${finalError.message}`},500);
+  return json(request,{refunded:true,demo,refundId,ledger});
 });

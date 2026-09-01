@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    actor Customer
+    participant Storefront as Customer Storefront
+    participant Backend as Protected Edge Function
+    participant DB as PostgreSQL
+    participant Admin as Admin Workspace
+    participant PayMongo
+
+    Customer->>Storefront: Request cancellation or return
+    Storefront->>Backend: Submit authenticated request and reason
+    Backend->>DB: Validate ownership, order status, and payment state
+    alt Unpaid or cancellable order
+        Backend->>DB: Cancel order and restore eligible stock
+        DB-->>Admin: Publish cancellation event
+        DB-->>Storefront: Publish final order status
+    else Paid order requires review
+        Backend->>DB: Create protected refund requirement
+        DB-->>Admin: Notify administrator for review
+        Admin->>Backend: Approve eligible refund workflow
+        Backend->>PayMongo: Submit provider refund request
+        PayMongo-->>Backend: Return refund reference and state
+        Backend->>DB: Store payment and refund result
+        DB-->>Storefront: Publish refund status
+    end
+    Storefront-->>Customer: Show cancellation or refund outcome

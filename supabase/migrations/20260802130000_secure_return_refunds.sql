@@ -31,4 +31,3 @@ begin
 end $$;
 create trigger guard_return_refund_status before update of status on public.return_requests
 for each row execute function private.guard_return_refund_status();
-

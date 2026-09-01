@@ -1,0 +1,31 @@
+erDiagram
+    PROFILES ||--o{ REVIEWS : "writes"
+    PRODUCTS ||--o{ REVIEWS : "receives"
+    ORDER_ITEMS ||--o| REVIEWS : "verifies purchase"
+
+    PROFILES {
+        uuid id PK,FK
+        text username
+        text full_name
+        text avatar_url
+    }
+    PRODUCTS {
+        uuid id PK
+        text name
+        text status
+    }
+    ORDER_ITEMS {
+        uuid id PK
+        uuid order_id FK
+        uuid product_id FK
+    }
+    REVIEWS {
+        uuid id PK
+        uuid user_id FK
+        uuid product_id FK
+        uuid order_item_id FK
+        integer rating
+        text review_text
+        text moderation_status
+        timestamp created_at
+    }

@@ -30,15 +30,15 @@ flowchart LR
 | `src/main.tsx` | Browser entry point and global stylesheet loading |
 | `src/app/App.tsx` | Application startup, root state, realtime subscriptions, and route registration |
 | `src/app/core/index.tsx` | Shared models, contexts, navigation layouts, formatters, and cross-feature helpers |
-| `src/app/features/storefront/authentication/` | Customer sign-in, registration, recovery, and authentication callbacks |
-| `src/app/features/storefront/catalog/` | Home, About, collections, search, discovery, and product details |
-| `src/app/features/storefront/commerce/` | Cart, wishlist, checkout, payment return, and customer order flows |
-| `src/app/features/storefront/account/` | Customer profile, addresses, security, preferences, support, and reviews |
-| `src/app/features/admin/shell/` | Admin sign-in, authorization gate, navigation shell, and shared workspace controls |
-| `src/app/features/admin/catalog/` | Products, categories, inventory, images, and product specifications |
-| `src/app/features/admin/operations/` | Orders, payments, customers, reviews, support, reports, notifications, and activity logs |
-| `src/app/features/admin/loyalty/` | Home Circle point balances, tier progress, and redemption monitoring |
-| `src/app/features/admin/team-settings/` | Team roles, invitations, permissions, and store settings |
+| `src/features/storefront/authentication/` | Customer sign-in, registration, recovery, and authentication callbacks |
+| `src/features/storefront/catalog/` | Home, About, collections, search, discovery, and product details |
+| `src/features/storefront/commerce/` | Cart, wishlist, checkout, payment return, and customer order flows |
+| `src/features/storefront/account/` | Customer profile, addresses, security, preferences, support, and reviews |
+| `src/features/admin/shell/` | Admin sign-in, authorization gate, navigation shell, and shared workspace controls |
+| `src/features/admin/catalog/` | Products, categories, inventory, images, and product specifications |
+| `src/features/admin/operations/` | Orders, payments, customers, reviews, support, reports, notifications, and activity logs |
+| `src/features/admin/loyalty/` | Home Circle point balances, tier progress, and redemption monitoring |
+| `src/features/admin/team-settings/` | Team roles, invitations, permissions, and store settings |
 | `src/components/` | Reusable presentational primitives with no business ownership |
 | `src/lib/` | Pure business rules grouped into admin, catalog, commerce, integration, settings, and shared areas |
 | `src/services/` | External-system boundaries for Supabase and authentication |

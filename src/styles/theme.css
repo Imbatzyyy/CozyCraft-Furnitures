@@ -39,6 +39,7 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #3f3c38;
   --sidebar-ring: #b8a58d;
+  --mobile-store-nav-height: calc(4rem + env(safe-area-inset-bottom, 0px));
 }
 
 .dark {
@@ -142,6 +143,7 @@
     font-size: var(--font-size);
     max-width: 100%;
     overflow-x: clip;
+    scroll-padding-bottom: calc(var(--mobile-store-nav-height) + 1rem);
   }
 
   body,
@@ -210,6 +212,12 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+@media (min-width: 768px) {
+  html {
+    scroll-padding-bottom: 0;
   }
 }
 

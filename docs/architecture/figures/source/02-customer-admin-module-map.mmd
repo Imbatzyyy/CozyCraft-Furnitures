@@ -1,0 +1,50 @@
+block-beta
+    columns 2
+
+    block:CUSTOMER:1
+        columns 1
+        CH["<b>CUSTOMER / BUYER SITE</b>"]
+        C1["<b>1. Authentication</b><br/>Register · sign in · Google OAuth · confirmation · recovery"]
+        C2["<b>2. Discovery</b><br/>Home · rooms · search · filters · new arrivals · compare"]
+        C3["<b>3. Product Experience</b><br/>Details · gallery · stock · materials · dimensions · reviews"]
+        C4["<b>4. Shopping</b><br/>Cross-device cart · wishlist · quantity · saved selections"]
+        C5["<b>5. Checkout and Payment</b><br/>Address · delivery fee · COD · PayMongo card or GCash"]
+        C6["<b>6. Customer Account</b><br/>Orders · tracking · profile · support · notifications · member tier"]
+    end
+
+    block:ADMIN:1
+        columns 1
+        AH["<b>ROLE-PROTECTED ADMINISTRATIVE SITE</b>"]
+        A1["<b>1. Admin Authentication</b><br/>Approved role · secure session · route and permission validation"]
+        A2["<b>2. Operations Dashboard</b><br/>Sales · orders · low stock · notifications · workspace search"]
+        A3["<b>3. Catalog Operations</b><br/>Products · categories · images · inventory · specifications"]
+        A4["<b>4. Commerce Operations</b><br/>Orders · status history · payments · cancellation · returns · refunds"]
+        A5["<b>5. Customer Operations</b><br/>Customers · reviews · support · member points and tiers"]
+        A6["<b>6. Governance</b><br/>Team access · store settings · reports · activity and security logs"]
+    end
+
+    block:SHARED:2
+        columns 1
+        S1["<b>SHARED PROTECTED DATA SERVICES</b><br/>Supabase Auth · Data API · PostgreSQL RPC · Realtime · Storage · Edge Functions"]
+    end
+
+    block:RECORDS:2
+        columns 1
+        DB["<b>POSTGRESQL SYSTEM OF RECORD</b><br/>The storefront, administrative workspace, and mobile client use the same protected records"]
+    end
+
+    CUSTOMER --> SHARED
+    ADMIN --> SHARED
+    SHARED --> RECORDS
+
+    classDef heading fill:#D4C8B8,color:#1F1D19,stroke:#8D7E69,stroke-width:2px;
+    classDef customer fill:#E5EBEF,color:#1F2A31,stroke:#748795,stroke-width:1.5px;
+    classDef admin fill:#EEE2D2,color:#2A241D,stroke:#9B8164,stroke-width:1.5px;
+    classDef backend fill:#E1EBDD,color:#24311F,stroke:#6F8666,stroke-width:1.5px;
+    classDef resource fill:#E9E2D7,color:#27221C,stroke:#8D7E69,stroke-width:1.5px;
+
+    class CH,AH heading
+    class C1,C2,C3,C4,C5,C6 customer
+    class A1,A2,A3,A4,A5,A6 admin
+    class S1 backend
+    class DB resource
