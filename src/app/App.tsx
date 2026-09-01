@@ -2453,6 +2453,7 @@ const router = createBrowserRouter([
   },
   { path: "/admin/reviews", lazy: () => adminOperationsRoute("ReviewsPage") },
   { path: "/admin/reports", lazy: () => adminOperationsRoute("ReportsPage") },
+  { path: "/admin/system-health", lazy: () => adminOperationsRoute("SystemHealthPage") },
   { path: "/admin/activity-logs", lazy: () => adminOperationsRoute("ActivityLogsPage") },
   { path: "/admin/support", lazy: () => adminOperationsRoute("SupportPage") },
   { path: "/admin/settings", lazy: () => adminTeamRoute("StoreSettingsPage") },

@@ -54,6 +54,7 @@ import {
   Pencil,
   Plus,
   Search,
+  ServerCog,
   Settings,
   ShieldCheck,
   ShoppingBag,
@@ -185,6 +186,7 @@ export const adminNav = [
   [FileText, "Content", "/admin/content"],
   [Star, "Reviews", "/admin/reviews"],
   [ChartNoAxesCombined, "Reports", "/admin/reports"],
+  [ServerCog, "Operations health", "/admin/system-health"],
   [Activity, "Activity logs", "/admin/activity-logs"],
   [MessageCircle, "Support", "/admin/support"],
   [Settings, "Settings", "/admin/settings"],
@@ -229,7 +231,7 @@ export const adminNavGroups = [
     label: "Insights",
     description: "Reports and audit trail",
     icon: ChartNoAxesCombined,
-    paths: ["/admin/reports", "/admin/activity-logs"],
+    paths: ["/admin/reports", "/admin/system-health", "/admin/activity-logs"],
   },
   {
     label: "Administration",
@@ -298,7 +300,7 @@ function WorkspaceSearch({
               key: `order-${order.id}`,
               title: `Order #${order.order_number}`,
               detail: `${order.shipping_address.name || "Customer"} · ${order.status}`,
-              route: "/admin/orders",
+              route: `/admin/orders?order=${encodeURIComponent(order.id)}`,
               Icon: ClipboardList,
             })),
           ...customerProfiles

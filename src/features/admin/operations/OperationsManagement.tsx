@@ -16,9 +16,11 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 import {
   Activity,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Archive,
@@ -53,6 +55,7 @@ import {
   Pencil,
   Plus,
   Search,
+  ServerCog,
   Settings,
   ShieldCheck,
   ShoppingBag,
@@ -64,6 +67,8 @@ import {
   UserRound,
   Users,
   Warehouse,
+  Wifi,
+  WifiOff,
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
@@ -83,6 +88,22 @@ import {
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import { canManageFinancialOperations } from "@/lib/admin/access";
+import {
+  ADMIN_ORDER_VIEW_OPTIONS,
+  DEFAULT_ADMIN_ORDER_FILTERS,
+  countAdminOrderView,
+  filterAdminOrders,
+  hasActiveAdminOrderFilters,
+  type AdminOrderDateRange,
+  type AdminOrderDeskFilters,
+  type AdminOrderSort,
+  type AdminOrderView,
+} from "@/lib/admin/order-desk";
+import { buildAdminAttentionItems } from "@/lib/admin/operations-attention";
+import {
+  buildOperationsHealthSnapshot,
+  type ClientErrorSummary,
+} from "@/lib/admin/operations-health";
 
 import {
   Product,
@@ -125,8 +146,8 @@ import {
 } from "@/lib/admin/metrics";
 
 export function AdminOverview() {
-  const { orders, adminProducts, refreshOrders } = useStore();
-  const { user } = useAdminSession();
+  const { orders, adminProducts, supportTickets, refreshOrders } = useStore();
+  const { user, role } = useAdminSession();
   const [now, setNow] = useState(() => new Date());
   const firstName = user?.trim().split(/\s+/)[0] || "there";
   const philippineHour = Number(
@@ -165,6 +186,16 @@ export function AdminOverview() {
   const sales = settledRevenue(orders);
   const pending = orders.filter(order=>order.status==="pending").length;
   const lowStock = adminProducts.filter(product=>(product.stockQuantity??0)<=8).length;
+  const attentionItems = buildAdminAttentionItems({
+    orders,
+    products: adminProducts,
+    tickets: supportTickets,
+    role,
+  });
+  const openAttentionCount = attentionItems.reduce(
+    (sum, item) => sum + item.count,
+    0,
+  );
   const salesData = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(now.getFullYear(), now.getMonth() - (6 - index), 1);
     const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
@@ -234,6 +265,44 @@ export function AdminOverview() {
         <Metric label="Pending orders" value={String(pending)} note="Requires attention" />
         <Metric label="Low-stock products" value={String(lowStock)} note="Review inventory" />
       </div>
+      <section className="mt-6 overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div>
+            <p className="text-[10px] font-bold tracking-[.17em] text-muted-foreground">
+              ACTION CENTER
+            </p>
+            <h3 className="mt-1 text-xl font-semibold">What needs attention now</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Prioritized from the live order, inventory, and support records already loaded in this workspace.
+            </p>
+          </div>
+          <span className={`w-fit rounded-full px-3 py-1.5 text-[11px] font-semibold ${openAttentionCount ? "bg-[#f2e8d7] text-[#765d3c]" : "bg-[#e5eee1] text-[#45603f]"}`}>
+            {openAttentionCount ? `${openAttentionCount} open actions` : "All caught up"}
+          </span>
+        </div>
+        <div className="grid gap-px bg-border [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
+          {attentionItems.map((item) => (
+            <Link
+              key={item.id}
+              to={item.route}
+              className="group flex min-h-40 flex-col justify-between bg-card p-5 transition hover:bg-secondary/55"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-sm font-semibold">{item.label}</span>
+                <span className={`grid h-9 min-w-9 place-items-center rounded-full px-2 text-sm font-bold ${item.count === 0 ? "bg-secondary text-muted-foreground" : item.level === "critical" ? "bg-[#f2dfd8] text-[#8f4f38]" : item.level === "warning" ? "bg-[#f2e8d7] text-[#765d3c]" : "bg-foreground text-background"}`}>
+                  {item.count}
+                </span>
+              </div>
+              <div>
+                <p className="mt-5 text-xs leading-5 text-muted-foreground">{item.description}</p>
+                <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold underline-offset-4 group-hover:underline">
+                  Open workspace <ArrowRight size={13}/>
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_.85fr]">
         <section className="border border-border bg-card p-5">
           <div className="flex justify-between">
@@ -327,6 +396,218 @@ export function AdminOverview() {
 export function RecentOrders() {
   const { orders } = useStore();
   return <section className="overflow-hidden border border-border bg-card"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="font-semibold">Recent orders</h3><p className="mt-1 text-xs text-muted-foreground">Live customer purchases</p></div><Link to="/admin/orders" className="text-xs font-semibold underline underline-offset-4">View all</Link></div><div className="overflow-x-auto"><table className="w-full min-w-[540px] text-left text-sm"><thead className="bg-[#faf9f6] text-[10px] tracking-[.1em] text-muted-foreground"><tr><th className="px-5 py-3">ORDER</th><th>CUSTOMER</th><th>TOTAL</th><th>STATUS</th></tr></thead><tbody>{orders.slice(0,5).map(order=><tr className="border-t border-border" key={order.id}><td className="px-5 py-4 text-xs font-semibold">#{order.order_number}</td><td className="py-4 text-xs">{order.shipping_address.name||"Customer"}</td><td className="py-4 text-xs">{money(Number(order.total))}</td><td className="py-4"><Status>{order.status}</Status></td></tr>)}</tbody></table>{!orders.length&&<p className="p-6 text-center text-sm text-muted-foreground">No orders yet.</p>}</div></section>;
+}
+
+export function SystemHealthPage() {
+  const {
+    orders,
+    adminProducts,
+    supportTickets,
+    ordersRealtimeConnected,
+    refreshOrders,
+    refreshTickets,
+  } = useStore();
+  const [clientErrors, setClientErrors] = useState<ClientErrorSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null);
+
+  const loadClientErrors = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from("client_error_events")
+      .select("id,message,path,created_at")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) {
+      setLoadError(error.message);
+    } else {
+      setClientErrors((data ?? []) as ClientErrorSummary[]);
+      setLastCheckedAt(new Date());
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadClientErrors();
+  }, [loadClientErrors]);
+
+  const refreshHealth = async () => {
+    setLoading(true);
+    const [orderIssue] = await Promise.all([
+      refreshOrders(),
+      refreshTickets(),
+      loadClientErrors(),
+    ]);
+    if (orderIssue) setLoadError(orderIssue);
+    setLastCheckedAt(new Date());
+    setLoading(false);
+  };
+
+  const snapshot = useMemo(
+    () =>
+      buildOperationsHealthSnapshot({
+        orders,
+        products: adminProducts,
+        tickets: supportTickets,
+        clientErrors,
+        liveOrdersConnected: ordersRealtimeConnected,
+      }),
+    [adminProducts, clientErrors, orders, ordersRealtimeConnected, supportTickets],
+  );
+  const errorGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      ClientErrorSummary & { count: number }
+    >();
+    clientErrors.forEach((event) => {
+      const key = `${event.path ?? "unknown"}|${event.message}`;
+      const current = groups.get(key);
+      if (current) current.count += 1;
+      else groups.set(key, { ...event, count: 1 });
+    });
+    return Array.from(groups.values()).slice(0, 8);
+  }, [clientErrors]);
+  const statusTone =
+    snapshot.overall === "healthy"
+      ? "bg-[#e5eee1] text-[#45603f]"
+      : snapshot.overall === "degraded"
+        ? "bg-[#f2dfd8] text-[#8f4f38]"
+        : "bg-[#f2e8d7] text-[#765d3c]";
+  const cards = [
+    {
+      label: "Live order sync",
+      value: snapshot.liveOrdersConnected ? "Connected" : "Reconnecting",
+      note: "Storefront changes flowing into fulfillment.",
+      route: "/admin/orders",
+      attention: !snapshot.liveOrdersConnected,
+      icon: snapshot.liveOrdersConnected ? Wifi : WifiOff,
+    },
+    {
+      label: "Payment exceptions",
+      value: String(snapshot.failedPayments + snapshot.failedRefunds),
+      note: `${snapshot.failedPayments} failed payments · ${snapshot.failedRefunds} failed refunds`,
+      route: snapshot.failedRefunds ? "/admin/orders?view=refund_attention" : "/admin/payments",
+      attention: snapshot.failedPayments + snapshot.failedRefunds > 0,
+      icon: CreditCard,
+    },
+    {
+      label: "48-hour backlog",
+      value: String(snapshot.overdueFulfillment),
+      note: "Pending, processing, or packed orders older than 48 hours.",
+      route: "/admin/orders?view=needs_fulfillment&sort=longest_waiting",
+      attention: snapshot.overdueFulfillment > 0,
+      icon: Clock,
+    },
+    {
+      label: "Priority support",
+      value: String(snapshot.priorityTickets),
+      note: "Open high and urgent customer tickets.",
+      route: "/admin/support",
+      attention: snapshot.priorityTickets > 0,
+      icon: MessageCircle,
+    },
+    {
+      label: "Out of stock",
+      value: String(snapshot.outOfStockProducts),
+      note: "Visible or draft products currently at zero units.",
+      route: "/admin/inventory",
+      attention: snapshot.outOfStockProducts > 0,
+      icon: Warehouse,
+    },
+    {
+      label: "Browser errors · 24h",
+      value: String(snapshot.recentClientErrors),
+      note: "A bounded sample of the latest customer and admin UI errors.",
+      route: "/admin/activity-logs",
+      attention: snapshot.recentClientErrors > 0,
+      icon: AlertTriangle,
+    },
+  ];
+
+  return (
+    <AdminShell title="Operations health">
+      <section className="overflow-hidden rounded-3xl bg-[#25221f] px-6 py-7 text-[#f4f2ee] shadow-[0_18px_40px_rgba(33,31,29,.16)] sm:px-8">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <ServerCog size={17} className="text-[#d8c7b0]"/>
+              <p className="text-[10px] font-bold tracking-[.18em] text-[#d8c7b0]">OPERATIONS HEALTH</p>
+            </div>
+            <h2 className="mt-3 font-[Playfair_Display] text-4xl tracking-[-.04em]">Know what needs intervention.</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#f4f2ee]/65">
+              A compact exception view using existing order, support, inventory, realtime, and client-error records.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-3 py-2 text-xs font-semibold capitalize ${statusTone}`}>
+              {snapshot.overall === "healthy" ? "All systems healthy" : `${snapshot.overall} required`}
+            </span>
+            <button
+              type="button"
+              onClick={() => void refreshHealth()}
+              disabled={loading}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/20 px-4 text-xs font-semibold disabled:opacity-50"
+            >
+              <Activity size={14} className={loading ? "animate-pulse" : ""}/>
+              {loading ? "Checking…" : "Refresh now"}
+            </button>
+          </div>
+        </div>
+      </section>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {cards.map((card) => (
+          <Link key={card.label} to={card.route} className="group rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-start justify-between gap-3">
+              <span className={`grid h-10 w-10 place-items-center rounded-xl ${card.attention ? "bg-[#f2e8d7] text-[#765d3c]" : "bg-[#e5eee1] text-[#45603f]"}`}>
+                <card.icon size={17}/>
+              </span>
+              <span className="text-2xl font-semibold">{card.value}</span>
+            </div>
+            <h3 className="mt-5 text-sm font-semibold">{card.label}</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{card.note}</p>
+            <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold group-hover:underline">Inspect <ArrowRight size={13}/></span>
+          </Link>
+        ))}
+      </div>
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-2 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LATEST CLIENT EXCEPTIONS</p>
+            <h3 className="mt-1 text-lg font-semibold">Repeated browser issues</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Only the latest 30 events from the last 24 hours are requested, grouped locally to keep database egress controlled.
+            </p>
+          </div>
+          {lastCheckedAt && <time className="text-[11px] text-muted-foreground" dateTime={lastCheckedAt.toISOString()}>Checked {lastCheckedAt.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</time>}
+        </div>
+        {loadError && <p className="mt-4 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">Health data could not be refreshed: {loadError}</p>}
+        <div className="mt-5 grid gap-3">
+          {errorGroups.map((event) => (
+            <article key={`${event.path}-${event.message}`} className="flex flex-col gap-3 rounded-xl border border-border bg-secondary/35 p-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="break-words text-sm font-semibold">{event.message}</p>
+                <p className="mt-1 break-all text-xs text-muted-foreground">{event.path || "Page unavailable"}</p>
+              </div>
+              <div className="shrink-0 text-left sm:text-right">
+                <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold">{event.count} event{event.count === 1 ? "" : "s"}</span>
+                <time className="mt-2 block text-[10px] text-muted-foreground" dateTime={event.created_at}>{new Date(event.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}</time>
+              </div>
+            </article>
+          ))}
+          {!loading && !errorGroups.length && !loadError && (
+            <div className="rounded-xl bg-[#e5eee1] p-5 text-sm text-[#45603f]">
+              <b>No browser exceptions recorded in the last 24 hours.</b>
+              <p className="mt-1 text-xs">The bounded health sample is clear.</p>
+            </div>
+          )}
+        </div>
+      </section>
+    </AdminShell>
+  );
 }
 
 export function AdminRecordList({ kind }: { kind: string }) {
@@ -620,6 +901,59 @@ export function OrdersPage() {
   return <AdminShell title="Orders"><div className="flex flex-wrap justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LIVE FULFILLMENT</p><h2 className="mt-2 text-3xl font-semibold">Customer orders</h2><p className="mt-2 text-sm text-muted-foreground">Orders placed at checkout appear here immediately.</p></div><div className="rounded-xl bg-card px-4 py-3 text-sm shadow-sm"><b>{orders.length}</b> total orders</div></div>{!selected?<div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">No customer orders yet.</div>:<div className="mt-7 grid gap-5 xl:grid-cols-[.8fr_1.2fr]"><section className="overflow-hidden rounded-2xl border border-border bg-card">{orders.map(order=>{const addr=order.shipping_address;return <button key={order.id} onClick={()=>setSelectedId(order.id)} className={"flex w-full items-center justify-between border-b border-border p-4 text-left "+(selected.id===order.id?"bg-secondary":"hover:bg-secondary")}><span><b className="text-sm">#{order.order_number}</b><span className="mt-1 block text-xs text-muted-foreground">{addr.name||"Customer"} · {new Date(order.created_at).toLocaleDateString("en-PH")}</span></span><span className="text-right"><Status>{order.status}</Status><b className="mt-2 block text-xs">{money(Number(order.total))}</b></span></button>})}</section><section className="rounded-2xl border border-border bg-card p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs text-muted-foreground">ORDER #{selected.order_number}</p><h3 className="mt-2 font-serif text-3xl">{selected.shipping_address.name||"Customer"}</h3><p className="mt-2 text-sm text-muted-foreground">{selected.shipping_address.email} · {selected.shipping_address.mobile}</p></div><Status>{selected.status}</Status></div><div className="mt-6 rounded-xl bg-secondary p-4 text-sm"><b>Deliver to</b><p className="mt-2 text-muted-foreground">{[selected.shipping_address.line,selected.shipping_address.barangay,selected.shipping_address.city,selected.shipping_address.province,selected.shipping_address.postal].filter(Boolean).join(", ")}</p></div><div className="mt-6 divide-y divide-border border-y border-border">{selected.order_items.map(item=><div key={item.id} className="flex justify-between py-3 text-sm"><span>{item.product_name} × {item.quantity}</span><b>{money(Number(item.unit_price)*item.quantity)}</b></div>)}</div><div className="mt-5 flex justify-between text-lg font-semibold"><span>Total</span><span>{money(Number(selected.total))}</span></div><label className="mt-6 grid gap-2 text-sm font-semibold">Update fulfillment status<select value={selected.status} onChange={e=>void update(e.target.value as DbOrder["status"])} className="h-11 rounded-xl border border-border bg-card px-3 font-normal">{allowedFulfillmentStatuses(selected.status).filter(status=>status!=="cancelled").map(status=><option key={status} value={status}>{status[0].toUpperCase()+status.slice(1)}</option>)}</select></label></section></div>}{notice&&<Toast message={notice} close={()=>setNotice("")}/>}</AdminShell>;
 }
 
+const adminOrderStatuses: Array<DbOrder["status"]> = [
+  "pending",
+  "processing",
+  "packed",
+  "shipped",
+  "delivered",
+  "cancelled",
+];
+const adminPaymentStatuses: Array<DbOrder["payment_status"]> = [
+  "pending",
+  "paid",
+  "failed",
+  "refunded",
+];
+const adminOrderViews = new Set<AdminOrderView>(
+  ADMIN_ORDER_VIEW_OPTIONS.map((option) => option.id),
+);
+const adminOrderDateRanges = new Set<AdminOrderDateRange>([
+  "all",
+  "today",
+  "last_7_days",
+  "last_30_days",
+]);
+const adminOrderSorts = new Set<AdminOrderSort>([
+  "newest",
+  "oldest",
+  "highest_total",
+  "longest_waiting",
+]);
+
+function adminOrderFiltersFromParams(params: URLSearchParams): AdminOrderDeskFilters {
+  const view = params.get("view") as AdminOrderView | null;
+  const status = params.get("status") as DbOrder["status"] | null;
+  const paymentStatus = params.get("payment") as DbOrder["payment_status"] | null;
+  const dateRange = params.get("range") as AdminOrderDateRange | null;
+  const sort = params.get("sort") as AdminOrderSort | null;
+  return {
+    query: params.get("q") ?? "",
+    view: view && adminOrderViews.has(view) ? view : DEFAULT_ADMIN_ORDER_FILTERS.view,
+    status: status && adminOrderStatuses.includes(status) ? status : "all",
+    paymentStatus:
+      paymentStatus && adminPaymentStatuses.includes(paymentStatus)
+        ? paymentStatus
+        : "all",
+    paymentMethod: params.get("method") || "all",
+    dateRange:
+      dateRange && adminOrderDateRanges.has(dateRange)
+        ? dateRange
+        : DEFAULT_ADMIN_ORDER_FILTERS.dateRange,
+    sort: sort && adminOrderSorts.has(sort) ? sort : DEFAULT_ADMIN_ORDER_FILTERS.sort,
+  };
+}
+
 export function OrdersWorkspacePage() {
   const {
     orders,
@@ -634,8 +968,9 @@ export function OrdersWorkspacePage() {
     authReady: adminAuthReady,
     userId: adminUserId,
   } = useAdminSession();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canManageFinancials = canManageFinancialOperations(workspaceRole);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(() => searchParams.get("order") ?? "");
   const [notice, setNotice] = useState("");
   const [showCancellation, setShowCancellation] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
@@ -657,6 +992,44 @@ export function OrdersWorkspacePage() {
     "shipped",
     "delivered",
   ];
+  const searchParamsKey = searchParams.toString();
+  const filters = useMemo(
+    () => adminOrderFiltersFromParams(new URLSearchParams(searchParamsKey)),
+    [searchParamsKey],
+  );
+  const returnOrderIds = useMemo(
+    () => new Set(returnRequests.map((request) => request.order_id)),
+    [returnRequests],
+  );
+  const filteredOrders = useMemo(
+    () => filterAdminOrders(orders, filters, { returnOrderIds }),
+    [filters, orders, returnOrderIds],
+  );
+  const availablePaymentMethods = useMemo(
+    () =>
+      Array.from(
+        new Set(orders.map((order) => order.payment_method.toLocaleLowerCase())),
+      ).sort(),
+    [orders],
+  );
+  const updateDeskParams = useCallback(
+    (changes: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams);
+      Object.entries(changes).forEach(([key, value]) => {
+        if (!value) next.delete(key);
+        else next.set(key, value);
+      });
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+  const selectOrder = useCallback(
+    (orderId: string) => {
+      setSelectedId(orderId);
+      updateDeskParams({ order: orderId });
+    },
+    [updateDeskParams],
+  );
 
   useEffect(() => {
     if (!adminAuthReady) {
@@ -700,10 +1073,19 @@ export function OrdersWorkspacePage() {
       if (!orderId) return;
       setOrderPage(1);
       setSelectedId(orderId);
+      updateDeskParams({
+        order: orderId,
+        view: null,
+        status: null,
+        payment: null,
+        method: null,
+        range: null,
+        q: null,
+      });
     };
     window.addEventListener("cozycraft:new-order", selectNewOrder);
     return () => window.removeEventListener("cozycraft:new-order", selectNewOrder);
-  }, []);
+  }, [updateDeskParams]);
   useEffect(() => {
     const refresh = async () => { const { data } = await supabase.from("return_requests").select("id,order_id,return_number,reason,details,status,admin_note,evidence_paths,created_at").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
     void refresh();
@@ -714,31 +1096,48 @@ export function OrdersWorkspacePage() {
     return () => { window.removeEventListener("focus", refreshVisible); document.removeEventListener("visibilitychange", refreshVisible); void supabase.removeChannel(channel); };
   }, []);
   useEffect(() => {
-    if (!orders.length) {
+    const requestedOrderId = searchParams.get("order");
+    if (requestedOrderId && filteredOrders.some((order) => order.id === requestedOrderId)) {
+      if (selectedId !== requestedOrderId) setSelectedId(requestedOrderId);
+      return;
+    }
+    if (!filteredOrders.length) {
       if (selectedId) setSelectedId("");
       return;
     }
-    if (!orders.some((order) => order.id === selectedId)) {
-      setSelectedId(orders[0].id);
+    if (!filteredOrders.some((order) => order.id === selectedId)) {
+      setSelectedId(filteredOrders[0].id);
     }
-  }, [orders, selectedId]);
+  }, [filteredOrders, searchParams, selectedId]);
 
-  const orderPageCount = Math.max(1, Math.ceil(orders.length / ordersPerPage));
-  const visibleOrders = orders.slice(
+  const orderPageCount = Math.max(1, Math.ceil(filteredOrders.length / ordersPerPage));
+  const visibleOrders = filteredOrders.slice(
     (orderPage - 1) * ordersPerPage,
     orderPage * ordersPerPage,
   );
+  useEffect(() => {
+    setOrderPage(1);
+  }, [
+    filters.dateRange,
+    filters.paymentMethod,
+    filters.paymentStatus,
+    filters.query,
+    filters.sort,
+    filters.status,
+    filters.view,
+  ]);
   useEffect(() => {
     if (orderPage > orderPageCount) setOrderPage(orderPageCount);
   }, [orderPage, orderPageCount]);
   const changeOrderPage = (page: number) => {
     const nextPage = Math.min(Math.max(page, 1), orderPageCount);
     setOrderPage(nextPage);
-    const firstOrder = orders[(nextPage - 1) * ordersPerPage];
-    if (firstOrder) setSelectedId(firstOrder.id);
+    const firstOrder = filteredOrders[(nextPage - 1) * ordersPerPage];
+    if (firstOrder) selectOrder(firstOrder.id);
   };
 
-  const selected = orders.find((order) => order.id === selectedId) ?? orders[0];
+  const selected =
+    filteredOrders.find((order) => order.id === selectedId) ?? filteredOrders[0];
   const selectedPayment = currentPaymentTransaction(selected?.payment_transactions);
   const selectedReturn = selected ? returnRequests.find((request) => request.order_id === selected.id) : undefined;
   const downloadInvoice = async (order: DbOrder) => {
@@ -942,7 +1341,135 @@ export function OrdersWorkspacePage() {
         </span>
       </div>
 
-      {ordersLoading && !selected ? (
+      <section className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">SAVED VIEWS</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              One-click queues for the most common fulfillment decisions.
+            </p>
+          </div>
+          <span className="w-fit rounded-full bg-secondary px-3 py-1.5 text-[11px] font-semibold">
+            {filteredOrders.length} of {orders.length} orders
+          </span>
+        </div>
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Order saved views">
+          {ADMIN_ORDER_VIEW_OPTIONS.filter(
+            (option) =>
+              canManageFinancials ||
+              !["cancellation_requests", "refund_attention"].includes(option.id),
+          ).map((option) => {
+            const count = countAdminOrderView(orders, option.id, returnOrderIds);
+            const active = filters.view === option.id;
+            return (
+              <button
+                type="button"
+                key={option.id}
+                onClick={() =>
+                  updateDeskParams({
+                    view: option.id === "all" ? null : option.id,
+                    order: null,
+                  })
+                }
+                className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition ${active ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-secondary"}`}
+              >
+                {option.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${active ? "bg-background/15" : "bg-secondary"}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.6fr)_repeat(4,minmax(135px,.7fr))_minmax(155px,.8fr)]">
+          <label className="relative block">
+            <span className="sr-only">Search orders</span>
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={15}/>
+            <input
+              value={filters.query}
+              onChange={(event) => updateDeskParams({ q: event.target.value || null, order: null })}
+              placeholder="Order, customer, email, phone, or product"
+              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-xs outline-none transition focus:border-foreground"
+            />
+          </label>
+          <label>
+            <span className="sr-only">Fulfillment status</span>
+            <select
+              value={filters.status}
+              onChange={(event) => updateDeskParams({ status: event.target.value === "all" ? null : event.target.value, order: null })}
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
+            >
+              <option value="all">All statuses</option>
+              {adminOrderStatuses.map((status) => <option key={status} value={status}>{status.replace(/^./, (letter) => letter.toUpperCase())}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Payment status</span>
+            <select
+              value={filters.paymentStatus}
+              onChange={(event) => updateDeskParams({ payment: event.target.value === "all" ? null : event.target.value, order: null })}
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
+            >
+              <option value="all">All payments</option>
+              {adminPaymentStatuses.map((status) => <option key={status} value={status}>{status.replace(/^./, (letter) => letter.toUpperCase())}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Payment method</span>
+            <select
+              value={filters.paymentMethod}
+              onChange={(event) => updateDeskParams({ method: event.target.value === "all" ? null : event.target.value, order: null })}
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold uppercase"
+            >
+              <option value="all">All methods</option>
+              {availablePaymentMethods.map((method) => <option key={method} value={method}>{method}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Order date</span>
+            <select
+              value={filters.dateRange}
+              onChange={(event) => updateDeskParams({ range: event.target.value === "all" ? null : event.target.value, order: null })}
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
+            >
+              <option value="all">Any date</option>
+              <option value="today">Today</option>
+              <option value="last_7_days">Last 7 days</option>
+              <option value="last_30_days">Last 30 days</option>
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Sort orders</span>
+            <select
+              value={filters.sort}
+              onChange={(event) => updateDeskParams({ sort: event.target.value === "newest" ? null : event.target.value, order: null })}
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="longest_waiting">Longest waiting</option>
+              <option value="highest_total">Highest total</option>
+            </select>
+          </label>
+        </div>
+        {hasActiveAdminOrderFilters(filters) && (
+          <button
+            type="button"
+            onClick={() => setSearchParams({}, { replace: true })}
+            className="mt-4 text-xs font-semibold underline underline-offset-4"
+          >
+            Clear all filters
+          </button>
+        )}
+      </section>
+      {ordersLoadError && orders.length > 0 && (
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#d9c5a6] bg-[#f5ecdc] p-3 text-xs text-[#725a36] sm:flex-row sm:items-center sm:justify-between">
+          <span>Showing the last loaded orders. Live refresh reported: {ordersLoadError}</span>
+          <button type="button" onClick={() => setOrdersReloadKey((current) => current + 1)} className="shrink-0 font-semibold underline underline-offset-4">Try refresh again</button>
+        </div>
+      )}
+
+      {ordersLoading && !orders.length ? (
         <div className="mt-7 overflow-hidden rounded-2xl border border-border bg-card p-6" role="status" aria-live="polite">
           <div className="h-4 w-40 animate-pulse rounded-full bg-secondary" />
           <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -950,7 +1477,7 @@ export function OrdersWorkspacePage() {
           </div>
           <p className="mt-5 text-center text-xs text-muted-foreground">Loading live customer orders…</p>
         </div>
-      ) : !selected ? (
+      ) : !orders.length ? (
         <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-8 text-center sm:p-12">
           {ordersLoadError ? (
             <>
@@ -967,13 +1494,20 @@ export function OrdersWorkspacePage() {
             </>
           )}
         </div>
+      ) : !selected ? (
+        <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-8 text-center sm:p-12">
+          <Search className="mx-auto text-muted-foreground" size={24}/>
+          <p className="mt-4 text-sm font-semibold text-foreground">No orders match this view.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Adjust the search, saved view, or filters to widen the results.</p>
+          <button type="button" onClick={() => setSearchParams({}, { replace: true })} className="mt-5 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background">Show all orders</button>
+        </div>
       ) : (
         <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(280px,.78fr)_minmax(400px,1.2fr)_minmax(260px,.7fr)]">
           <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <div className="border-b border-border px-5 py-4">
               <b className="text-sm">Customer orders</b>
               <span className="ml-2 rounded-full bg-secondary px-2 py-1 text-[10px]">
-                {orders.length}
+                {filteredOrders.length}
               </span>
             </div>
             <div className="max-h-[640px] divide-y divide-border overflow-y-auto">
@@ -982,7 +1516,7 @@ export function OrdersWorkspacePage() {
                 return (
                   <button
                     key={order.id}
-                    onClick={() => setSelectedId(order.id)}
+                    onClick={() => selectOrder(order.id)}
                     className={`w-full p-4 text-left transition ${
                       selected.id === order.id ? "bg-[#eee8de]" : "hover:bg-secondary/70"
                     }`}
@@ -1018,7 +1552,7 @@ export function OrdersWorkspacePage() {
               </button>
               <span className="text-center text-[11px] text-muted-foreground">
                 Page <b className="text-foreground">{orderPage}</b> of {orderPageCount}
-                <span className="block text-[9px]">{orders.length} total orders</span>
+                <span className="block text-[9px]">{filteredOrders.length} matching orders</span>
               </span>
               <button
                 type="button"

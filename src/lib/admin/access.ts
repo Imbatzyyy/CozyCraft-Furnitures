@@ -13,6 +13,7 @@ const administratorPaths = [
   "/admin/content",
   "/admin/reviews",
   "/admin/reports",
+  "/admin/system-health",
   "/admin/activity-logs",
   "/admin/support",
 ] as const;

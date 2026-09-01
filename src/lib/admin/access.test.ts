@@ -13,6 +13,7 @@ const allPaths = [
   "/admin/payments",
   "/admin/customers",
   "/admin/member-tiers",
+  "/admin/system-health",
   "/admin/settings",
   "/admin/team-access",
 ];
@@ -24,6 +25,7 @@ describe("admin role permissions", () => {
 
   it("prevents administrators from team and settings management", () => {
     expect(canAccessAdminPath("Administrator", "/admin/payments", allPaths)).toBe(true);
+    expect(canAccessAdminPath("Administrator", "/admin/system-health", allPaths)).toBe(true);
     expect(canAccessAdminPath("Administrator", "/admin/settings", allPaths)).toBe(false);
     expect(canAccessAdminPath("Administrator", "/admin/team-access", allPaths)).toBe(false);
   });
@@ -33,6 +35,7 @@ describe("admin role permissions", () => {
     expect(canAccessAdminPath("Staff", "/admin/payments", allPaths)).toBe(false);
     expect(canAccessAdminPath("Staff", "/admin/customers", allPaths)).toBe(false);
     expect(canAccessAdminPath("Staff", "/admin/member-tiers", allPaths)).toBe(false);
+    expect(canAccessAdminPath("Staff", "/admin/system-health", allPaths)).toBe(false);
   });
 
   it("allows administrators to monitor member tiers", () => {
