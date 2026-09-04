@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { DbOrder } from "@/services/supabase/client";
 import {
+  ADMIN_ORDERS_PER_PAGE,
   DEFAULT_ADMIN_ORDER_FILTERS,
   adminOrderSelectionParams,
   filterAdminOrders,
   isOrderReadyForFulfillment,
   orderMatchesSavedView,
+  paginateAdminOrders,
 } from "./order-desk";
 
 function order(overrides: Partial<DbOrder> = {}): DbOrder {
@@ -41,6 +43,25 @@ function order(overrides: Partial<DbOrder> = {}): DbOrder {
 }
 
 describe("admin order desk", () => {
+  it("shows five orders per page and carries later orders to the next page", () => {
+    const ordered = Array.from({ length: 7 }, (_, index) =>
+      order({ id: `order-${index + 1}` }),
+    );
+
+    expect(ADMIN_ORDERS_PER_PAGE).toBe(5);
+    expect(paginateAdminOrders(ordered, 1).map((item) => item.id)).toEqual([
+      "order-1",
+      "order-2",
+      "order-3",
+      "order-4",
+      "order-5",
+    ]);
+    expect(paginateAdminOrders(ordered, 2).map((item) => item.id)).toEqual([
+      "order-6",
+      "order-7",
+    ]);
+  });
+
   it("keeps the active date tab when an order is selected", () => {
     const current = new URLSearchParams("view=needs_fulfillment&q=chair");
     const next = adminOrderSelectionParams(current, "order-2", "today");

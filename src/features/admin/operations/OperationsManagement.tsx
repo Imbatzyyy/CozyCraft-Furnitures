@@ -91,11 +91,13 @@ import {
 import { canManageFinancialOperations } from "@/lib/admin/access";
 import {
   ADMIN_ORDER_VIEW_OPTIONS,
+  ADMIN_ORDERS_PER_PAGE,
   DEFAULT_ADMIN_ORDER_FILTERS,
   adminOrderSelectionParams,
   countAdminOrderView,
   filterAdminOrders,
   hasActiveAdminOrderFilters,
+  paginateAdminOrders,
   type AdminOrderDateRange,
   type AdminOrderDeskFilters,
   type AdminOrderSort,
@@ -1128,7 +1130,7 @@ export function OrdersWorkspacePage() {
   const [packingListPrintedAt, setPackingListPrintedAt] = useState(() => new Date());
   const [deskNow, setDeskNow] = useState(() => new Date());
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const ordersPerPage = 8;
+  const ordersPerPage = ADMIN_ORDERS_PER_PAGE;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
     "processing",
@@ -1295,9 +1297,10 @@ export function OrdersWorkspacePage() {
   }, [filteredOrders, searchParams, selectedId]);
 
   const orderPageCount = Math.max(1, Math.ceil(filteredOrders.length / ordersPerPage));
-  const visibleOrders = filteredOrders.slice(
-    (orderPage - 1) * ordersPerPage,
-    orderPage * ordersPerPage,
+  const visibleOrders = paginateAdminOrders(
+    filteredOrders,
+    orderPage,
+    ordersPerPage,
   );
   useEffect(() => {
     setOrderPage(1);
@@ -1710,7 +1713,7 @@ export function OrdersWorkspacePage() {
         </div>
       ) : (
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] xl:items-start">
-          <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm xl:sticky xl:top-5 xl:col-start-1 xl:row-start-1">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm xl:col-start-1 xl:row-start-1">
             <div className="border-b border-border bg-[#f8f5ef] px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1773,7 +1776,9 @@ export function OrdersWorkspacePage() {
               </button>
               <span className="text-center text-[11px] text-muted-foreground">
                 Page <b className="text-foreground">{orderPage}</b> of {orderPageCount}
-                <span className="block text-[9px]">{filteredOrders.length} matching orders</span>
+                <span className="block text-[9px]">
+                  {ordersPerPage} per page · {filteredOrders.length} matching orders
+                </span>
               </span>
               <button
                 type="button"

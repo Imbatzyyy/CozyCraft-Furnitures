@@ -34,6 +34,19 @@ export const DEFAULT_ADMIN_ORDER_FILTERS: AdminOrderDeskFilters = {
   sort: "oldest",
 };
 
+export const ADMIN_ORDERS_PER_PAGE = 5;
+
+export function paginateAdminOrders(
+  orders: readonly DbOrder[],
+  page: number,
+  perPage = ADMIN_ORDERS_PER_PAGE,
+): DbOrder[] {
+  const safePage = Math.max(1, Math.trunc(page) || 1);
+  const safePerPage = Math.max(1, Math.trunc(perPage) || ADMIN_ORDERS_PER_PAGE);
+  const start = (safePage - 1) * safePerPage;
+  return orders.slice(start, start + safePerPage);
+}
+
 export function adminOrderSelectionParams(
   current: URLSearchParams,
   orderId: string,
