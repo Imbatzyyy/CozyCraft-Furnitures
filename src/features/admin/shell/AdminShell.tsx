@@ -34,6 +34,7 @@ import {
   CircleDollarSign,
   ClipboardList,
   CreditCard,
+  Database,
   Download,
   Eye,
   EyeOff,
@@ -540,10 +541,14 @@ export function AdminShell({
   const [mfaBusy, setMfaBusy] = useState(false);
   const [adminSecurity, setAdminSecurity] = useState({ require_admin_mfa: true, session_timeout_minutes: 30 });
   const [idleSecondsLeft, setIdleSecondsLeft] = useState<number | null>(null);
-  const { role } = useAdminSession();
   const {
+    role,
     databaseRole,
     authReady,
+    workspaceReady,
+    workspaceLoading,
+    workspaceError,
+    refreshWorkspace,
     signOut,
     user,
     avatar,
@@ -698,6 +703,7 @@ export function AdminShell({
   if (mfaRequired === null) return <div className="grid min-h-screen place-items-center bg-[#f3f0ea] text-sm text-muted-foreground">Verifying secure session…</div>;
   if (mfaRequired) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><form onSubmit={verifyMfa} className="w-full max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary"><ShieldCheck size={20}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">TWO-STEP VERIFICATION</p><h1 className="mt-2 font-serif text-4xl">Confirm it’s you.</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">Enter the current six-digit code from your authenticator app to open operations.</p>{mfaFactorId&&<label className="mt-6 grid gap-2 text-left text-sm font-semibold">Authenticator code<input autoFocus value={mfaCode} onChange={event=>setMfaCode(event.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" autoComplete="one-time-code" className="h-12 rounded-xl border border-border bg-background px-4 text-center text-lg tracking-[.35em]"/></label>}{mfaError&&<p className="mt-4 rounded-xl bg-[#f3e5d4] p-3 text-left text-xs font-semibold text-[#8b5c46]">{mfaError}</p>}<button type={mfaFactorId?"submit":"button"} onClick={mfaFactorId?undefined:()=>void checkMfa()} disabled={mfaBusy||Boolean(mfaFactorId&&mfaCode.length!==6)} className="mt-5 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background disabled:opacity-50">{mfaBusy?"Verifying…":mfaFactorId?"Verify and enter":"Retry secure check"}</button><button type="button" onClick={()=>void signOut()} className="mt-3 text-sm font-semibold underline underline-offset-4">Sign out</button></form></main>;
   if (!canAccess) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><ShieldCheck className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">This feature is restricted.</h1><p className="mt-3 text-sm text-muted-foreground">Your {role.toLowerCase()} role does not have permission to open this page.</p><Link to="/admin" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Return to overview</Link></section></main>;
+  if (!workspaceReady) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-[0_20px_55px_rgba(35,32,28,.12)]"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary"><Database size={20} className={workspaceLoading ? "animate-pulse" : ""}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">LIVE ADMIN WORKSPACE</p><h1 className="mt-2 font-serif text-4xl">{workspaceError ? "Data needs another try." : "Preparing your workspace."}</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">{workspaceError ?? "Loading orders, products, customers, and support records once for every admin page."}</p>{workspaceError&&<button type="button" onClick={()=>void refreshWorkspace()} disabled={workspaceLoading} className="mt-6 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background disabled:opacity-50">{workspaceLoading ? "Retrying…" : "Retry workspace load"}</button>}</section></main>;
   return (
     <div data-admin-shell className="min-h-screen overflow-x-clip bg-[#f3f0ea]">
       <a href="#admin-main" className="skip-link">Skip to admin content</a>

@@ -364,8 +364,8 @@ export type Store = {
   setAvatar: (value: string | null) => void;
   clearCart: () => void;
   refreshOrders: () => Promise<string | null>;
-  refreshCustomers: () => Promise<void>;
-  refreshTickets: () => Promise<void>;
+  refreshCustomers: () => Promise<string | null>;
+  refreshTickets: () => Promise<string | null>;
   placeOrder: (
     addressId: string,
     paymentMethod: string,
@@ -441,10 +441,14 @@ export type AdminSession = {
   role: AdminRole;
   databaseRole: DbRole | null;
   authReady: boolean;
+  workspaceReady: boolean;
+  workspaceLoading: boolean;
+  workspaceError: string | null;
   userId: string | null;
   user: string | null;
   userEmail: string | null;
   avatar: string | null;
+  refreshWorkspace: () => Promise<string | null>;
   signOut: () => Promise<void>;
 };
 

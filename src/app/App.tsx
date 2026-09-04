@@ -246,6 +246,9 @@ function App() {
   const [adminDatabaseRole, setAdminDatabaseRole] =
     useState<DbRole | null>(null);
   const [adminAuthReady, setAdminAuthReady] = useState(false);
+  const [adminWorkspaceReady, setAdminWorkspaceReady] = useState(false);
+  const [adminWorkspaceLoading, setAdminWorkspaceLoading] = useState(false);
+  const [adminWorkspaceError, setAdminWorkspaceError] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -270,11 +273,27 @@ function App() {
   }, [userId]);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
-  const productsRefreshInFlight = useRef<Promise<void> | null>(null);
+  const productsRefreshInFlight = useRef<{
+    scope: string;
+    request: Promise<string | null>;
+  } | null>(null);
   const ordersRefreshInFlight = useRef<{
     scope: string;
     request: Promise<string | null>;
   } | null>(null);
+  const customersRefreshInFlight = useRef<{
+    scope: string;
+    request: Promise<string | null>;
+  } | null>(null);
+  const ticketsRefreshInFlight = useRef<{
+    scope: string;
+    request: Promise<string | null>;
+  } | null>(null);
+  const adminWorkspaceRefreshInFlight = useRef<{
+    scope: string;
+    request: Promise<string | null>;
+  } | null>(null);
+  const adminWorkspaceScopeRef = useRef<string | null>(null);
   const singleOrderRefreshes = useRef(new Map<string, Promise<string | null>>());
   const unavailableProductIds = useRef(new Set<string>());
   const ordersScope = adminPortal
@@ -282,6 +301,11 @@ function App() {
     : `customer:${userId ?? "guest"}`;
   const ordersScopeRef = useRef(ordersScope);
   ordersScopeRef.current = ordersScope;
+  const productsScope = adminPortal
+    ? `admin:${adminUserId ?? "guest"}`
+    : "storefront";
+  const productsScopeRef = useRef(productsScope);
+  productsScopeRef.current = productsScope;
 
   const queueAccountWrite = useCallback((request: PromiseLike<unknown>) => {
     const pending = Promise.resolve(request);
@@ -323,7 +347,9 @@ function App() {
   }), []);
 
   const refreshProducts = useCallback(() => {
-    if (productsRefreshInFlight.current) return productsRefreshInFlight.current;
+    const requestScope = productsScope;
+    const existing = productsRefreshInFlight.current;
+    if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
       const [productResult, categoryResult, settingResult] = await Promise.all([
         portalSupabase
@@ -341,7 +367,10 @@ function App() {
           .eq("id", true)
           .single(),
       ]);
-      if (productResult.error || !productResult.data) return;
+      if (productResult.error || !productResult.data) {
+        return productResult.error?.message ?? "Products could not be loaded.";
+      }
+      if (productsScopeRef.current !== requestScope) return null;
       const normalizedSettings = normalizeStoreSettings(
         settingResult.data as Partial<PublicStoreSettings> | null,
       );
@@ -368,23 +397,22 @@ function App() {
               )),
         ),
       );
+      return null;
     })();
-    productsRefreshInFlight.current = request;
+    productsRefreshInFlight.current = { scope: requestScope, request };
     void request.then(
       () => {
-        if (productsRefreshInFlight.current === request) productsRefreshInFlight.current = null;
+        if (productsRefreshInFlight.current?.request === request) productsRefreshInFlight.current = null;
       },
       () => {
-        if (productsRefreshInFlight.current === request) productsRefreshInFlight.current = null;
+        if (productsRefreshInFlight.current?.request === request) productsRefreshInFlight.current = null;
       },
     );
     return request;
-  }, [mapProduct, portalSupabase]);
+  }, [mapProduct, portalSupabase, productsScope]);
 
   const refreshOrders = useCallback(() => {
-    const requestScope = adminPortal
-      ? `admin:${adminUserId ?? "guest"}`
-      : `customer:${userId ?? "guest"}`;
+    const requestScope = ordersScope;
     const existing = ordersRefreshInFlight.current;
     if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
@@ -413,12 +441,10 @@ function App() {
       },
     );
     return request;
-  }, [adminPortal, adminUserId, portalSupabase, userId]);
+  }, [ordersScope, portalSupabase]);
 
   const refreshOrder = useCallback((orderId: string) => {
-    const requestScope = adminPortal
-      ? `admin:${adminUserId ?? "guest"}`
-      : `customer:${userId ?? "guest"}`;
+    const requestScope = ordersScope;
     const requestKey = `${requestScope}:${orderId}`;
     const existing = singleOrderRefreshes.current.get(requestKey);
     if (existing) return existing;
@@ -445,7 +471,7 @@ function App() {
       () => singleOrderRefreshes.current.delete(requestKey),
     );
     return request;
-  }, [adminPortal, adminUserId, portalSupabase, userId]);
+  }, [ordersScope, portalSupabase]);
 
   const refreshAccountCollections = useCallback(async (id: string) => {
     const [cartResult, wishlistResult] = await Promise.all([
@@ -475,18 +501,19 @@ function App() {
     }
   }, []);
 
-  const refreshCustomers = useCallback(async () => {
-    const requestScope = adminPortal
-      ? `admin:${adminUserId ?? "guest"}`
-      : `customer:${userId ?? "guest"}`;
-    const { data, error } = await portalSupabase
-      .from("profiles")
-      .select(
-        "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at,addresses!addresses_user_id_fkey(id,user_id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
-      )
-      .eq("role", "customer")
-      .order("created_at", { ascending: false });
-    if (!error) {
+  const refreshCustomers = useCallback(() => {
+    const requestScope = ordersScope;
+    const existing = customersRefreshInFlight.current;
+    if (existing?.scope === requestScope) return existing.request;
+    const request = (async () => {
+      const { data, error } = await portalSupabase
+        .from("profiles")
+        .select(
+          "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at,addresses!addresses_user_id_fkey(id,user_id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
+        )
+        .eq("role", "customer")
+        .order("created_at", { ascending: false });
+      if (error) return error.message;
       const profiles = (data ?? []) as DbCustomerProfile[];
       const signedAvatars = await privateAvatarUrls(
         profiles.map((profile) => profile.avatar_url),
@@ -495,33 +522,90 @@ function App() {
       const protectedProfiles = profiles.map((profile, index) => ({
           ...profile,
           avatar_url: signedAvatars[index],
-        }));
-      if (ordersScopeRef.current !== requestScope) return;
+      }));
+      if (ordersScopeRef.current !== requestScope) return null;
       setCustomerProfiles(protectedProfiles);
-    }
-  }, [adminPortal, adminUserId, portalSupabase, userId]);
+      return null;
+    })();
+    customersRefreshInFlight.current = { scope: requestScope, request };
+    const clearRequest = () => {
+      if (customersRefreshInFlight.current?.request === request) {
+        customersRefreshInFlight.current = null;
+      }
+    };
+    void request.then(clearRequest, clearRequest);
+    return request;
+  }, [ordersScope, portalSupabase]);
 
-  const refreshTickets = useCallback(async () => {
-    const requestScope = adminPortal
-      ? `admin:${adminUserId ?? "guest"}`
-      : `customer:${userId ?? "guest"}`;
-    const { data, error } = await portalSupabase
-      .from("support_tickets")
-      .select(
-        "id,ticket_number,user_id,order_id,subject,message,status,category,priority,assigned_to,attachment_paths,admin_reply,created_at,updated_at,profiles!support_tickets_user_id_fkey(full_name,email)",
-      )
-      .order("created_at", { ascending: false });
-    if (!error) {
+  const refreshTickets = useCallback(() => {
+    const requestScope = ordersScope;
+    const existing = ticketsRefreshInFlight.current;
+    if (existing?.scope === requestScope) return existing.request;
+    const request = (async () => {
+      const { data, error } = await portalSupabase
+        .from("support_tickets")
+        .select(
+          "id,ticket_number,user_id,order_id,subject,message,status,category,priority,assigned_to,attachment_paths,admin_reply,created_at,updated_at,profiles!support_tickets_user_id_fkey(full_name,email)",
+        )
+        .order("created_at", { ascending: false });
+      if (error) return error.message;
       const tickets = (data ?? []).map((ticket) => ({
         ...ticket,
         profiles: Array.isArray(ticket.profiles)
           ? ticket.profiles[0] ?? null
           : ticket.profiles,
       }));
-      if (ordersScopeRef.current !== requestScope) return;
+      if (ordersScopeRef.current !== requestScope) return null;
       setSupportTickets(tickets as unknown as DbSupportTicket[]);
+      return null;
+    })();
+    ticketsRefreshInFlight.current = { scope: requestScope, request };
+    const clearRequest = () => {
+      if (ticketsRefreshInFlight.current?.request === request) {
+        ticketsRefreshInFlight.current = null;
+      }
+    };
+    void request.then(clearRequest, clearRequest);
+    return request;
+  }, [ordersScope, portalSupabase]);
+
+  const refreshAdminWorkspace = useCallback(() => {
+    if (!adminPortal || !adminUserId) {
+      return Promise.resolve("Your administrator session is not available.");
     }
-  }, [adminPortal, adminUserId, portalSupabase, userId]);
+    const requestScope = `admin:${adminUserId}`;
+    const existing = adminWorkspaceRefreshInFlight.current;
+    if (existing?.scope === requestScope) return existing.request;
+    setAdminWorkspaceLoading(true);
+    setAdminWorkspaceError(null);
+    const request = (async () => {
+      const results = await Promise.all([
+        refreshProducts(),
+        refreshOrders(),
+        refreshCustomers(),
+        refreshTickets(),
+      ]);
+      const issue = results.find((result): result is string => Boolean(result)) ?? null;
+      if (ordersScopeRef.current !== requestScope) return null;
+      if (issue) {
+        setAdminWorkspaceError(issue);
+      } else {
+        setAdminWorkspaceReady(true);
+      }
+      return issue;
+    })().catch((error: unknown) => {
+      const issue = error instanceof Error ? error.message : "Admin workspace data could not be loaded.";
+      if (ordersScopeRef.current === requestScope) setAdminWorkspaceError(issue);
+      return issue;
+    }).finally(() => {
+      if (ordersScopeRef.current === requestScope) setAdminWorkspaceLoading(false);
+      if (adminWorkspaceRefreshInFlight.current?.request === request) {
+        adminWorkspaceRefreshInFlight.current = null;
+      }
+    });
+    adminWorkspaceRefreshInFlight.current = { scope: requestScope, request };
+    return request;
+  }, [adminPortal, adminUserId, refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
 
   const clearCustomerAccount = useCallback(() => {
     customerUserIdRef.current = null;
@@ -854,11 +938,28 @@ function App() {
   }, [clearCustomerAccount, loadAccount]);
 
   const clearAdminAccount = useCallback(() => {
+    const clearingAdminPortal = window.location.pathname.startsWith("/admin");
+    if (clearingAdminPortal) {
+      ordersScopeRef.current = "admin:guest";
+      productsScopeRef.current = "admin:guest";
+      productsRefreshInFlight.current = null;
+      ordersRefreshInFlight.current = null;
+      customersRefreshInFlight.current = null;
+      ticketsRefreshInFlight.current = null;
+      adminWorkspaceRefreshInFlight.current = null;
+      adminWorkspaceScopeRef.current = null;
+      setOrders([]);
+      setCustomerProfiles([]);
+      setSupportTickets([]);
+    }
     setAdminUserId(null);
     setAdminUser(null);
     setAdminUserEmail(null);
     setAdminAvatar(null);
     setAdminDatabaseRole(null);
+    setAdminWorkspaceReady(false);
+    setAdminWorkspaceLoading(false);
+    setAdminWorkspaceError(null);
   }, []);
 
   const loadAdminAccount = useCallback(
@@ -975,21 +1076,24 @@ function App() {
   }, [adminUserId, loadAdminAccount]);
 
   useEffect(() => {
-    void refreshProducts();
-  }, [refreshProducts]);
-
-  useEffect(() => {
-    setOrders([]);
-    setCustomerProfiles([]);
-    setSupportTickets([]);
     if (adminPortal) {
       if (adminUserId) {
-        void Promise.all([refreshOrders(), refreshCustomers(), refreshTickets()]);
+        const workspaceScope = `admin:${adminUserId}`;
+        if (adminWorkspaceScopeRef.current !== workspaceScope) {
+          adminWorkspaceScopeRef.current = workspaceScope;
+          setAdminWorkspaceReady(false);
+          setAdminWorkspaceError(null);
+          setOrders([]);
+          setCustomerProfiles([]);
+          setSupportTickets([]);
+        }
+        void refreshAdminWorkspace();
       }
       return;
     }
+    void refreshProducts();
     if (userId) void Promise.all([refreshOrders(), refreshTickets()]);
-  }, [adminPortal, adminUserId, refreshCustomers, refreshOrders, refreshTickets, userId]);
+  }, [adminPortal, adminUserId, refreshAdminWorkspace, refreshOrders, refreshProducts, refreshTickets, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -2161,10 +2265,14 @@ function App() {
           role: adminRole,
           databaseRole: adminDatabaseRole,
           authReady: adminAuthReady,
+          workspaceReady: adminWorkspaceReady,
+          workspaceLoading: adminWorkspaceLoading,
+          workspaceError: adminWorkspaceError,
           userId: adminUserId,
           user: adminUser,
           userEmail: adminUserEmail,
           avatar: adminAvatar,
+          refreshWorkspace: refreshAdminWorkspace,
           signOut: signOutAdmin,
         }}
       >

@@ -151,7 +151,7 @@ import {
 } from "@/lib/admin/metrics";
 
 export function AdminOverview() {
-  const { orders, adminProducts, supportTickets, refreshOrders } = useStore();
+  const { orders, adminProducts, supportTickets } = useStore();
   const { user, role } = useAdminSession();
   const [now, setNow] = useState(() => new Date());
   const firstName = user?.trim().split(/\s+/)[0] || "there";
@@ -181,9 +181,6 @@ export function AdminOverview() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  useEffect(() => {
-    void refreshOrders();
-  }, [refreshOrders]);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthOrders = orders.filter(
     (order) => new Date(order.created_at) >= monthStart,
