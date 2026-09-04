@@ -8,7 +8,6 @@ export type OrderRealtimeChange = {
 export type OrderRealtimeTarget = {
   orderId: string | null;
   removeOrder: boolean;
-  announceNewOrder: boolean;
 };
 
 const stringField = (
@@ -32,7 +31,6 @@ export function orderRealtimeTarget(
     return {
       orderId,
       removeOrder: payload.eventType === "DELETE" && Boolean(orderId),
-      announceNewOrder: payload.eventType === "INSERT" && Boolean(orderId),
     };
   }
 
@@ -41,6 +39,5 @@ export function orderRealtimeTarget(
       stringField(payload.new, "order_id") ??
       stringField(payload.old, "order_id"),
     removeOrder: false,
-    announceNewOrder: false,
   };
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { orderRealtimeTarget } from "./realtime-orders";
 
 describe("order Realtime targeting", () => {
-  it("targets a newly inserted order and announces it", () => {
+  it("targets a newly inserted order without requesting navigation", () => {
     expect(
       orderRealtimeTarget({
         eventType: "INSERT",
@@ -13,7 +13,6 @@ describe("order Realtime targeting", () => {
     ).toEqual({
       orderId: "order-1",
       removeOrder: false,
-      announceNewOrder: true,
     });
   });
 
@@ -28,7 +27,6 @@ describe("order Realtime targeting", () => {
     ).toEqual({
       orderId: "order-2",
       removeOrder: false,
-      announceNewOrder: false,
     });
   });
 
@@ -43,7 +41,6 @@ describe("order Realtime targeting", () => {
     ).toEqual({
       orderId: "order-3",
       removeOrder: true,
-      announceNewOrder: false,
     });
   });
 
@@ -58,7 +55,6 @@ describe("order Realtime targeting", () => {
     ).toEqual({
       orderId: null,
       removeOrder: false,
-      announceNewOrder: false,
     });
   });
 });

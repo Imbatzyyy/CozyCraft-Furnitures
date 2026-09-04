@@ -1191,13 +1191,6 @@ function App() {
         return;
       }
       void refreshOrder(target.orderId);
-      if (target.announceNewOrder) {
-        window.dispatchEvent(
-          new CustomEvent("cozycraft:new-order", {
-            detail: { orderId: target.orderId },
-          }),
-        );
-      }
     };
 
     let channel = portalSupabase.channel(

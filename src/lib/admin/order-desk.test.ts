@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DbOrder } from "@/services/supabase/client";
 import {
   DEFAULT_ADMIN_ORDER_FILTERS,
+  adminOrderSelectionParams,
   filterAdminOrders,
   isOrderReadyForFulfillment,
   orderMatchesSavedView,
@@ -40,6 +41,16 @@ function order(overrides: Partial<DbOrder> = {}): DbOrder {
 }
 
 describe("admin order desk", () => {
+  it("keeps the active date tab when an order is selected", () => {
+    const current = new URLSearchParams("view=needs_fulfillment&q=chair");
+    const next = adminOrderSelectionParams(current, "order-2", "today");
+
+    expect(next.get("order")).toBe("order-2");
+    expect(next.get("range")).toBe("today");
+    expect(next.get("view")).toBe("needs_fulfillment");
+    expect(next.get("q")).toBe("chair");
+  });
+
   it("opens on today's Philippine queue with the first placed order first", () => {
     expect(DEFAULT_ADMIN_ORDER_FILTERS.dateRange).toBe("today");
     expect(DEFAULT_ADMIN_ORDER_FILTERS.sort).toBe("oldest");

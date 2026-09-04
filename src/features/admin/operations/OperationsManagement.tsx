@@ -92,6 +92,7 @@ import { canManageFinancialOperations } from "@/lib/admin/access";
 import {
   ADMIN_ORDER_VIEW_OPTIONS,
   DEFAULT_ADMIN_ORDER_FILTERS,
+  adminOrderSelectionParams,
   countAdminOrderView,
   filterAdminOrders,
   hasActiveAdminOrderFilters,
@@ -1221,9 +1222,12 @@ export function OrdersWorkspacePage() {
   const selectOrder = useCallback(
     (orderId: string) => {
       setSelectedId(orderId);
-      updateDeskParams({ order: orderId });
+      setSearchParams(
+        adminOrderSelectionParams(searchParams, orderId, filters.dateRange),
+        { replace: true },
+      );
     },
-    [updateDeskParams],
+    [filters.dateRange, searchParams, setSearchParams],
   );
 
   useEffect(() => {
@@ -1266,25 +1270,6 @@ export function OrdersWorkspacePage() {
       window.clearTimeout(timeout);
     };
   }, [adminAuthReady, adminUserId, ordersReloadKey, refreshOrders]);
-  useEffect(() => {
-    const selectNewOrder = (event: Event) => {
-      const orderId = (event as CustomEvent<{ orderId?: string }>).detail?.orderId;
-      if (!orderId) return;
-      setOrderPage(1);
-      setSelectedId(orderId);
-      updateDeskParams({
-        order: orderId,
-        view: null,
-        status: null,
-        payment: null,
-        method: null,
-        range: null,
-        q: null,
-      });
-    };
-    window.addEventListener("cozycraft:new-order", selectNewOrder);
-    return () => window.removeEventListener("cozycraft:new-order", selectNewOrder);
-  }, [updateDeskParams]);
   useEffect(() => {
     const refresh = async () => { const { data } = await supabase.from("return_requests").select("id,order_id,return_number,reason,details,status,admin_note,evidence_paths,created_at").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
     void refresh();

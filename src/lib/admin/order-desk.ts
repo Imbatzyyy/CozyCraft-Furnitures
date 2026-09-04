@@ -34,6 +34,17 @@ export const DEFAULT_ADMIN_ORDER_FILTERS: AdminOrderDeskFilters = {
   sort: "oldest",
 };
 
+export function adminOrderSelectionParams(
+  current: URLSearchParams,
+  orderId: string,
+  dateRange: AdminOrderDateRange,
+): URLSearchParams {
+  const next = new URLSearchParams(current);
+  next.set("order", orderId);
+  next.set("range", dateRange);
+  return next;
+}
+
 const terminalStatuses = new Set<DbOrder["status"]>(["delivered", "cancelled"]);
 
 export function isOrderReadyForFulfillment(order: DbOrder): boolean {
