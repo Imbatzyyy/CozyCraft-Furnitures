@@ -17,6 +17,18 @@ describe("store settings", () => {
     expect(settings.fulfillment_settings.order_number_prefix).toBe("CC");
   });
 
+  it("discards the retired review approval setting from legacy database rows", () => {
+    const settings = normalizeStoreSettings({
+      review_settings: {
+        approval_required: true,
+        minimum_length: 12,
+      } as never,
+    });
+
+    expect(settings.review_settings.minimum_length).toBe(12);
+    expect("approval_required" in settings.review_settings).toBe(false);
+  });
+
   it("calculates configurable delivery fees", () => {
     const checkout = {
       ...defaultStoreSettings.checkout_settings,

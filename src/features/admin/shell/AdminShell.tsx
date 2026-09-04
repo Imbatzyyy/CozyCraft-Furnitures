@@ -300,7 +300,7 @@ function WorkspaceSearch({
               key: `order-${order.id}`,
               title: `Order #${order.order_number}`,
               detail: `${order.shipping_address.name || "Customer"} · ${order.status}`,
-              route: `/admin/orders?order=${encodeURIComponent(order.id)}`,
+              route: `/admin/orders?order=${encodeURIComponent(order.id)}&range=all`,
               Icon: ClipboardList,
             })),
           ...customerProfiles

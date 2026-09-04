@@ -492,7 +492,7 @@ export function SystemHealthPage() {
       label: "Payment exceptions",
       value: String(snapshot.failedPayments + snapshot.failedRefunds),
       note: `${snapshot.failedPayments} failed payments · ${snapshot.failedRefunds} failed refunds`,
-      route: snapshot.failedRefunds ? "/admin/orders?view=refund_attention" : "/admin/payments",
+      route: snapshot.failedRefunds ? "/admin/orders?view=refund_attention&range=all" : "/admin/payments",
       attention: snapshot.failedPayments + snapshot.failedRefunds > 0,
       icon: CreditCard,
     },
@@ -500,7 +500,7 @@ export function SystemHealthPage() {
       label: "48-hour backlog",
       value: String(snapshot.overdueFulfillment),
       note: "Pending, processing, or packed orders older than 48 hours.",
-      route: "/admin/orders?view=needs_fulfillment&sort=longest_waiting",
+      route: "/admin/orders?view=needs_fulfillment&range=all&sort=longest_waiting",
       attention: snapshot.overdueFulfillment > 0,
       icon: Clock,
     },
@@ -813,17 +813,17 @@ export const moduleContent = {
     icon: Star,
     eyebrow: "CUSTOMER VOICE",
     description:
-      "Moderate feedback while protecting the quality of the CozyCraft catalog.",
-    action: "Review queue",
+      "Monitor automatically published feedback and protect the quality of the CozyCraft catalog.",
+    action: "Review feedback",
     stats: [
-      ["184", "Published reviews"],
-      ["6", "Awaiting approval"],
+      ["184", "Visible reviews"],
+      ["12", "With customer photos"],
       ["4.8", "Average rating"],
     ],
     rows: [
-      ["Mara Lounge Chair", "Luna Reyes · 5 stars", "Pending"],
-      ["Arco Dining Table", "Jerome Lim · 5 stars", "Pending"],
-      ["Santo Bed Frame", "Elena Cruz · 4 stars", "Active"],
+      ["Mara Lounge Chair", "Luna Reyes · 5 stars", "Visible"],
+      ["Arco Dining Table", "Jerome Lim · 5 stars", "Visible"],
+      ["Santo Bed Frame", "Elena Cruz · 4 stars", "Visible"],
     ],
   },
   reports: {
@@ -858,7 +858,7 @@ export const moduleContent = {
     ],
     rows: [
       ["Mara Mendoza", "Adjusted Mara Lounge Chair inventory", "Today · 09:42"],
-      ["Jules Santos", "Approved a customer review", "Today · 08:15"],
+      ["Jules Santos", "Reviewed customer feedback", "Today · 08:15"],
       [
         "Mara Mendoza",
         "Published Lino Oak Console update",
@@ -932,6 +932,17 @@ const adminOrderSorts = new Set<AdminOrderSort>([
   "highest_total",
   "longest_waiting",
 ]);
+const adminOrderTimeFormatter = new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  hour: "numeric",
+  minute: "2-digit",
+});
+const adminOrderDateFormatter = new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 
 function adminOrderFiltersFromParams(params: URLSearchParams): AdminOrderDeskFilters {
   const view = params.get("view") as AdminOrderView | null;
@@ -939,6 +950,8 @@ function adminOrderFiltersFromParams(params: URLSearchParams): AdminOrderDeskFil
   const paymentStatus = params.get("payment") as DbOrder["payment_status"] | null;
   const dateRange = params.get("range") as AdminOrderDateRange | null;
   const sort = params.get("sort") as AdminOrderSort | null;
+  const historicalQueueLink =
+    !dateRange && (params.has("order") || params.has("view"));
   return {
     query: params.get("q") ?? "",
     view: view && adminOrderViews.has(view) ? view : DEFAULT_ADMIN_ORDER_FILTERS.view,
@@ -951,7 +964,9 @@ function adminOrderFiltersFromParams(params: URLSearchParams): AdminOrderDeskFil
     dateRange:
       dateRange && adminOrderDateRanges.has(dateRange)
         ? dateRange
-        : DEFAULT_ADMIN_ORDER_FILTERS.dateRange,
+        : historicalQueueLink
+          ? "all"
+          : DEFAULT_ADMIN_ORDER_FILTERS.dateRange,
     sort: sort && adminOrderSorts.has(sort) ? sort : DEFAULT_ADMIN_ORDER_FILTERS.sort,
   };
 }
@@ -1110,6 +1125,8 @@ export function OrdersWorkspacePage() {
   const [ordersReloadKey, setOrdersReloadKey] = useState(0);
   const [invoiceDownloadId, setInvoiceDownloadId] = useState<string | null>(null);
   const [packingListPrintedAt, setPackingListPrintedAt] = useState(() => new Date());
+  const [deskNow, setDeskNow] = useState(() => new Date());
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const ordersPerPage = 8;
   const fulfillmentSteps: DbOrder["status"][] = [
     "pending",
@@ -1128,9 +1145,61 @@ export function OrdersWorkspacePage() {
     [returnRequests],
   );
   const filteredOrders = useMemo(
-    () => filterAdminOrders(orders, filters, { returnOrderIds }),
-    [filters, orders, returnOrderIds],
+    () => filterAdminOrders(orders, filters, { returnOrderIds, now: deskNow }),
+    [deskNow, filters, orders, returnOrderIds],
   );
+  const todayOrders = useMemo(
+    () =>
+      filterAdminOrders(orders, DEFAULT_ADMIN_ORDER_FILTERS, {
+        returnOrderIds,
+        now: deskNow,
+      }),
+    [deskNow, orders, returnOrderIds],
+  );
+  const readyToFulfillCount = useMemo(
+    () => countAdminOrderView(orders, "needs_fulfillment", returnOrderIds),
+    [orders, returnOrderIds],
+  );
+  const awaitingPaymentCount = useMemo(
+    () => countAdminOrderView(orders, "awaiting_payment", returnOrderIds),
+    [orders, returnOrderIds],
+  );
+  const attentionCount = useMemo(
+    () =>
+      countAdminOrderView(orders, "cancellation_requests", returnOrderIds) +
+      countAdminOrderView(orders, "refund_attention", returnOrderIds),
+    [orders, returnOrderIds],
+  );
+  const todayQueueActive =
+    filters.view === "all" && filters.dateRange === "today";
+  const allOrdersActive =
+    filters.view === "all" && filters.dateRange === "all";
+  const activeFilterCount = [
+    filters.status !== "all",
+    filters.paymentStatus !== "all",
+    filters.paymentMethod !== "all",
+    filters.dateRange !== DEFAULT_ADMIN_ORDER_FILTERS.dateRange,
+    filters.sort !== DEFAULT_ADMIN_ORDER_FILTERS.sort,
+  ].filter(Boolean).length;
+  const queueTitle = todayQueueActive
+    ? "Today's order queue"
+    : filters.view !== "all"
+      ? ADMIN_ORDER_VIEW_OPTIONS.find((option) => option.id === filters.view)?.label ??
+        "Filtered orders"
+      : "All customer orders";
+  const queueSortLabel =
+    filters.sort === "oldest" || filters.sort === "longest_waiting"
+      ? "First placed appears first"
+      : filters.sort === "newest"
+        ? "Most recent appears first"
+        : "Highest total appears first";
+  const manilaDateLabel = new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(deskNow);
   const availablePaymentMethods = useMemo(
     () =>
       Array.from(
@@ -1157,6 +1226,10 @@ export function OrdersWorkspacePage() {
     [updateDeskParams],
   );
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setDeskNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (!adminAuthReady) {
       setOrdersLoading(true);
@@ -1451,141 +1524,161 @@ export function OrdersWorkspacePage() {
 
   return (
     <AdminShell title="Orders">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
-            LIVE FULFILLMENT CONTROL
-          </p>
-          <h2 className="mt-2 text-3xl font-semibold">Order desk</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Select an order to review its customer, products, and live delivery status.
-          </p>
-        </div>
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${ordersRealtimeConnected ? "bg-[#e5eee1] text-[#45603f]" : "bg-[#f2e8d7] text-[#765d3c]"}`} aria-live="polite">
-          <span className={`h-2 w-2 rounded-full ${ordersRealtimeConnected ? "bg-[#5f7d57]" : "animate-pulse bg-[#a87943]"}`} />
-          {ordersRealtimeConnected ? "Live order updates" : "Reconnecting…"}
-        </span>
-      </div>
-
-      <section className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <section className="overflow-hidden rounded-[1.75rem] border border-border bg-[#f3eee6] shadow-sm">
+        <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div>
-            <p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">SAVED VIEWS</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              One-click queues for the most common fulfillment decisions.
+            <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
+              ORDER OPERATIONS
+            </p>
+            <h2 className="mt-2 font-serif text-4xl leading-none sm:text-5xl">
+              Today’s order queue.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+              {manilaDateLabel}. Work from the first order placed to the latest so every customer is handled in sequence.
             </p>
           </div>
-          <span className="w-fit rounded-full bg-secondary px-3 py-1.5 text-[11px] font-semibold">
-            {filteredOrders.length} of {orders.length} orders
+          <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${ordersRealtimeConnected ? "border-[#b9c9b4] bg-[#e5eee1] text-[#45603f]" : "border-[#d9c5a6] bg-[#f2e8d7] text-[#765d3c]"}`} aria-live="polite">
+            <span className={`h-2 w-2 rounded-full ${ordersRealtimeConnected ? "bg-[#5f7d57]" : "animate-pulse bg-[#a87943]"}`} />
+            {ordersRealtimeConnected ? "Live order updates" : "Reconnecting…"}
           </span>
         </div>
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Order saved views">
-          {ADMIN_ORDER_VIEW_OPTIONS.filter(
-            (option) =>
-              canManageFinancials ||
-              !["cancellation_requests", "refund_attention"].includes(option.id),
-          ).map((option) => {
-            const count = countAdminOrderView(orders, option.id, returnOrderIds);
-            const active = filters.view === option.id;
-            return (
+        <div className="grid border-t border-border bg-card sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["TODAY", todayOrders.length, "Oldest first"],
+            ["READY TO FULFILL", readyToFulfillCount, "Paid or cash on delivery"],
+            ["AWAITING PAYMENT", awaitingPaymentCount, "Online checkout pending"],
+            ["NEEDS ATTENTION", attentionCount, "Cancellation or refund"],
+          ].map(([label, value, note], index) => (
+            <div key={label} className={`p-4 sm:p-5 ${index === 1 ? "border-t border-border sm:border-l sm:border-t-0" : ""} ${index === 2 ? "border-t border-border xl:border-l xl:border-t-0" : ""} ${index === 3 ? "border-t border-border sm:border-l xl:border-t-0" : ""}`}>
+              <p className="text-[9px] font-bold tracking-[.15em] text-muted-foreground">{label}</p>
+              <div className="mt-2 flex items-end justify-between gap-3">
+                <b className="font-serif text-3xl font-normal">{value}</b>
+                <span className="text-right text-[10px] text-muted-foreground">{note}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">QUICK VIEWS</p>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Order quick views">
               <button
                 type="button"
-                key={option.id}
-                onClick={() =>
-                  updateDeskParams({
-                    view: option.id === "all" ? null : option.id,
-                    order: null,
-                  })
-                }
-                className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition ${active ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-secondary"}`}
+                onClick={() => setSearchParams({}, { replace: true })}
+                className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition ${todayQueueActive ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-secondary"}`}
               >
-                {option.label}
-                <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${active ? "bg-background/15" : "bg-secondary"}`}>
-                  {count}
-                </span>
+                Today
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${todayQueueActive ? "bg-background/15" : "bg-secondary"}`}>{todayOrders.length}</span>
               </button>
-            );
-          })}
+              {ADMIN_ORDER_VIEW_OPTIONS.filter(
+                (option) =>
+                  canManageFinancials ||
+                  !["cancellation_requests", "refund_attention"].includes(option.id),
+              ).map((option) => {
+                const count = countAdminOrderView(orders, option.id, returnOrderIds);
+                const active = option.id === "all" ? allOrdersActive : filters.view === option.id;
+                return (
+                  <button
+                    type="button"
+                    key={option.id}
+                    onClick={() => {
+                      const next = new URLSearchParams({ range: "all" });
+                      if (option.id !== "all") next.set("view", option.id);
+                      setSearchParams(next, { replace: true });
+                    }}
+                    className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition ${active ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-secondary"}`}
+                  >
+                    {option.label}
+                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${active ? "bg-background/15" : "bg-secondary"}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <span className="w-fit shrink-0 rounded-full bg-secondary px-3 py-1.5 text-[11px] font-semibold">
+            {filteredOrders.length} shown · {orders.length} total
+          </span>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.6fr)_repeat(4,minmax(135px,.7fr))_minmax(155px,.8fr)]">
-          <label className="relative block">
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <label className="relative block min-w-0 flex-1">
             <span className="sr-only">Search orders</span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={15}/>
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16}/>
             <input
               value={filters.query}
               onChange={(event) => updateDeskParams({ q: event.target.value || null, order: null })}
-              placeholder="Order, customer, email, phone, or product"
-              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-xs outline-none transition focus:border-foreground"
+              placeholder="Search order, customer, email, phone, or product"
+              className="h-12 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-xs outline-none transition focus:border-foreground"
             />
           </label>
-          <label>
-            <span className="sr-only">Fulfillment status</span>
-            <select
-              value={filters.status}
-              onChange={(event) => updateDeskParams({ status: event.target.value === "all" ? null : event.target.value, order: null })}
-              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
-            >
-              <option value="all">All statuses</option>
-              {adminOrderStatuses.map((status) => <option key={status} value={status}>{status.replace(/^./, (letter) => letter.toUpperCase())}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="sr-only">Payment status</span>
-            <select
-              value={filters.paymentStatus}
-              onChange={(event) => updateDeskParams({ payment: event.target.value === "all" ? null : event.target.value, order: null })}
-              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
-            >
-              <option value="all">All payments</option>
-              {adminPaymentStatuses.map((status) => <option key={status} value={status}>{status.replace(/^./, (letter) => letter.toUpperCase())}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="sr-only">Payment method</span>
-            <select
-              value={filters.paymentMethod}
-              onChange={(event) => updateDeskParams({ method: event.target.value === "all" ? null : event.target.value, order: null })}
-              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold uppercase"
-            >
-              <option value="all">All methods</option>
-              {availablePaymentMethods.map((method) => <option key={method} value={method}>{method}</option>)}
-            </select>
-          </label>
-          <label>
-            <span className="sr-only">Order date</span>
-            <select
-              value={filters.dateRange}
-              onChange={(event) => updateDeskParams({ range: event.target.value === "all" ? null : event.target.value, order: null })}
-              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
-            >
-              <option value="all">Any date</option>
-              <option value="today">Today</option>
-              <option value="last_7_days">Last 7 days</option>
-              <option value="last_30_days">Last 30 days</option>
-            </select>
-          </label>
-          <label>
-            <span className="sr-only">Sort orders</span>
-            <select
-              value={filters.sort}
-              onChange={(event) => updateDeskParams({ sort: event.target.value === "newest" ? null : event.target.value, order: null })}
-              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold"
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="longest_waiting">Longest waiting</option>
-              <option value="highest_total">Highest total</option>
-            </select>
-          </label>
-        </div>
-        {hasActiveAdminOrderFilters(filters) && (
           <button
             type="button"
-            onClick={() => setSearchParams({}, { replace: true })}
-            className="mt-4 text-xs font-semibold underline underline-offset-4"
+            onClick={() => setFiltersOpen((open) => !open)}
+            aria-expanded={filtersOpen}
+            className={`inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${filtersOpen ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-secondary"}`}
           >
-            Clear all filters
+            <SlidersHorizontal size={15}/>
+            Filters
+            {activeFilterCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[9px] ${filtersOpen ? "bg-background/15" : "bg-secondary"}`}>{activeFilterCount}</span>}
+            <ChevronDown size={14} className={`transition ${filtersOpen ? "rotate-180" : ""}`}/>
           </button>
+        </div>
+
+        {filtersOpen && (
+          <div className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-5">
+            <label className="grid gap-1.5 text-[10px] font-bold tracking-[.08em] text-muted-foreground">
+              FULFILLMENT
+              <select value={filters.status} onChange={(event) => updateDeskParams({ status: event.target.value === "all" ? null : event.target.value, order: null })} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold tracking-normal text-foreground">
+                <option value="all">All statuses</option>
+                {adminOrderStatuses.map((status) => <option key={status} value={status}>{status.replace(/^./, (letter) => letter.toUpperCase())}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-[10px] font-bold tracking-[.08em] text-muted-foreground">
+              PAYMENT
+              <select value={filters.paymentStatus} onChange={(event) => updateDeskParams({ payment: event.target.value === "all" ? null : event.target.value, order: null })} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold tracking-normal text-foreground">
+                <option value="all">All payments</option>
+                {adminPaymentStatuses.map((status) => <option key={status} value={status}>{status.replace(/^./, (letter) => letter.toUpperCase())}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-[10px] font-bold tracking-[.08em] text-muted-foreground">
+              METHOD
+              <select value={filters.paymentMethod} onChange={(event) => updateDeskParams({ method: event.target.value === "all" ? null : event.target.value, order: null })} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold uppercase tracking-normal text-foreground">
+                <option value="all">All methods</option>
+                {availablePaymentMethods.map((method) => <option key={method} value={method}>{method}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-[10px] font-bold tracking-[.08em] text-muted-foreground">
+              DATE
+              <select value={filters.dateRange} onChange={(event) => updateDeskParams({ range: event.target.value === "today" ? null : event.target.value, order: null })} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold tracking-normal text-foreground">
+                <option value="today">Today</option>
+                <option value="all">Any date</option>
+                <option value="last_7_days">Last 7 days</option>
+                <option value="last_30_days">Last 30 days</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-[10px] font-bold tracking-[.08em] text-muted-foreground sm:col-span-2 xl:col-span-1">
+              ORDER
+              <select value={filters.sort} onChange={(event) => updateDeskParams({ sort: event.target.value === "oldest" ? null : event.target.value, order: null })} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold tracking-normal text-foreground">
+                <option value="oldest">First placed first</option>
+                <option value="newest">Most recent first</option>
+                <option value="longest_waiting">Longest waiting</option>
+                <option value="highest_total">Highest total</option>
+              </select>
+            </label>
+          </div>
+        )}
+        {hasActiveAdminOrderFilters(filters) && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+            <p className="text-[11px] text-muted-foreground">Filters affect the loaded orders only and do not make another database request.</p>
+            <button type="button" onClick={() => setSearchParams({}, { replace: true })} className="text-xs font-semibold underline underline-offset-4">
+              Reset to today’s queue
+            </button>
+          </div>
         )}
       </section>
       {ordersLoadError && orders.length > 0 && (
@@ -1625,43 +1718,60 @@ export function OrdersWorkspacePage() {
           <Search className="mx-auto text-muted-foreground" size={24}/>
           <p className="mt-4 text-sm font-semibold text-foreground">No orders match this view.</p>
           <p className="mt-2 text-xs text-muted-foreground">Adjust the search, saved view, or filters to widen the results.</p>
-          <button type="button" onClick={() => setSearchParams({}, { replace: true })} className="mt-5 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background">Show all orders</button>
+          <div className="mt-5 flex flex-col justify-center gap-2 min-[390px]:flex-row">
+            <button type="button" onClick={() => setSearchParams({}, { replace: true })} className="rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background">Return to today</button>
+            <button type="button" onClick={() => setSearchParams({ range: "all" }, { replace: true })} className="rounded-xl border border-border bg-card px-5 py-2.5 text-xs font-semibold">Show all orders</button>
+          </div>
         </div>
       ) : (
-        <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(280px,.78fr)_minmax(400px,1.2fr)_minmax(260px,.7fr)]">
-          <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-            <div className="border-b border-border px-5 py-4">
-              <b className="text-sm">Customer orders</b>
-              <span className="ml-2 rounded-full bg-secondary px-2 py-1 text-[10px]">
-                {filteredOrders.length}
-              </span>
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] xl:items-start">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm xl:sticky xl:top-5 xl:col-start-1 xl:row-start-1">
+            <div className="border-b border-border bg-[#f8f5ef] px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <b className="text-sm">{queueTitle}</b>
+                  <span className="mt-1 block text-[10px] text-muted-foreground">{queueSortLabel}</span>
+                </div>
+                <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-semibold shadow-sm">
+                  {filteredOrders.length}
+                </span>
+              </div>
             </div>
-            <div className="max-h-[640px] divide-y divide-border overflow-y-auto">
-              {visibleOrders.map((order) => {
+            <div className="max-h-[620px] divide-y divide-border overflow-y-auto overscroll-contain">
+              {visibleOrders.map((order, index) => {
                 const address = order.shipping_address;
+                const queuePosition = (orderPage - 1) * ordersPerPage + index + 1;
                 return (
                   <button
                     key={order.id}
                     onClick={() => selectOrder(order.id)}
-                    className={`w-full p-4 text-left transition ${
-                      selected.id === order.id ? "bg-[#eee8de]" : "hover:bg-secondary/70"
+                    className={`group w-full p-4 text-left transition ${
+                      selected.id === order.id ? "bg-[#e8e0d4]" : "hover:bg-secondary/70"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <b className="text-sm">#{order.order_number}</b>
-                      <Status>
-                        {order.status.replace(/_/g, " ").replace(/^./, (character) => character.toUpperCase())}
-                      </Status>
-                    </div>
-                    <p className="mt-2 text-sm font-medium">
-                      {address.name || order.profiles?.full_name || "Customer"}
-                    </p>
-                    <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-                      <span>
-                        {order.order_items.length} {order.order_items.length === 1 ? "item" : "items"} ·{" "}
-                        {new Date(order.created_at).toLocaleDateString("en-PH")}
+                    <div className="flex items-start gap-3">
+                      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[10px] font-bold ${selected.id === order.id ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground"}`} aria-label={`Queue position ${queuePosition}`}>
+                        {queuePosition}
                       </span>
-                      <span>{money(Number(order.total))}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <b className="text-sm">#{order.order_number}</b>
+                          <Status>
+                            {order.status.replace(/_/g, " ").replace(/^./, (character) => character.toUpperCase())}
+                          </Status>
+                        </div>
+                        <p className="mt-2 truncate text-sm font-medium">
+                          {address.name || order.profiles?.full_name || "Customer"}
+                        </p>
+                        <div className="mt-1.5 flex items-end justify-between gap-3 text-[11px] text-muted-foreground">
+                          <span>
+                            <b className="block font-semibold text-foreground">{adminOrderTimeFormatter.format(new Date(order.created_at))}</b>
+                            {!todayQueueActive && <span>{adminOrderDateFormatter.format(new Date(order.created_at))} · </span>}
+                            {order.order_items.length} {order.order_items.length === 1 ? "item" : "items"}
+                          </span>
+                          <b className="shrink-0 text-xs text-foreground">{money(Number(order.total))}</b>
+                        </div>
+                      </div>
                     </div>
                   </button>
                 );
@@ -1691,7 +1801,7 @@ export function OrdersWorkspacePage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-border bg-card shadow-sm">
+          <section className="min-w-0 rounded-2xl border border-border bg-card shadow-sm xl:col-start-2 xl:row-span-2 xl:row-start-1">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-5">
               <div>
                 <div className="flex items-center gap-2">
@@ -1705,11 +1815,11 @@ export function OrdersWorkspacePage() {
                   {money(Number(selected.total))}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:w-auto">
                 <button
                   type="button"
                   onClick={printPackingList}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold transition hover:bg-secondary"
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold transition hover:bg-secondary"
                   aria-label={`Print packing list for order ${selected.order_number}`}
                 >
                   <Printer size={14}/>
@@ -1918,7 +2028,7 @@ export function OrdersWorkspacePage() {
             </div>
           </section>
 
-          <aside className="rounded-2xl border border-border bg-[#252723] p-5 text-[#f7f3ec] shadow-sm">
+          <aside className="min-w-0 rounded-2xl border border-border bg-[#252723] p-5 text-[#f7f3ec] shadow-sm xl:col-start-1 xl:row-start-2">
             <p className="text-[10px] font-bold tracking-[.16em] text-[#c9c0b3]">
               CUSTOMER RECORD
             </p>
@@ -2378,7 +2488,7 @@ export function ReviewsPage() {
   };
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [notice, setNotice] = useState("");
-  const [filter, setFilter] = useState<"all" | "pending" | "published" | "photos">("all");
+  const [filter, setFilter] = useState<"all" | "visible" | "hidden" | "photos">("all");
   const [gallery, setGallery] = useState<{ reviewId: string; index: number } | null>(null);
   const loadReviews = useCallback(async () => {
     const { data, error } = await supabase.from("reviews").select(
@@ -2413,15 +2523,16 @@ export function ReviewsPage() {
     window.addEventListener("focus", refreshOnFocus);
     return () => { window.removeEventListener("focus", refreshOnFocus); void supabase.removeChannel(channel); };
   }, [loadReviews]);
-  const update = async (id: string, approved: boolean) => {
-    const { error } = await supabase.from("reviews").update({ approved }).eq("id", id);
-    setNotice(error?.message ?? (approved ? "Review published to the product page." : "Review hidden from the customer storefront."));
+  const setReviewVisibility = async (id: string, visible: boolean) => {
+    const { error } = await supabase.from("reviews").update({ approved: visible }).eq("id", id);
+    setNotice(error?.message ?? (visible ? "Review restored to the customer storefront." : "Review hidden from the customer storefront."));
     if (!error) await loadReviews();
   };
-  const average = reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
-  const pendingCount = reviews.filter((review) => !review.approved).length;
+  const publicReviews = reviews.filter((review) => review.approved);
+  const average = publicReviews.length ? publicReviews.reduce((sum, review) => sum + review.rating, 0) / publicReviews.length : 0;
+  const hiddenCount = reviews.length - publicReviews.length;
   const photoCount = reviews.filter((review) => review.image_urls.length > 0).length;
-  const visibleReviews = reviews.filter((review) => filter === "all" || (filter === "pending" && !review.approved) || (filter === "published" && review.approved) || (filter === "photos" && review.image_urls.length > 0));
+  const visibleReviews = reviews.filter((review) => filter === "all" || (filter === "visible" && review.approved) || (filter === "hidden" && !review.approved) || (filter === "photos" && review.image_urls.length > 0));
   const galleryReview = gallery ? reviews.find((review) => review.id === gallery.reviewId) ?? null : null;
   useEffect(() => {
     if (!gallery) return;
@@ -2440,11 +2551,11 @@ export function ReviewsPage() {
   return (
     <AdminShell title="Reviews">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">MODERATION QUEUE</p><h2 className="mt-2 text-3xl font-semibold">Reviews</h2><p className="mt-2 text-sm text-muted-foreground">Inspect customer feedback and uploaded photos before publishing.</p></div>
+        <div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">CUSTOMER VOICE</p><h2 className="mt-2 text-3xl font-semibold">Reviews</h2><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Customer reviews publish immediately. Monitor feedback here and hide content only when it violates CozyCraft content standards.</p></div>
         <div className="self-start rounded-xl bg-secondary px-3 py-2 text-xs sm:self-auto">Average rating <b className="ml-2">{average.toFixed(1)} / 5</b></div>
       </div>
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[["All reviews", reviews.length, "all"], ["Awaiting approval", pendingCount, "pending"], ["Published", reviews.length - pendingCount, "published"], ["With customer photos", photoCount, "photos"]].map(([label, value, key]) => (
+        {[["All reviews", reviews.length, "all"], ["Visible", publicReviews.length, "visible"], ["Hidden", hiddenCount, "hidden"], ["With customer photos", photoCount, "photos"]].map(([label, value, key]) => (
           <button key={String(key)} onClick={() => setFilter(key as typeof filter)} className={`rounded-2xl border p-4 text-left transition ${filter === key ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-secondary"}`}><span className={`text-[10px] font-bold uppercase tracking-[.14em] ${filter === key ? "text-background/65" : "text-muted-foreground"}`}>{label}</span><strong className="mt-2 block text-2xl">{value}</strong></button>
         ))}
       </div>
@@ -2471,19 +2582,19 @@ export function ReviewsPage() {
                     )}
                   </span>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2"><b className="truncate">{review.profiles?.full_name || review.profiles?.email || "Customer"}</b><span className="flex gap-0.5 text-[#a37b57]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={14} fill={index < review.rating ? "currentColor" : "none"}/>)}</span>{review.approved ? <Status>Published</Status> : <span className="rounded-full bg-[#f2e5d6] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.12em] text-[#885f46]">Awaiting approval</span>}</div>
+                    <div className="flex flex-wrap items-center gap-2"><b className="truncate">{review.profiles?.full_name || review.profiles?.email || "Customer"}</b><span className="flex gap-0.5 text-[#a37b57]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={14} fill={index < review.rating ? "currentColor" : "none"}/>)}</span>{review.approved ? <Status>Visible</Status> : <span className="rounded-full bg-[#eeeae3] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.12em] text-muted-foreground">Hidden</span>}</div>
                     <p className="mt-1 text-[11px] text-muted-foreground">Verified customer profile</p>
                   </div>
                 </div>
                 <h3 className="mt-4 font-serif text-2xl">{review.title || "Customer feedback"}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">“{review.body || "No written feedback provided."}”</p>
                 <p className="mt-3 text-xs text-muted-foreground"><b className="text-foreground">{review.products?.name || "Product"}</b> · {new Date(review.created_at).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</p>
               </div>
-              <div className="flex flex-wrap gap-2 lg:justify-end">{!review.approved && <button onClick={() => void update(review.id, true)} className="rounded-xl bg-foreground px-4 py-2.5 text-xs font-semibold text-background">Approve and publish</button>}<button onClick={() => void update(review.id, false)} className="rounded-xl border border-border px-4 py-2.5 text-xs font-semibold">{review.approved ? "Hide review" : "Keep hidden"}</button></div>
+              <div className="flex flex-wrap gap-2 lg:justify-end"><button onClick={() => void setReviewVisibility(review.id, !review.approved)} className={`rounded-xl px-4 py-2.5 text-xs font-semibold ${review.approved ? "border border-border" : "bg-foreground text-background"}`}>{review.approved ? "Hide review" : "Restore review"}</button></div>
             </div>
-            {review.image_urls.length > 0 && <div className="border-t border-border bg-[#f5f1ea] p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">CUSTOMER PHOTOS</p><p className="mt-1 text-xs text-muted-foreground">Select an image to inspect it before approval.</p></div><span className="rounded-full bg-card px-3 py-1 text-[10px] font-semibold">{review.image_urls.length} photo{review.image_urls.length === 1 ? "" : "s"}</span></div><div className="mt-4 grid grid-cols-2 gap-3 sm:flex">{review.image_urls.map((url, index) => <button key={`${review.id}-${index}`} onClick={() => setGallery({ reviewId: review.id, index })} className="group relative aspect-square min-w-0 overflow-hidden rounded-2xl border border-border bg-card sm:h-32 sm:w-32" aria-label={`Open review photo ${index + 1}`}><ResilientImage src={url} alt={`${review.products?.name || "Product"} customer review photo ${index + 1}`} className="h-full w-full object-cover transition duration-300 group-hover:scale-105"/><span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/70 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100"><Eye size={11} className="mr-1 inline"/>View full size</span></button>)}</div></div>}
+            {review.image_urls.length > 0 && <div className="border-t border-border bg-[#f5f1ea] p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">CUSTOMER PHOTOS</p><p className="mt-1 text-xs text-muted-foreground">Select an image to inspect the customer upload at full size.</p></div><span className="rounded-full bg-card px-3 py-1 text-[10px] font-semibold">{review.image_urls.length} photo{review.image_urls.length === 1 ? "" : "s"}</span></div><div className="mt-4 grid grid-cols-2 gap-3 sm:flex">{review.image_urls.map((url, index) => <button key={`${review.id}-${index}`} onClick={() => setGallery({ reviewId: review.id, index })} className="group relative aspect-square min-w-0 overflow-hidden rounded-2xl border border-border bg-card sm:h-32 sm:w-32" aria-label={`Open review photo ${index + 1}`}><ResilientImage src={url} alt={`${review.products?.name || "Product"} customer review photo ${index + 1}`} className="h-full w-full object-cover transition duration-300 group-hover:scale-105"/><span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/70 px-2 py-1 text-[9px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100"><Eye size={11} className="mr-1 inline"/>View full size</span></button>)}</div></div>}
           </article>
         ))}
-        {!visibleReviews.length && <p className="rounded-2xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">{reviews.length ? "No reviews match this moderation view." : "No customer reviews have been submitted yet. New reviews and photos will appear here in realtime."}</p>}
+        {!visibleReviews.length && <p className="rounded-2xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">{reviews.length ? "No reviews match this view." : "No customer reviews have been submitted yet. New reviews and photos will appear here in realtime."}</p>}
       </div>
       {notice && <Toast message={notice} close={() => setNotice("")} />}
       {gallery && galleryReview?.image_urls[gallery.index] && createPortal(
@@ -2491,7 +2602,7 @@ export function ReviewsPage() {
           <section className="relative flex max-h-[95dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.5rem] bg-[#171614] text-white shadow-2xl sm:rounded-[2rem]">
             <header className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-5"><div className="min-w-0"><p className="truncate text-sm font-semibold">{galleryReview.products?.name || "Product review"}</p><p className="mt-0.5 text-[10px] text-white/60">Photo {gallery.index + 1} of {galleryReview.image_urls.length} · {galleryReview.profiles?.full_name || "Customer"}</p></div><button onClick={() => setGallery(null)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Close photo viewer"><X size={18}/></button></header>
             <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black p-3 sm:p-5"><ResilientImage src={galleryReview.image_urls[gallery.index]} alt={`${galleryReview.products?.name || "Product"} review photo ${gallery.index + 1}`} className="max-h-[70dvh] w-auto max-w-full object-contain"/>{galleryReview.image_urls.length > 1 && <><button onClick={() => setGallery((current) => current && ({ ...current, index: (current.index - 1 + galleryReview.image_urls.length) % galleryReview.image_urls.length }))} className="absolute left-3 grid h-11 w-11 place-items-center rounded-full bg-black/60 hover:bg-black/80" aria-label="Previous photo"><ChevronLeft/></button><button onClick={() => setGallery((current) => current && ({ ...current, index: (current.index + 1) % galleryReview.image_urls.length }))} className="absolute right-3 grid h-11 w-11 place-items-center rounded-full bg-black/60 hover:bg-black/80" aria-label="Next photo"><ChevronRight/></button></>}</div>
-            <footer className="flex flex-col justify-between gap-3 border-t border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:px-5"><p className="line-clamp-2 text-xs leading-5 text-white/70">{galleryReview.body}</p>{!galleryReview.approved && <button onClick={() => { void update(galleryReview.id, true); setGallery(null); }} className="shrink-0 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-black">Approve review</button>}</footer>
+            <footer className="flex flex-col justify-between gap-3 border-t border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:px-5"><p className="line-clamp-2 text-xs leading-5 text-white/70">{galleryReview.body}</p><button onClick={() => { void setReviewVisibility(galleryReview.id, !galleryReview.approved); setGallery(null); }} className="shrink-0 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-black">{galleryReview.approved ? "Hide review" : "Restore review"}</button></footer>
           </section>
         </div>, document.body,
       )}
@@ -3361,7 +3472,7 @@ export function AdminModule({ module }: { module: keyof typeof moduleContent }) 
                   : isReports
                     ? "Exports"
                     : isReviews
-                      ? "Moderation"
+                      ? "Visibility"
                       : "Activity",
               ].map((item) => (
                 <button

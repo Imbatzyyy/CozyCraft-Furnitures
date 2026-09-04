@@ -21,7 +21,6 @@ export type FulfillmentSettings = {
 };
 
 export type ReviewSettings = {
-  approval_required: boolean;
   verified_purchases_only: boolean;
   minimum_length: number;
   maximum_length: number;
@@ -132,7 +131,6 @@ export const defaultStoreSettings: PublicStoreSettings = {
     auto_archive_discontinued: false,
   },
   review_settings: {
-    approval_required: false,
     verified_purchases_only: true,
     minimum_length: 5,
     maximum_length: 2000,
@@ -192,6 +190,11 @@ export const normalizeStoreSettings = (
   value: Partial<PublicStoreSettings> | null | undefined,
 ): PublicStoreSettings => {
   const source = value ?? {};
+  const reviewSettings = Object.fromEntries(
+    Object.entries(objectValue(source.review_settings)).filter(
+      ([key]) => key !== "approval_required",
+    ),
+  );
   return {
     ...defaultStoreSettings,
     ...source,
@@ -209,7 +212,7 @@ export const normalizeStoreSettings = (
     } as FulfillmentSettings,
     review_settings: {
       ...defaultStoreSettings.review_settings,
-      ...objectValue(source.review_settings),
+      ...reviewSettings,
     } as ReviewSettings,
     account_settings: {
       ...defaultStoreSettings.account_settings,

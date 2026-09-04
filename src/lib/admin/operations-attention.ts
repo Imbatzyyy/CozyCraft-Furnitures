@@ -39,7 +39,7 @@ export function buildAdminAttentionItems(input: {
       label: "Ready to fulfill",
       description: "Paid and COD orders that can move forward now.",
       count: countAdminOrderView(orders, "needs_fulfillment"),
-      route: "/admin/orders?view=needs_fulfillment",
+      route: "/admin/orders?view=needs_fulfillment&range=all",
       level: "neutral",
     },
     {
@@ -67,7 +67,7 @@ export function buildAdminAttentionItems(input: {
         label: "Cancellation requests",
         description: "Customer requests waiting for an authorized decision.",
         count: countAdminOrderView(orders, "cancellation_requests"),
-        route: "/admin/orders?view=cancellation_requests",
+        route: "/admin/orders?view=cancellation_requests&range=all",
         level: "warning",
       },
       {
@@ -75,7 +75,7 @@ export function buildAdminAttentionItems(input: {
         label: "Refund failures",
         description: "Refunds that need a manual follow-up.",
         count: countAdminOrderView(orders, "refund_attention"),
-        route: "/admin/orders?view=refund_attention",
+        route: "/admin/orders?view=refund_attention&range=all",
         level: "critical",
       },
     );

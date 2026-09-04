@@ -40,6 +40,26 @@ function order(overrides: Partial<DbOrder> = {}): DbOrder {
 }
 
 describe("admin order desk", () => {
+  it("opens on today's Philippine queue with the first placed order first", () => {
+    expect(DEFAULT_ADMIN_ORDER_FILTERS.dateRange).toBe("today");
+    expect(DEFAULT_ADMIN_ORDER_FILTERS.sort).toBe("oldest");
+
+    const results = filterAdminOrders(
+      [
+        order({ id: "later-today", created_at: "2026-09-05T00:00:00.000Z" }),
+        order({ id: "yesterday", created_at: "2026-09-04T15:59:00.000Z" }),
+        order({ id: "first-today", created_at: "2026-09-04T16:05:00.000Z" }),
+      ],
+      DEFAULT_ADMIN_ORDER_FILTERS,
+      { now: new Date("2026-09-05T00:30:00.000Z") },
+    );
+
+    expect(results.map((item) => item.id)).toEqual([
+      "first-today",
+      "later-today",
+    ]);
+  });
+
   it("only queues paid or COD orders that can safely move through fulfillment", () => {
     expect(isOrderReadyForFulfillment(order())).toBe(true);
     expect(

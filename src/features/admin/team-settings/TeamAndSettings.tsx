@@ -759,7 +759,10 @@ export function StoreSettingsPage() {
               <div className="rounded-xl border border-border bg-secondary/40 p-4 text-xs leading-5 text-muted-foreground md:col-span-2">Messages are sent server-side through Resend, use editable templates, and record delivery attempts without exposing the provider key. <Link to="/admin/content" className="ml-1 font-semibold text-foreground underline underline-offset-4">Manage templates and delivery logs</Link>.</div>
             </>)}
             {section === "Reviews" && (<>
-              {toggle("Require moderation", "New reviews remain pending until approved in the admin Reviews tab.", settings.review_settings.approval_required, (value) => updateNested("review_settings", "approval_required", value))}
+              <div className="rounded-xl border border-[#cdd9c8] bg-[#edf3ea] p-4 md:col-span-2">
+                <b className="block text-sm text-[#41553c]">Immediate review publishing is active</b>
+                <span className="mt-1 block text-xs leading-5 text-[#5f7059]">Eligible customer reviews appear on the product page as soon as they are submitted. Administrators can still hide content afterward when it violates CozyCraft content standards.</span>
+              </div>
               {toggle("Verified purchases only", "Only customers with delivered order items can submit a review.", settings.review_settings.verified_purchases_only, (value) => updateNested("review_settings", "verified_purchases_only", value))}
               {numberInput("Minimum review length", settings.review_settings.minimum_length, (value) => updateNested("review_settings", "minimum_length", value), "chars")}
               {numberInput("Maximum review length", settings.review_settings.maximum_length, (value) => updateNested("review_settings", "maximum_length", value), "chars")}

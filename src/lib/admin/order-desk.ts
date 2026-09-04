@@ -30,8 +30,8 @@ export const DEFAULT_ADMIN_ORDER_FILTERS: AdminOrderDeskFilters = {
   status: "all",
   paymentStatus: "all",
   paymentMethod: "all",
-  dateRange: "all",
-  sort: "newest",
+  dateRange: "today",
+  sort: "oldest",
 };
 
 const terminalStatuses = new Set<DbOrder["status"]>(["delivered", "cancelled"]);
@@ -92,13 +92,35 @@ function orderSearchText(order: DbOrder): string {
     .toLocaleLowerCase();
 }
 
-function dateRangeStart(range: AdminOrderDateRange, now: Date): Date | null {
-  if (range === "all") return null;
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  if (range === "last_7_days") start.setDate(start.getDate() - 6);
-  if (range === "last_30_days") start.setDate(start.getDate() - 29);
-  return start;
+const manilaDateParts = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Manila",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function manilaDayNumber(value: Date): number {
+  const parts = Object.fromEntries(
+    manilaDateParts
+      .formatToParts(value)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  return Math.floor(
+    Date.UTC(parts.year, parts.month - 1, parts.day) / 86_400_000,
+  );
+}
+
+function orderMatchesDateRange(
+  createdAt: string,
+  range: AdminOrderDateRange,
+  now: Date,
+): boolean {
+  if (range === "all") return true;
+  const ageInDays = manilaDayNumber(now) - manilaDayNumber(new Date(createdAt));
+  if (range === "today") return ageInDays === 0;
+  if (range === "last_7_days") return ageInDays >= 0 && ageInDays <= 6;
+  return ageInDays >= 0 && ageInDays <= 29;
 }
 
 export function filterAdminOrders(
@@ -110,7 +132,7 @@ export function filterAdminOrders(
   } = {},
 ): DbOrder[] {
   const term = filters.query.trim().toLocaleLowerCase();
-  const start = dateRangeStart(filters.dateRange, options.now ?? new Date());
+  const now = options.now ?? new Date();
   const returnOrderIds = options.returnOrderIds ?? new Set<string>();
 
   const filtered = orders.filter((order) => {
@@ -124,7 +146,7 @@ export function filterAdminOrders(
     ) {
       return false;
     }
-    return !start || new Date(order.created_at) >= start;
+    return orderMatchesDateRange(order.created_at, filters.dateRange, now);
   });
 
   return filtered.sort((left, right) => {
@@ -153,7 +175,7 @@ export function hasActiveAdminOrderFilters(filters: AdminOrderDeskFilters): bool
     filters.status !== "all" ||
     filters.paymentStatus !== "all" ||
     filters.paymentMethod !== "all" ||
-    filters.dateRange !== "all" ||
-    filters.sort !== "newest"
+    filters.dateRange !== DEFAULT_ADMIN_ORDER_FILTERS.dateRange ||
+    filters.sort !== DEFAULT_ADMIN_ORDER_FILTERS.sort
   );
 }

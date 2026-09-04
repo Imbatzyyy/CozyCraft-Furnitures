@@ -2317,14 +2317,14 @@ function ProductPageContent({
       p_body: reviewBody.trim(),
     });
     setSubmittingReview(false);
-    const published = Array.isArray(data) ? data[0]?.approved : true;
+    const visible = Array.isArray(data) ? data[0]?.approved !== false : true;
     setReviewNotice(
       error?.message ??
-        (published
+        (visible
           ? existingReview
             ? "Your verified review was updated."
             : "Your verified review is now published."
-          : "Your review was saved and is awaiting moderation."),
+          : "Your changes were saved. This review is currently hidden from the storefront."),
     );
     if (!error) {
       setExistingReview(true);
@@ -2737,7 +2737,7 @@ function ProductPageContent({
                 placeholder="Tell other customers about this piece"
                 className="mt-3 min-h-24 w-full rounded-xl border border-border bg-card p-3 text-sm"
               />
-              <p className="mt-2 text-[10px] text-muted-foreground">{reviewBody.length}/{storeSettings.review_settings.maximum_length} characters · minimum {storeSettings.review_settings.minimum_length}{storeSettings.review_settings.approval_required ? " · reviewed before publishing" : ""}</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">{reviewBody.length}/{storeSettings.review_settings.maximum_length} characters · minimum {storeSettings.review_settings.minimum_length} · published immediately</p>
               <button
                 disabled={submittingReview}
                 className="mt-3 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:cursor-not-allowed disabled:opacity-50"
@@ -2789,7 +2789,7 @@ function ProductPageContent({
             <p className="mt-8 rounded-2xl bg-secondary p-6 text-center text-sm text-muted-foreground">
               {reviews.length
                 ? "No reviews match this star rating yet."
-                : "No approved customer reviews yet. Be the first to share your experience."}
+                : "No customer reviews yet. Be the first to share your experience."}
             </p>
           )}
         </section>

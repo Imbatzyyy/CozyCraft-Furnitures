@@ -814,7 +814,7 @@ function CustomerProfile() {
   const [reviewPhotos, setReviewPhotos] = useState<ReviewPhotoDraft[]>([]);
   const [reviewError, setReviewError] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewSuccess, setReviewSuccess] = useState<{ productName: string; published: boolean } | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState<{ productName: string } | null>(null);
   const [securityView, setSecurityView] = useState<"home" | "setup" | "change">(
     "home",
   );
@@ -994,7 +994,7 @@ function CustomerProfile() {
       uploadedPaths.push(path);
       imageUrls.push(supabase.storage.from("review-images").getPublicUrl(path).data.publicUrl);
     }
-    const { data, error } = await supabase.rpc("submit_order_item_review", {
+    const { error } = await supabase.rpc("submit_order_item_review", {
       p_order_item_id: reviewTarget.item.id,
       p_rating: reviewRating,
       p_title: reviewTitle.trim(),
@@ -1007,12 +1007,11 @@ function CustomerProfile() {
       setReviewError(error.message);
       return;
     }
-    const result = Array.isArray(data) ? data[0] : data;
     const productName = reviewTarget.item.product_name;
     setReviewSubmitting(false);
     await refreshReviewedOrderItems();
     clearReviewDraft();
-    setReviewSuccess({ productName, published: Boolean(result?.approved) });
+    setReviewSuccess({ productName });
   };
   const loadMfaFactors = useCallback(async () => {
     if (!userId) { setMfaFactors([]); return; }
@@ -3637,13 +3636,13 @@ function CustomerProfile() {
                     <button type="button" onClick={()=>void submitOrderReview()} disabled={reviewSubmitting || reviewRating < 1 || reviewBody.trim().length < 5} className="min-h-12 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45">{reviewSubmitting ? "Publishing your review…" : "Submit review"}</button>
                     <button type="button" onClick={clearReviewDraft} disabled={reviewSubmitting} className="min-h-12 rounded-xl border border-border px-5 text-sm font-semibold disabled:opacity-50">Cancel</button>
                   </div>
-                  <p className="mt-4 text-[10px] leading-5 text-muted-foreground">Only delivered purchases can be reviewed. Reviews may be checked by CozyCraft before appearing publicly.</p>
+                  <p className="mt-4 text-[10px] leading-5 text-muted-foreground">Only delivered purchases can be reviewed. Your review appears publicly as soon as it is submitted. CozyCraft may hide content later only when it violates our content standards.</p>
                 </div>
               </div>
             </div>
           </section>
         </div>, document.body)}
-      {reviewSuccess && createPortal(<div className="fixed inset-0 z-[330] grid place-items-center bg-[#171614]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="review-success-title"><section className="w-full max-w-md rounded-[1.75rem] bg-[#fbfaf7] p-7 text-center shadow-2xl sm:p-9"><span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e1ecdd] text-[#4e6848]"><Check size={30}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">REVIEW RECEIVED</p><h2 id="review-success-title" className="mt-2 font-serif text-3xl">Thank you for sharing.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Your review for <b className="text-foreground">{reviewSuccess.productName}</b> was submitted successfully. {reviewSuccess.published ? "It is now visible to other shoppers." : "Our team will check it before it appears publicly."}</p><button type="button" onClick={()=>setReviewSuccess(null)} className="mt-7 min-h-12 w-full rounded-xl bg-foreground px-5 text-sm font-semibold text-background">Back to my order</button></section></div>, document.body)}
+      {reviewSuccess && createPortal(<div className="fixed inset-0 z-[330] grid place-items-center bg-[#171614]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="review-success-title"><section className="w-full max-w-md rounded-[1.75rem] bg-[#fbfaf7] p-7 text-center shadow-2xl sm:p-9"><span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e1ecdd] text-[#4e6848]"><Check size={30}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">REVIEW PUBLISHED</p><h2 id="review-success-title" className="mt-2 font-serif text-3xl">Thank you for sharing.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Your review for <b className="text-foreground">{reviewSuccess.productName}</b> is now visible to other shoppers.</p><button type="button" onClick={()=>setReviewSuccess(null)} className="mt-7 min-h-12 w-full rounded-xl bg-foreground px-5 text-sm font-semibold text-background">Back to my order</button></section></div>, document.body)}
       {cancelOrderId && <div className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-cancel-title"><section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">CANCELLATION REQUEST</p><h2 id="customer-cancel-title" className="mt-2 font-serif text-3xl">Request a review.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Requests are accepted within {storeSettings.fulfillment_settings.cancellation_window_hours} hours of ordering. Your order remains active until an administrator approves it; approved paid orders are safely refunded.</p><label className="mt-5 grid gap-2 text-sm font-semibold">Reason<textarea value={cancelReason} onChange={(event)=>setCancelReason(event.target.value)} minLength={5} maxLength={500} className="min-h-24 rounded-xl border border-border bg-background p-3 font-normal" placeholder="Tell us why you need to cancel" /></label><div className="mt-5 grid gap-3 min-[390px]:grid-cols-2"><button disabled={cancelSubmitting || cancelReason.trim().length < 5} onClick={()=>void submitCancellation()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{cancelSubmitting ? "Sending request…" : "Submit request"}</button><button disabled={cancelSubmitting} onClick={()=>{setCancelOrderId(null);setCancelReason("");}} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button></div></section></div>}
       {confirmSignOut && (
         <ConfirmSignOut
