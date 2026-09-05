@@ -301,7 +301,7 @@ function WorkspaceSearch({
               key: `order-${order.id}`,
               title: `Order #${order.order_number}`,
               detail: `${order.shipping_address.name || "Customer"} · ${order.status}`,
-              route: `/admin/orders?order=${encodeURIComponent(order.id)}&range=all`,
+              route: `/admin/orders?order=${encodeURIComponent(order.id)}&q=${encodeURIComponent(order.id)}&range=all`,
               Icon: ClipboardList,
             })),
           ...customerProfiles
@@ -337,6 +337,7 @@ function WorkspaceSearch({
       : [];
 
     return [
+      ...(term ? [{key:"search-order-database", title:`Search orders for “${query.trim()}”`,detail:"Search the complete order history",route:`/admin/orders?range=all&q=${encodeURIComponent(query.trim())}`,Icon:ClipboardList}] : []),
       ...sections.filter((item) => !term || [item.title, item.detail].some(matches)),
       ...records,
     ].slice(0, 12);

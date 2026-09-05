@@ -73,6 +73,7 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
+import { SupportHandover } from "@/components/admin/SupportHandover";
 import { primaryProductImage } from "@/lib/catalog/product-images";
 import { privateAvatarUrls } from "@/lib/shared/avatar-url";
 import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
@@ -104,6 +105,7 @@ import {
   type AdminOrderView,
 } from "@/lib/admin/order-desk";
 import { buildAdminAttentionItems } from "@/lib/admin/operations-attention";
+import { useAdminQuery } from "@/services/admin/use-admin-query";
 import { buildPackingListData } from "@/lib/admin/packing-list";
 import {
   buildOperationsHealthSnapshot,
@@ -151,8 +153,14 @@ import {
 } from "@/lib/admin/metrics";
 
 export function AdminOverview() {
-  const { orders, adminProducts, supportTickets } = useStore();
-  const { user, role } = useAdminSession();
+  const { adminProducts, supportTickets } = useStore();
+  const { user, role, userId, workspaceReady } = useAdminSession();
+  const snapshot = useAdminQuery<{
+    sales: number; monthCount: number; pending: number; lowStock: number;
+    fulfillment: number; cancellations: number; refunds: number; support: number;
+    statuses: Record<string, number>; salesData: Array<{m:string;v:number}>;
+    recent: DbOrder[];
+  }>("admin_overview_snapshot", {}, workspaceReady, userId);
   const [now, setNow] = useState(() => new Date());
   const firstName = user?.trim().split(/\s+/)[0] || "there";
   const philippineHour = Number(
@@ -181,47 +189,32 @@ export function AdminOverview() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthOrders = orders.filter(
-    (order) => new Date(order.created_at) >= monthStart,
-  );
-  const sales = settledRevenue(orders);
-  const pending = orders.filter(order=>order.status==="pending").length;
-  const lowStock = adminProducts.filter(product=>(product.stockQuantity??0)<=8).length;
+  const sales = snapshot.data?.sales ?? 0;
+  const pending = snapshot.data?.pending ?? 0;
+  const lowStock = snapshot.data?.lowStock ?? 0;
+  const monthCount = snapshot.data?.monthCount ?? 0;
   const attentionItems = buildAdminAttentionItems({
-    orders,
+    orders: [],
     products: adminProducts,
     tickets: supportTickets,
     role,
-  });
+  }).map((item) => ({ ...item, count: item.id === "inventory" ? lowStock : snapshot.data?.[item.id] ?? 0 }));
   const openAttentionCount = attentionItems.reduce(
     (sum, item) => sum + item.count,
     0,
   );
-  const salesData = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (6 - index), 1);
-    const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-    return {
-      m: date.toLocaleDateString("en-PH", { month: "short" }),
-      v: orders
-        .filter(
-          (order) =>
-            isSettledSale(order) &&
-            new Date(order.created_at) >= date &&
-            new Date(order.created_at) < next,
-        )
-        .reduce((sum, order) => sum + Number(order.total), 0),
-    };
-  });
+  const salesData = snapshot.data?.salesData ?? [];
   const statusRows = [
-    ["Delivered", monthOrders.filter((order) => order.status === "delivered").length, "bg-[#68805f]"],
-    ["Processing", monthOrders.filter((order) => ["processing", "packed", "shipped"].includes(order.status)).length, "bg-[#b8a58d]"],
-    ["Pending", monthOrders.filter((order) => order.status === "pending").length, "bg-[#d39a64]"],
-    ["Cancelled", monthOrders.filter((order) => order.status === "cancelled").length, "bg-[#bbb5ac]"],
+    ["Delivered", snapshot.data?.statuses.delivered ?? 0, "bg-[#68805f]"],
+    ["Processing", snapshot.data?.statuses.processing ?? 0, "bg-[#b8a58d]"],
+    ["Pending", snapshot.data?.statuses.pending ?? 0, "bg-[#d39a64]"],
+    ["Cancelled", snapshot.data?.statuses.cancelled ?? 0, "bg-[#bbb5ac]"],
   ] as const;
   const maxStatus = Math.max(1, ...statusRows.map((row) => row[1]));
+  if (!snapshot.data) return <AdminShell title="Overview"><section className="rounded-2xl border border-border bg-card p-8" role="status"><h2 className="text-xl font-semibold">{snapshot.error ? "Overview could not be loaded" : "Preparing your overview…"}</h2><p className="mt-2 text-sm text-muted-foreground">{snapshot.error || "Loading accurate totals from your store."}</p>{snapshot.error && <button className="mt-4 min-h-11 rounded-xl border border-border px-4" onClick={snapshot.reload}>Try again</button>}</section></AdminShell>;
   return (
     <AdminShell title="Overview">
+      {snapshot.error && <p role="alert" className="mb-4 rounded-xl bg-secondary p-4 text-sm">Showing the last loaded totals. {snapshot.error} <button onClick={snapshot.reload} className="underline">Retry</button></p>}
       <section className="relative overflow-hidden rounded-3xl bg-[#25221f] px-6 py-7 text-[#f4f2ee] shadow-[0_18px_40px_rgba(33,31,29,.16)] sm:px-8">
         <div className="absolute -right-10 -top-12 h-48 w-48 rounded-full bg-[#b8a58d]/20" />
         <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -261,7 +254,7 @@ export function AdminOverview() {
         />
         <Metric
           label="Orders this month"
-          value={String(monthOrders.length)}
+          value={String(monthCount)}
           note="Live storefront orders"
         />
         <Metric label="Pending orders" value={String(pending)} note="Requires attention" />
@@ -275,7 +268,7 @@ export function AdminOverview() {
             </p>
             <h3 className="mt-1 text-xl font-semibold">What needs attention now</h3>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Prioritized from the live order, inventory, and support records already loaded in this workspace.
+              Prioritized from current order, inventory, and support totals.
             </p>
           </div>
           <span className={`w-fit rounded-full px-3 py-1.5 text-[11px] font-semibold ${openAttentionCount ? "bg-[#f2e8d7] text-[#765d3c]" : "bg-[#e5eee1] text-[#45603f]"}`}>
@@ -314,9 +307,7 @@ export function AdminOverview() {
                 Revenue · last 7 months
               </p>
             </div>
-            <button className="text-xs font-semibold">
-              This year <ChevronDown className="inline" size={14} />
-            </button>
+            <Link to="/admin/reports" className="text-xs font-semibold underline">View reports</Link>
           </div>
           <div className="mt-6 h-[245px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -353,7 +344,7 @@ export function AdminOverview() {
         <section className="border border-border bg-card p-5">
           <h3 className="font-semibold">Order status</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            {monthOrders.length} orders this month
+            {monthCount} orders this month
           </p>
           <div className="mt-7 grid gap-4">
             {statusRows.map(([label, value, color]) => (
@@ -374,7 +365,7 @@ export function AdminOverview() {
         </section>
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_.85fr]">
-        <RecentOrders />
+        <RecentOrders items={snapshot.data.recent} />
         <section className="border border-border bg-[#ece7df] p-5">
           <span className="grid h-9 w-9 place-items-center rounded-full bg-[#d8c7b0]">
             <Warehouse size={17} />
@@ -395,8 +386,9 @@ export function AdminOverview() {
   );
 }
 
-export function RecentOrders() {
-  const { orders } = useStore();
+export function RecentOrders({ items }: { items?: DbOrder[] } = {}) {
+  const store = useStore();
+  const orders = items ?? store.orders;
   return <section className="overflow-hidden border border-border bg-card"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h3 className="font-semibold">Recent orders</h3><p className="mt-1 text-xs text-muted-foreground">Live customer purchases</p></div><Link to="/admin/orders" className="text-xs font-semibold underline underline-offset-4">View all</Link></div><div className="overflow-x-auto"><table className="w-full min-w-[540px] text-left text-sm"><thead className="bg-[#faf9f6] text-[10px] tracking-[.1em] text-muted-foreground"><tr><th className="px-5 py-3">ORDER</th><th>CUSTOMER</th><th>TOTAL</th><th>STATUS</th></tr></thead><tbody>{orders.slice(0,5).map(order=><tr className="border-t border-border" key={order.id}><td className="px-5 py-4 text-xs font-semibold">#{order.order_number}</td><td className="py-4 text-xs">{order.shipping_address.name||"Customer"}</td><td className="py-4 text-xs">{money(Number(order.total))}</td><td className="py-4"><Status>{order.status}</Status></td></tr>)}</tbody></table>{!orders.length&&<p className="p-6 text-center text-sm text-muted-foreground">No orders yet.</p>}</div></section>;
 }
 
@@ -436,6 +428,10 @@ export function SystemHealthPage() {
   useEffect(() => {
     void loadClientErrors();
   }, [loadClientErrors]);
+  useEffect(() => {
+    void refreshOrders();
+    void refreshTickets();
+  }, [refreshOrders, refreshTickets]);
 
   const refreshHealth = async () => {
     setLoading(true);
@@ -1096,7 +1092,6 @@ function AdminPackingList({
 
 export function OrdersWorkspacePage() {
   const {
-    orders,
     ordersRealtimeConnected,
     storeSettings,
     updateOrderStatus,
@@ -1107,22 +1102,32 @@ export function OrdersWorkspacePage() {
     role: workspaceRole,
     authReady: adminAuthReady,
     userId: adminUserId,
+    workspaceReady,
   } = useAdminSession();
   const [searchParams, setSearchParams] = useSearchParams();
   const canManageFinancials = canManageFinancialOperations(workspaceRole);
+  // Old notification links name an order but not its page. Open that exact
+  // record with a server search; subsequent queue selections do not narrow it.
+  useEffect(() => {
+    const linked = searchParams.get("order");
+    if (linked && !searchParams.has("q")) {
+      const next = new URLSearchParams(searchParams);
+      next.set("q", linked);
+      next.set("range", "all");
+      setSearchParams(next, { replace: true });
+    }
+  }, []);
   const [selectedId, setSelectedId] = useState(() => searchParams.get("order") ?? "");
   const [notice, setNotice] = useState("");
   const [showCancellation, setShowCancellation] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [sendingRefundEmail, setSendingRefundEmail] = useState(false);
+  const [orderUpdating, setOrderUpdating] = useState(false);
   const [orderPage, setOrderPage] = useState(1);
   const [returnRequests, setReturnRequests] = useState<Array<{id:string;order_id:string;return_number:string;reason:string;details:string;status:string;admin_note:string|null;evidence_paths:string[];created_at:string}>>([]);
   const [returnNote, setReturnNote] = useState("");
   const [processingReturnRefund, setProcessingReturnRefund] = useState(false);
-  const [ordersLoading, setOrdersLoading] = useState(true);
-  const [ordersLoadError, setOrdersLoadError] = useState("");
-  const [ordersReloadKey, setOrdersReloadKey] = useState(0);
   const [invoiceDownloadId, setInvoiceDownloadId] = useState<string | null>(null);
   const [packingListPrintedAt, setPackingListPrintedAt] = useState(() => new Date());
   const [deskNow, setDeskNow] = useState(() => new Date());
@@ -1140,36 +1145,17 @@ export function OrdersWorkspacePage() {
     () => adminOrderFiltersFromParams(new URLSearchParams(searchParamsKey)),
     [searchParamsKey],
   );
-  const returnOrderIds = useMemo(
-    () => new Set(returnRequests.map((request) => request.order_id)),
-    [returnRequests],
-  );
-  const filteredOrders = useMemo(
-    () => filterAdminOrders(orders, filters, { returnOrderIds, now: deskNow }),
-    [deskNow, filters, orders, returnOrderIds],
-  );
-  const todayOrders = useMemo(
-    () =>
-      filterAdminOrders(orders, DEFAULT_ADMIN_ORDER_FILTERS, {
-        returnOrderIds,
-        now: deskNow,
-      }),
-    [deskNow, orders, returnOrderIds],
-  );
-  const readyToFulfillCount = useMemo(
-    () => countAdminOrderView(orders, "needs_fulfillment", returnOrderIds),
-    [orders, returnOrderIds],
-  );
-  const awaitingPaymentCount = useMemo(
-    () => countAdminOrderView(orders, "awaiting_payment", returnOrderIds),
-    [orders, returnOrderIds],
-  );
-  const attentionCount = useMemo(
-    () =>
-      countAdminOrderView(orders, "cancellation_requests", returnOrderIds) +
-      countAdminOrderView(orders, "refund_attention", returnOrderIds),
-    [orders, returnOrderIds],
-  );
+  const queueDay = deskNow.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+  const queue = useAdminQuery<{ orders: DbOrder[]; total: number; allCount: number; today: number; fulfillment: number; awaiting: number; attention: number; paymentMethods: string[] }>("admin_order_queue", { p_filters: filters, p_page: orderPage }, workspaceReady, adminUserId ? `${adminUserId}:${queueDay}` : null);
+  const orders = queue.data?.orders ?? [];
+  const filteredOrders = orders;
+  const matchingCount = queue.data?.total ?? 0;
+  const allOrderCount = queue.data?.allCount ?? 0;
+  const ordersLoading = queue.loading;
+  const ordersLoadError = queue.error;
+  const readyToFulfillCount = queue.data?.fulfillment ?? 0;
+  const awaitingPaymentCount = queue.data?.awaiting ?? 0;
+  const attentionCount = queue.data?.attention ?? 0;
   const todayQueueActive =
     filters.view === "all" && filters.dateRange === "today";
   const allOrdersActive =
@@ -1200,13 +1186,7 @@ export function OrdersWorkspacePage() {
     day: "numeric",
     year: "numeric",
   }).format(deskNow);
-  const availablePaymentMethods = useMemo(
-    () =>
-      Array.from(
-        new Set(orders.map((order) => order.payment_method.toLocaleLowerCase())),
-      ).sort(),
-    [orders],
-  );
+  const availablePaymentMethods = queue.data?.paymentMethods ?? [];
   const updateDeskParams = useCallback(
     (changes: Record<string, string | null>) => {
       const next = new URLSearchParams(searchParams);
@@ -1234,50 +1214,16 @@ export function OrdersWorkspacePage() {
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (!adminAuthReady) {
-      setOrdersLoading(true);
-      return;
-    }
-    if (!adminUserId) {
-      setOrdersLoading(false);
-      setOrdersLoadError("Your administrator session is not available. Please sign in again.");
-      return;
-    }
+    if (!workspaceReady || !selectedId) return;
     let active = true;
-    setOrdersLoading(true);
-    setOrdersLoadError("");
-    const timeout = window.setTimeout(() => {
-      if (!active) return;
-      setOrdersLoading(false);
-      setOrdersLoadError("Orders are taking longer than expected. Check your connection and try again.");
-    }, 8_000);
-    void refreshOrders()
-      .then((issue) => {
-        if (!active) return;
-        setOrdersLoadError(issue ?? "");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setOrdersLoadError(error instanceof Error ? error.message : "Orders could not be loaded.");
-      })
-      .finally(() => {
-        window.clearTimeout(timeout);
-        if (active) setOrdersLoading(false);
-      });
-    return () => {
-      active = false;
-      window.clearTimeout(timeout);
-    };
-  }, [adminAuthReady, adminUserId, ordersReloadKey, refreshOrders]);
-  useEffect(() => {
-    const refresh = async () => { const { data } = await supabase.from("return_requests").select("id,order_id,return_number,reason,details,status,admin_note,evidence_paths,created_at").order("created_at", { ascending:false }); setReturnRequests((data ?? []) as typeof returnRequests); };
+    const refresh = async () => { const { data, error } = await supabase.from("return_requests").select("id,order_id,return_number,reason,details,status,admin_note,evidence_paths,created_at").eq("order_id",selectedId).order("created_at", { ascending:false }).limit(1); if(active && !error) setReturnRequests((data ?? []) as typeof returnRequests); };
     void refresh();
     const refreshVisible = () => { if (document.visibilityState === "visible") void refresh(); };
-    const channel = supabase.channel("admin-return-requests").on("postgres_changes", {event:"*",schema:"public",table:"return_requests"}, refresh).subscribe();
+    const channel = supabase.channel(`admin-return-${selectedId}`).on("postgres_changes", {event:"*",schema:"public",table:"return_requests",filter:`order_id=eq.${selectedId}`}, refresh).subscribe();
     window.addEventListener("focus", refreshVisible);
     document.addEventListener("visibilitychange", refreshVisible);
-    return () => { window.removeEventListener("focus", refreshVisible); document.removeEventListener("visibilitychange", refreshVisible); void supabase.removeChannel(channel); };
-  }, []);
+    return () => { active=false; window.removeEventListener("focus", refreshVisible); document.removeEventListener("visibilitychange", refreshVisible); void supabase.removeChannel(channel); };
+  }, [selectedId, workspaceReady]);
   useEffect(() => {
     const requestedOrderId = searchParams.get("order");
     if (requestedOrderId && filteredOrders.some((order) => order.id === requestedOrderId)) {
@@ -1293,12 +1239,8 @@ export function OrdersWorkspacePage() {
     }
   }, [filteredOrders, searchParams, selectedId]);
 
-  const orderPageCount = Math.max(1, Math.ceil(filteredOrders.length / ordersPerPage));
-  const visibleOrders = paginateAdminOrders(
-    filteredOrders,
-    orderPage,
-    ordersPerPage,
-  );
+  const orderPageCount = Math.max(1, Math.ceil(matchingCount / ordersPerPage));
+  const visibleOrders = orders;
   useEffect(() => {
     setOrderPage(1);
   }, [
@@ -1311,13 +1253,12 @@ export function OrdersWorkspacePage() {
     filters.view,
   ]);
   useEffect(() => {
-    if (orderPage > orderPageCount) setOrderPage(orderPageCount);
-  }, [orderPage, orderPageCount]);
+    if (!queue.loading && orderPage > orderPageCount) setOrderPage(orderPageCount);
+  }, [orderPage, orderPageCount, queue.loading]);
   const changeOrderPage = (page: number) => {
     const nextPage = Math.min(Math.max(page, 1), orderPageCount);
     setOrderPage(nextPage);
-    const firstOrder = filteredOrders[(nextPage - 1) * ordersPerPage];
-    if (firstOrder) selectOrder(firstOrder.id);
+    setSelectedId("");
   };
 
   const selected =
@@ -1415,7 +1356,7 @@ export function OrdersWorkspacePage() {
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
   const update = async (status: DbOrder["status"]) => {
-    if (!selected) return;
+    if (!selected || orderUpdating || status === selected.status) return;
     if (status === "cancelled") {
       if (!canManageFinancials) {
         setNotice("An administrator must approve order cancellations and refunds.");
@@ -1425,11 +1366,12 @@ export function OrdersWorkspacePage() {
       setShowCancellation(true);
       return;
     }
-    const issue = await updateOrderStatus(selected.id, status);
-    setNotice(
-      issue ??
-        `Order ${selected.order_number} is now ${status.replace(/_/g, " ")} across the customer and admin views.`,
-    );
+    setOrderUpdating(true);
+    try {
+      const issue = await updateOrderStatus(selected.id, status, selected.status);
+      setNotice(issue ?? `Order ${selected.order_number} is now ${status.replace(/_/g, " ")} across the customer and admin views.`);
+    } catch { setNotice("The status could not be confirmed. Reload the order before trying again."); queue.reload(); }
+    finally { setOrderUpdating(false); }
   };
   const confirmCancellation = async () => {
     if (!selected || cancellationReason.trim().length < 5) {
@@ -1529,7 +1471,7 @@ export function OrdersWorkspacePage() {
         </div>
         <div className="grid border-t border-border bg-card sm:grid-cols-2 xl:grid-cols-4">
           {[
-            ["TODAY", todayOrders.length, "Oldest first"],
+            ["TODAY", queue.data?.today ?? 0, "Oldest first"],
             ["READY TO FULFILL", readyToFulfillCount, "Paid or cash on delivery"],
             ["AWAITING PAYMENT", awaitingPaymentCount, "Online checkout pending"],
             ["NEEDS ATTENTION", attentionCount, "Cancellation or refund"],
@@ -1556,14 +1498,14 @@ export function OrdersWorkspacePage() {
                 className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition ${todayQueueActive ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-secondary"}`}
               >
                 Today
-                <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${todayQueueActive ? "bg-background/15" : "bg-secondary"}`}>{todayOrders.length}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${todayQueueActive ? "bg-background/15" : "bg-secondary"}`}>{queue.data?.today ?? 0}</span>
               </button>
               {ADMIN_ORDER_VIEW_OPTIONS.filter(
                 (option) =>
                   canManageFinancials ||
                   !["cancellation_requests", "refund_attention"].includes(option.id),
               ).map((option) => {
-                const count = countAdminOrderView(orders, option.id, returnOrderIds);
+                const count = option.id === "all" ? allOrderCount : option.id === "needs_fulfillment" ? readyToFulfillCount : option.id === "awaiting_payment" ? awaitingPaymentCount : null;
                 const active = option.id === "all" ? allOrdersActive : filters.view === option.id;
                 return (
                   <button
@@ -1577,16 +1519,16 @@ export function OrdersWorkspacePage() {
                     className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition ${active ? "border-foreground bg-foreground text-background" : "border-border bg-background hover:bg-secondary"}`}
                   >
                     {option.label}
-                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${active ? "bg-background/15" : "bg-secondary"}`}>
+                    {count !== null && <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${active ? "bg-background/15" : "bg-secondary"}`}>
                       {count}
-                    </span>
+                    </span>}
                   </button>
                 );
               })}
             </div>
           </div>
           <span className="w-fit shrink-0 rounded-full bg-secondary px-3 py-1.5 text-[11px] font-semibold">
-            {filteredOrders.length} shown · {orders.length} total
+            {matchingCount} matching · {allOrderCount} total
           </span>
         </div>
 
@@ -1596,6 +1538,8 @@ export function OrdersWorkspacePage() {
             <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16}/>
             <input
               value={filters.query}
+              aria-label="Search orders"
+              maxLength={200}
               onChange={(event) => updateDeskParams({ q: event.target.value || null, order: null })}
               placeholder="Search order, customer, email, phone, or product"
               className="h-12 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-xs outline-none transition focus:border-foreground"
@@ -1659,7 +1603,7 @@ export function OrdersWorkspacePage() {
         )}
         {hasActiveAdminOrderFilters(filters) && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-            <p className="text-[11px] text-muted-foreground">Filters affect the loaded orders only and do not make another database request.</p>
+            <p className="text-[11px] text-muted-foreground">Searches all matching records; only five orders are downloaded per page.</p>
             <button type="button" onClick={() => setSearchParams({}, { replace: true })} className="text-xs font-semibold underline underline-offset-4">
               Reset to today’s queue
             </button>
@@ -1669,7 +1613,7 @@ export function OrdersWorkspacePage() {
       {ordersLoadError && orders.length > 0 && (
         <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#d9c5a6] bg-[#f5ecdc] p-3 text-xs text-[#725a36] sm:flex-row sm:items-center sm:justify-between">
           <span>Showing the last loaded orders. Live refresh reported: {ordersLoadError}</span>
-          <button type="button" onClick={() => setOrdersReloadKey((current) => current + 1)} className="shrink-0 font-semibold underline underline-offset-4">Try refresh again</button>
+          <button type="button" onClick={queue.reload} className="shrink-0 font-semibold underline underline-offset-4">Try refresh again</button>
         </div>
       )}
 
@@ -1688,13 +1632,14 @@ export function OrdersWorkspacePage() {
               <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#f2e8d7] text-[#765d3c]"><Clock size={20}/></span>
               <p className="mt-4 text-sm font-semibold text-foreground">We couldn’t finish loading the order desk.</p>
               <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-muted-foreground">{ordersLoadError}</p>
-              <button type="button" onClick={() => setOrdersReloadKey((current) => current + 1)} className="mt-5 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background">Retry orders</button>
+              <button type="button" onClick={queue.reload} className="mt-5 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background">Retry orders</button>
             </>
           ) : (
             <>
               <Package className="mx-auto text-muted-foreground" size={24}/>
-              <p className="mt-4 text-sm font-semibold text-foreground">No customer orders yet.</p>
-              <p className="mt-2 text-xs text-muted-foreground">New storefront and mobile orders will appear here automatically.</p>
+              <p className="mt-4 text-sm font-semibold text-foreground">{allOrderCount ? "No orders match this view." : "No customer orders yet."}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{allOrderCount ? "Try another date or clear your filters." : "New storefront and mobile orders will appear here automatically."}</p>
+              {allOrderCount > 0 && <button type="button" onClick={()=>setSearchParams({range:"all"},{replace:true})} className="mt-4 min-h-11 rounded-xl border border-border px-4 text-xs font-semibold">Show all orders</button>}
             </>
           )}
         </div>
@@ -1718,7 +1663,7 @@ export function OrdersWorkspacePage() {
                   <span className="mt-1 block text-[10px] text-muted-foreground">{queueSortLabel}</span>
                 </div>
                 <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-semibold shadow-sm">
-                  {filteredOrders.length}
+                  {matchingCount}
                 </span>
               </div>
             </div>
@@ -1774,7 +1719,7 @@ export function OrdersWorkspacePage() {
               <span className="text-center text-[11px] text-muted-foreground">
                 Page <b className="text-foreground">{orderPage}</b> of {orderPageCount}
                 <span className="block text-[9px]">
-                  {ordersPerPage} per page · {filteredOrders.length} matching orders
+                  {ordersPerPage} per page · {matchingCount} matching orders
                 </span>
               </span>
               <button
@@ -1815,7 +1760,7 @@ export function OrdersWorkspacePage() {
                 <button
                   onClick={() => void update(nextStatus)}
                   disabled={
-                    selected.status === "delivered" || selected.status === "cancelled" || selected.cancellation_status === "pending"
+                    orderUpdating || selected.status === "delivered" || selected.status === "cancelled" || selected.cancellation_status === "pending"
                   }
                   className="min-h-10 rounded-xl bg-foreground px-3.5 py-2 text-xs font-semibold text-background disabled:opacity-40"
                 >
@@ -1937,7 +1882,8 @@ export function OrdersWorkspacePage() {
                   </div>
                   <select
                     value={selected.status}
-                    disabled={selected.cancellation_status === "pending"}
+                    aria-label={`Delivery status for order ${selected.order_number}`}
+                    disabled={orderUpdating || selected.cancellation_status === "pending"}
                     onChange={(event) =>
                       void update(event.target.value as DbOrder["status"])
                     }
@@ -2598,6 +2544,7 @@ export function ReviewsPage() {
 }
 
 export function SupportPage() {
+  const { userId: staffId } = useAdminSession();
   const {
     supportTickets,
     refreshTickets,
@@ -2723,6 +2670,8 @@ export function SupportPage() {
                   {active.admin_reply}
               </div>
             )}
+              {active.order_id && <Link to={`/admin/orders?range=all&q=${encodeURIComponent(active.order_id)}&order=${encodeURIComponent(active.order_id)}`} className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-xs font-semibold">Open related order <ArrowRight size={14} className="ml-2"/></Link>}
+              <SupportHandover key={active.id} ticketId={active.id} authorId={staffId} />
             </div>
             <div className="border-t border-border pt-4">
               <div className="mb-3 flex flex-wrap items-end gap-3 rounded-xl bg-secondary p-3">

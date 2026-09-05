@@ -73,6 +73,8 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
+import { ProductMeasurements } from "@/components/catalog/ProductMeasurements";
+import { measurementCm } from "@/lib/catalog/product-quality";
 import { selectNewArrivals } from "@/lib/catalog/new-arrivals";
 import {
   filterByPriceRange,
@@ -2144,18 +2146,8 @@ function ProductPageContent({
   const selectedDeliveryArea = deliveryAreas.find((area) => area.area_code === deliveryAreaCode) ?? null;
   const deliveryWindow = selectedDeliveryArea ? deliveryDateRange(selectedDeliveryArea) : null;
   const deliveryFee = selectedDeliveryArea ? deliveryFeeFor(selectedDeliveryArea, product.price * quantity) : null;
-  const dimensionNumber = (labels: string[]) => {
-    const item = dimensionItems.find((dimension) => {
-      const normalizedLabel = dimension.label.trim().toLocaleLowerCase();
-      return labels.some(
-        (label) => normalizedLabel === label || normalizedLabel.startsWith(`${label} `),
-      );
-    });
-    const firstNumber = item ? String(item.value).match(/-?\d+(?:\.\d+)?/)?.[0] : undefined;
-    return firstNumber ? Number(firstNumber) : Number.NaN;
-  };
-  const productWidth = dimensionNumber(["width", "w"]);
-  const productDepth = dimensionNumber(["depth", "length", "d"]);
+  const productWidth = measurementCm(dimensionItems, "width") ?? Number.NaN;
+  const productDepth = measurementCm(dimensionItems, "depth") ?? Number.NaN;
   const fitChecked = Number(roomWidth) > 0 && Number(roomDepth) > 0 && Number.isFinite(productWidth) && Number.isFinite(productDepth);
   const fitsRoom = fitChecked && productWidth <= Number(roomWidth) && productDepth <= Number(roomDepth);
   useEffect(() => {
@@ -2565,6 +2557,7 @@ function ProductPageContent({
                 </span>
               </div>
             </div>
+            <ProductMeasurements specs={dimensionItems} />
             <div className="mt-5 grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2">
               <section>
                 <div className="flex items-center gap-2"><Truck size={16}/><h2 className="text-xs font-semibold">Delivery estimate</h2></div>

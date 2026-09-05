@@ -753,6 +753,7 @@ function CustomerProfile() {
   const [ticketPriority, setTicketPriority] = useState<DbSupportTicket["priority"]>("normal");
   const [ticketOrderId, setTicketOrderId] = useState("");
   const [ticketFiles, setTicketFiles] = useState<File[]>([]);
+  const [ticketSending, setTicketSending] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [photoDialog, setPhotoDialog] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -2936,6 +2937,8 @@ function CustomerProfile() {
                           type="button"
                           onClick={() => {
                             setTicket(`Concern about order #${selectedOrder.order_number}: `);
+                            setTicketOrderId(selectedOrder.id);
+                            setTicketCategory("order");
                             setTab("Support");
                           }}
                           className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary"
@@ -3030,15 +3033,20 @@ function CustomerProfile() {
                 <label className="mt-3 grid gap-2 text-xs font-semibold">Evidence (optional, up to 3 files)<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event)=>setTicketFiles(Array.from(event.target.files??[]).slice(0,3))} className="rounded-xl border border-border bg-[#fcfbf8] p-3 font-normal"/></label>
                 <button
                   onClick={async () => {
+                    if (ticketSending) return;
                     if (ticket.trim().length < 10) { setNotice("Please describe your concern in at least 10 characters."); return; }
-                    const error = await submitTicket({message:ticket,category:ticketCategory,priority:ticketPriority,orderId:ticketOrderId,files:ticketFiles});
-                    if (!error) {setTicket("");setTicketFiles([]);setTicketOrderId("");}
-                    setNotice(error ?? "Support ticket sent and visible to the admin care team.");
+                    setTicketSending(true);
+                    try {
+                      const error = await submitTicket({message:ticket,category:ticketCategory,priority:ticketPriority,orderId:ticketOrderId,files:ticketFiles});
+                      if (!error) {setTicket((current)=>current===ticket?"":current);setTicketFiles([]);setTicketOrderId("");}
+                      setNotice(error ?? "Support ticket sent and visible to the admin care team.");
+                    } catch { setNotice("Your ticket could not be sent. Your message is still here; please try again."); }
+                    finally { setTicketSending(false); }
                   }}
-                  disabled={ticket.trim().length < 10}
+                  disabled={ticketSending || ticket.trim().length < 10}
                   className="mt-3 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  Send support ticket
+                  {ticketSending ? "Sending ticket…" : "Send support ticket"}
                 </button>
                 <div className="mt-5 grid gap-3">
                   {supportTickets.map((item) => (

@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { productQualityGaps } from "@/lib/catalog/product-quality";
 import {
   createBrowserRouter,
   Link,
@@ -256,7 +257,7 @@ const isManagedProductDraft = (value: unknown): value is ManagedProduct => {
 
 export function ProductManager() {
   const location = useLocation();
-  const { adminProducts, saveProduct, deleteProduct, uploadProductImages } = useStore();
+  const { adminProducts, saveProduct, deleteProduct, uploadProductImages, storeSettings } = useStore();
   const toManaged = (p: Product): ManagedProduct => ({ id:p.id, name:p.name, description:p.description, category:p.category, subcategory:p.subcategory ?? subcategoryFor(p.id), price:p.price, quantity:p.stockQuantity ?? 0, status:p.status === "draft" ? "Draft" : p.status === "inactive" ? "Inactive" : "Active", images:[...p.images], main:p.mainImageIndex ?? 0, material:p.material ?? materialFor(p.id), dimensions:p.dimensions });
   const [items, setItems] = useState<ManagedProduct[]>(adminProducts.map(toManaged));
   useEffect(() => setItems(adminProducts.map(toManaged)), [adminProducts]);
@@ -351,6 +352,7 @@ export function ProductManager() {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const qualityItems = items.map((item) => ({ item, gaps: productQualityGaps(item) })).filter(({gaps})=>gaps.length);
   const action = async (type: string, item: ManagedProduct) => {
     setMenu(null);
     if (type === "edit") showForm(item);
@@ -392,10 +394,15 @@ export function ProductManager() {
         />
         <Metric
           label="Low-stock alerts"
-          value={String(items.filter((i) => i.quantity < 6).length)}
+          value={String(items.filter((i) => i.status === "Active" && i.quantity <= storeSettings.low_stock_threshold).length)}
           note="Requires attention"
         />
       </div>
+      <details className="mt-6 rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <summary className="cursor-pointer text-sm font-semibold">Catalog quality · {qualityItems.length ? `${qualityItems.length} products to review` : "All product details complete"}</summary>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">Helpful, non-blocking checks using the catalog already loaded. Verify specifications with the supplier; no details are generated or changed automatically.</p>
+        <div className="mt-3 max-h-72 overflow-y-auto divide-y divide-border">{qualityItems.map(({item,gaps})=><button key={item.id} type="button" onClick={()=>showForm(item)} className="flex w-full min-w-0 flex-col gap-1 py-3 text-left sm:flex-row sm:justify-between sm:gap-4"><span className="text-sm font-semibold">{item.name}</span><span className="text-xs leading-5 text-muted-foreground">{gaps.join(" · ")}</span></button>)}</div>
+      </details>
       <section className="mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_25px_rgba(33,31,29,.035)]">
         <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row">
           <label className="flex flex-1 items-center gap-2 rounded-xl border border-border bg-[#fcfbf8] px-3">

@@ -72,6 +72,7 @@ import {
   type OrderRealtimeChange,
 } from "@/lib/commerce/realtime-orders";
 import { optimizeImageUpload } from "@/lib/shared/image-upload";
+import { notifyAdminDataChanged, usesPagedAdminOrders } from "@/lib/admin/workspace-events";
 import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -389,6 +390,7 @@ function App() {
           .map((category) => normalizeCatalogValue(category.name)),
       );
       setAdminProducts(mapped);
+      if (requestScope.startsWith("admin:")) notifyAdminDataChanged();
       setProducts(
         mapped.filter(
           (item) =>
@@ -417,6 +419,10 @@ function App() {
   const refreshOrders = useCallback(() => {
     const requestScope = ordersScope;
     if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
+    if (requestScope.startsWith("admin:") && usesPagedAdminOrders(window.location.pathname)) {
+      notifyAdminDataChanged();
+      return Promise.resolve(null);
+    }
     const existing = ordersRefreshInFlight.current;
     if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
@@ -564,6 +570,7 @@ function App() {
       }));
       if (ordersScopeRef.current !== requestScope) return null;
       setSupportTickets(tickets as unknown as DbSupportTicket[]);
+      if (requestScope.startsWith("admin:")) notifyAdminDataChanged();
       return null;
     })();
     ticketsRefreshInFlight.current = { scope: requestScope, request };
@@ -1302,6 +1309,10 @@ function App() {
     }
 
     const refreshChangedOrder = (payload: OrderRealtimeChange) => {
+      if (adminPortal) {
+        notifyAdminDataChanged();
+        if (usesPagedAdminOrders(window.location.pathname)) return;
+      }
       const target = orderRealtimeTarget(payload);
       if (target.removeOrder && target.orderId) {
         setOrders((current) =>
@@ -1349,6 +1360,7 @@ function App() {
     );
     if (adminPortal) {
       channel = channel
+        .on("postgres_changes", { event: "*", schema: "public", table: "return_requests" }, notifyAdminDataChanged)
         .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => void refreshCustomers())
         .on("postgres_changes", { event: "*", schema: "public", table: "addresses" }, () => void refreshCustomers());
     }
@@ -1357,6 +1369,8 @@ function App() {
     });
 
     const syncVisibleOrders = () => {
+      // The paged views own their throttled focus recovery.
+      if (adminPortal && usesPagedAdminOrders(window.location.pathname)) return;
       if (document.visibilityState === "visible") void refreshOrders();
     };
     window.addEventListener("focus", syncVisibleOrders);
@@ -1818,7 +1832,7 @@ function App() {
       error: null,
     };
   };
-  const updateOrderStatus = async (id: string, status: DbOrder["status"]) => {
+  const updateOrderStatus = async (id: string, status: DbOrder["status"], expectedStatus?: DbOrder["status"]) => {
     if (status === "cancelled") {
       return "Use the protected cancellation workflow and provide a reason.";
     }
@@ -1827,10 +1841,18 @@ function App() {
     if (status === "delivered" && order?.payment_method === "cod") {
       payload.payment_status = "paid";
     }
-    const { error } = await adminSupabase
+    const expected = expectedStatus ?? order?.status;
+    if (!expected) return "Reload this order before changing its status.";
+    const { data, error } = await adminSupabase
       .from("orders")
       .update(payload)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("status", expected)
+      .select("id");
+    if (!error && !data?.length) {
+      await refreshOrders();
+      return "Another administrator updated this order. The latest version is loading; review it before trying again.";
+    }
     if (!error) {
       await refreshOrders();
       await adminSupabase.functions.invoke("send-transactional-email", {

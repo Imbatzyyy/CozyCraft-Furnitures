@@ -380,6 +380,7 @@ export type Store = {
   updateOrderStatus: (
     id: string,
     status: DbOrder["status"],
+    expectedStatus?: DbOrder["status"],
   ) => Promise<string | null>;
   cancelOrder: (id: string, reason: string) => Promise<string | null>;
   saveProduct: (

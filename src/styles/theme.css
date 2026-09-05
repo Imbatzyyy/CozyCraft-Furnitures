@@ -1,5 +1,14 @@
 @custom-variant dark (&:is(.dark *));
 
+/* Keep text fields readable and prevent iOS Safari's focus zoom. This does not
+   change desktop typography or the layout of checkboxes and radio buttons. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 :root {
   --font-size: 16px;
   --background: #f4f2ee;
