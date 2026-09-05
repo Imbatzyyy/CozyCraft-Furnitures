@@ -86,6 +86,7 @@ import {
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import { recordAuthActivity } from "@/services/auth/activity.service";
+import { adminWorkspaceSessionScope, workspaceScopeCanLoad } from "@/services/auth/admin-workspace-session";
 import { syncCurrentCustomerDevice } from "@/services/auth/device-session.service";
 import {
   customerAuthEventAction,
@@ -246,6 +247,7 @@ function App() {
   const [adminDatabaseRole, setAdminDatabaseRole] =
     useState<DbRole | null>(null);
   const [adminAuthReady, setAdminAuthReady] = useState(false);
+  const [adminDataScope, setAdminDataScope] = useState<string | null>(null);
   const [adminWorkspaceReady, setAdminWorkspaceReady] = useState(false);
   const [adminWorkspaceLoading, setAdminWorkspaceLoading] = useState(false);
   const [adminWorkspaceError, setAdminWorkspaceError] = useState<string | null>(null);
@@ -297,12 +299,12 @@ function App() {
   const singleOrderRefreshes = useRef(new Map<string, Promise<string | null>>());
   const unavailableProductIds = useRef(new Set<string>());
   const ordersScope = adminPortal
-    ? `admin:${adminUserId ?? "guest"}`
+    ? adminDataScope ?? (adminUserId ? "admin:verification-pending" : "admin:guest")
     : `customer:${userId ?? "guest"}`;
   const ordersScopeRef = useRef(ordersScope);
   ordersScopeRef.current = ordersScope;
   const productsScope = adminPortal
-    ? `admin:${adminUserId ?? "guest"}`
+    ? ordersScope
     : "storefront";
   const productsScopeRef = useRef(productsScope);
   productsScopeRef.current = productsScope;
@@ -348,6 +350,7 @@ function App() {
 
   const refreshProducts = useCallback(() => {
     const requestScope = productsScope;
+    if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
     const existing = productsRefreshInFlight.current;
     if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
@@ -413,6 +416,7 @@ function App() {
 
   const refreshOrders = useCallback(() => {
     const requestScope = ordersScope;
+    if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
     const existing = ordersRefreshInFlight.current;
     if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
@@ -445,6 +449,7 @@ function App() {
 
   const refreshOrder = useCallback((orderId: string) => {
     const requestScope = ordersScope;
+    if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
     const requestKey = `${requestScope}:${orderId}`;
     const existing = singleOrderRefreshes.current.get(requestKey);
     if (existing) return existing;
@@ -503,6 +508,7 @@ function App() {
 
   const refreshCustomers = useCallback(() => {
     const requestScope = ordersScope;
+    if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
     const existing = customersRefreshInFlight.current;
     if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
@@ -539,6 +545,7 @@ function App() {
 
   const refreshTickets = useCallback(() => {
     const requestScope = ordersScope;
+    if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
     const existing = ticketsRefreshInFlight.current;
     if (existing?.scope === requestScope) return existing.request;
     const request = (async () => {
@@ -570,10 +577,10 @@ function App() {
   }, [ordersScope, portalSupabase]);
 
   const refreshAdminWorkspace = useCallback(() => {
-    if (!adminPortal || !adminUserId) {
+    if (!adminPortal || !adminDataScope) {
       return Promise.resolve("Your administrator session is not available.");
     }
-    const requestScope = `admin:${adminUserId}`;
+    const requestScope = adminDataScope;
     const existing = adminWorkspaceRefreshInFlight.current;
     if (existing?.scope === requestScope) return existing.request;
     setAdminWorkspaceLoading(true);
@@ -605,7 +612,7 @@ function App() {
     });
     adminWorkspaceRefreshInFlight.current = { scope: requestScope, request };
     return request;
-  }, [adminPortal, adminUserId, refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
+  }, [adminPortal, adminDataScope, refreshCustomers, refreshOrders, refreshProducts, refreshTickets]);
 
   const clearCustomerAccount = useCallback(() => {
     customerUserIdRef.current = null;
@@ -953,6 +960,7 @@ function App() {
       setSupportTickets([]);
     }
     setAdminUserId(null);
+    setAdminDataScope(null);
     setAdminUser(null);
     setAdminUserEmail(null);
     setAdminAvatar(null);
@@ -998,6 +1006,13 @@ function App() {
         data: { session: currentSession },
       } = await adminSupabase.auth.getSession();
       if (currentSession?.user.id !== id) return;
+      const nextDataScope = adminWorkspaceSessionScope(currentSession);
+      if (window.location.pathname.startsWith("/admin")) {
+        // Invalidate responses immediately, before React commits the new scope.
+        ordersScopeRef.current = nextDataScope ?? "admin:verification-pending";
+        productsScopeRef.current = ordersScopeRef.current;
+      }
+      setAdminDataScope(nextDataScope);
       setAdminUserId(id);
       setAdminUserEmail(profile.email || email);
       setAdminUser(
@@ -1076,24 +1091,27 @@ function App() {
   }, [adminUserId, loadAdminAccount]);
 
   useEffect(() => {
-    if (adminPortal) {
-      if (adminUserId) {
-        const workspaceScope = `admin:${adminUserId}`;
-        if (adminWorkspaceScopeRef.current !== workspaceScope) {
-          adminWorkspaceScopeRef.current = workspaceScope;
-          setAdminWorkspaceReady(false);
-          setAdminWorkspaceError(null);
-          setOrders([]);
-          setCustomerProfiles([]);
-          setSupportTickets([]);
-        }
-        void refreshAdminWorkspace();
-      }
-      return;
+    if (!adminPortal || !adminDataScope) return;
+    if (adminWorkspaceScopeRef.current !== adminDataScope) {
+      adminWorkspaceScopeRef.current = adminDataScope;
+      setAdminWorkspaceReady(false);
+      setAdminWorkspaceError(null);
+      setOrders([]);
+      setCustomerProfiles([]);
+      setSupportTickets([]);
     }
+    void refreshAdminWorkspace();
+  }, [adminPortal, adminDataScope, refreshAdminWorkspace]);
+
+  useEffect(() => {
+    if (adminPortal) return;
     void refreshProducts();
+  }, [adminPortal, refreshProducts]);
+
+  useEffect(() => {
+    if (adminPortal) return;
     if (userId) void Promise.all([refreshOrders(), refreshTickets()]);
-  }, [adminPortal, adminUserId, refreshAdminWorkspace, refreshOrders, refreshProducts, refreshTickets, userId]);
+  }, [adminPortal, refreshOrders, refreshTickets, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1187,6 +1205,7 @@ function App() {
   }, [splash]);
 
   useEffect(() => {
+    if (!workspaceScopeCanLoad(productsScope)) return;
     let availabilityCursor = new Date().toISOString();
     let availabilityRefresh: Promise<void> | null = null;
 
@@ -1273,11 +1292,11 @@ function App() {
       window.removeEventListener("focus", recoverAvailabilityOnFocus);
       void portalSupabase.removeChannel(channel);
     };
-  }, [adminPortal, portalSupabase, refreshProducts]);
+  }, [adminPortal, portalSupabase, productsScope, refreshProducts]);
 
   useEffect(() => {
     const activeUserId = adminPortal ? adminUserId : userId;
-    if (!activeUserId) {
+    if (!activeUserId || !workspaceScopeCanLoad(ordersScope)) {
       setOrdersRealtimeConnected(false);
       return;
     }
@@ -1349,7 +1368,7 @@ function App() {
       document.removeEventListener("visibilitychange", syncVisibleOrders);
       void portalSupabase.removeChannel(channel);
     };
-  }, [adminPortal, adminUserId, portalSupabase, refreshCustomers, refreshOrder, refreshOrders, refreshTickets, userId]);
+  }, [adminPortal, adminUserId, ordersScope, portalSupabase, refreshCustomers, refreshOrder, refreshOrders, refreshTickets, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -2265,7 +2284,7 @@ function App() {
           role: adminRole,
           databaseRole: adminDatabaseRole,
           authReady: adminAuthReady,
-          workspaceReady: adminWorkspaceReady,
+          workspaceReady: Boolean(adminDataScope && adminWorkspaceScopeRef.current === adminDataScope && adminWorkspaceReady),
           workspaceLoading: adminWorkspaceLoading,
           workspaceError: adminWorkspaceError,
           userId: adminUserId,

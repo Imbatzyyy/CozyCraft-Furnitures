@@ -576,10 +576,8 @@ export function AdminShell({
         require_admin_mfa: policy.require_admin_mfa !== false,
         session_timeout_minutes: Math.max(5, Number(policy.session_timeout_minutes) || 30),
       });
-      if (policy.require_admin_mfa === false) {
-        setMfaRequired(false);
-        return;
-      }
+      // Enrolled accounts still need AAL2 to read commerce records under RLS,
+      // even when the store does not require MFA enrollment for every admin.
     }
     const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (assuranceError) {
