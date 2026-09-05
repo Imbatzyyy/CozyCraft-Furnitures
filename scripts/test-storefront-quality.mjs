@@ -17,7 +17,7 @@ try {
       const reply=data=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(data)});
       if(path.endsWith("/products"))return reply([product]);
       if(path.endsWith("/categories"))return reply([{name:"Dining room",active:true}]);
-      if(path.endsWith("/product_availability"))return reply({available:true});
+      if(path.endsWith("/product_availability"))return reply(url.searchParams.has("product_id") ? {available:true} : []);
       if(path.endsWith("/store_settings"))return reply({id:true,store_name:"CozyCraft Furnitures"});
       return reply(single?{}:[]);
     });
