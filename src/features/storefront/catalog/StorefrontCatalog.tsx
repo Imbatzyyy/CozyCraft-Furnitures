@@ -2583,7 +2583,7 @@ function ProductPageContent({
                 </span>
               </div>
             </div>
-            <ProductMeasurements specs={dimensionItems} />
+            <ProductMeasurements specs={dimensionItems} name={product.name} image={product.images[productMainImageIndex(product)] ?? ""} />
             <div className="mt-5 grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2">
               <section>
                 <div className="flex items-center gap-2"><Truck size={16}/><h2 className="text-xs font-semibold">Delivery estimate</h2></div>
