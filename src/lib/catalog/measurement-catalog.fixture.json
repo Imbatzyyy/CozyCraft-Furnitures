@@ -1,0 +1,457 @@
+[
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"80\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"52\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"47\",\"unit\":\"cm\"},{\"label\":\"Seat height\",\"value\":\"45\",\"unit\":\"cm\"}]",
+    "name": "AGNE",
+    "subcategory": "Metal Industrial Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"90 x 180\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
+    "name": "ALBA",
+    "subcategory": "Marble Top Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Diameter\",\"value\":\"120 x 76\",\"unit\":\"cm\"}]",
+    "name": "ALBIE",
+    "subcategory": "Glass Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"75 (29 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Max. length\",\"value\":\"170 (66 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Min. length\",\"value\":\"120 (47 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"80 (31 1/2 \\\")\",\"unit\":\"cm\"}]",
+    "name": "ÅLHULT",
+    "subcategory": "Extendable Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Bed Height\",\"value\":\"42 (16 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Bed Length\",\"value\":\"194 (76 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Bed Width\",\"value\":\"135 (53 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"82 (32 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height Under Furniture\",\"value\":\"10 (3 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"81 (31 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Backrest Height\",\"value\":\"75 (29 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Back Cushions Height\",\"value\":\"81 (31 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"49 (19 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"42 (16 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width\",\"value\":\"194 (76 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Total Depth Folded Out\",\"value\":\"135 (53 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"194 (76 3/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "ÄLVDALEN",
+    "subcategory": "3-Seater Fabric Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"36.8\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"30\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"28.9\",\"unit\":\"cm\"}]",
+    "name": "AURINEST",
+    "subcategory": "Floating Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"65.13\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"38\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"29.5\",\"unit\":\"cm\"}]",
+    "name": "BASQUE 65",
+    "subcategory": "Wooden Ornate Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"118\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"42\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"29.5\",\"unit\":\"cm\"}]",
+    "name": "BASQUE 82",
+    "subcategory": "Wooden Ornate Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"236.4\",\"unit\":\"cm\"},{\"label\":\"Width right\",\"value\":\"160.5\",\"unit\":\"cm\"},{\"label\":\"Width left\",\"value\":\"210.5\",\"unit\":\"cm\"}]",
+    "name": "BERGSBO/ÅHEIM",
+    "subcategory": "Corner Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"69\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"48\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"38\",\"unit\":\"cm\"},{\"label\":\"Drawer width (inside)\",\"value\":\"33\",\"unit\":\"cm\"},{\"label\":\"Drawer depth (inside)\",\"value\":\"26\",\"unit\":\"cm\"},{\"label\":\"Height of drawer (inside)\",\"value\":\"8\",\"unit\":\"cm\"},{\"label\":\"Height under nightstand\",\"value\":\"20\",\"unit\":\"cm\"}]",
+    "name": "BJÖRKSNÄS",
+    "subcategory": "Wooden Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"120.0\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"50.0\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"92.0\",\"unit\":\"cm\"}]",
+    "name": "BOTTOM RESUME",
+    "subcategory": "Pantry Cabinets"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"39\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"53\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"41\",\"unit\":\"cm\"},{\"label\":\"Drawer width (inside)\",\"value\":\"31\",\"unit\":\"cm\"},{\"label\":\"Drawer depth (inside)\",\"value\":\"36\",\"unit\":\"cm\"}]",
+    "name": "BRIMNES",
+    "subcategory": "Nightstand with Drawer"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"117\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"190\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"50\",\"unit\":\"cm\"}]",
+    "name": "BRIMNESS",
+    "subcategory": "3-Door Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"55\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"85\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"62\",\"unit\":\"cm\"}]",
+    "name": "CAMDEN",
+    "subcategory": "Luxury Velvet Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"55\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"89\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"63\",\"unit\":\"cm\"}]",
+    "name": "CHAMPAGNE",
+    "subcategory": "Luxury Velvet Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"28.0\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"46.0\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"83.0\",\"unit\":\"cm\"}]",
+    "name": "DICO",
+    "subcategory": "Serving Trolleys"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"19.8\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"20.8\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"32.4\",\"unit\":\"cm\"}]",
+    "name": "EDISON",
+    "subcategory": "Molded Resin Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"35\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"35\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"35\",\"unit\":\"cm\"},{\"label\":\"Drawer width (inside)\",\"value\":\"26\",\"unit\":\"cm\"},{\"label\":\"Drawer depth (inside)\",\"value\":\"20\",\"unit\":\"cm\"}]",
+    "name": "EKETT",
+    "subcategory": "Floating Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"89 (35 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"97 (38 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"103 (40 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width\",\"value\":\"61 (24 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"59 (23 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"45 (17 3/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "EKOLSUND",
+    "subcategory": "Recliner Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"100 x 220\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
+    "name": "Eris",
+    "subcategory": "Marble Top Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"120.2\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"42.7\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"85.2\",\"unit\":\"cm\"}]",
+    "name": "ETONA",
+    "subcategory": "Buffet Cabinet"
+  },
+  {
+    "dimensions": "[{\"label\":\"Dimension\",\"value\":\"39.4 × 26.0 × 74.8\",\"unit\":\"in\"},{\"label\":\"Maximum VESA\",\"value\":\"800 × 600\",\"unit\":\"mm\"}]",
+    "name": "FITUEYES",
+    "subcategory": "TV Cart"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"150\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"36\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"54\",\"unit\":\"cm\"}]",
+    "name": "FJÄLLBO",
+    "subcategory": "Modern TV Stand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Bed Width\",\"value\":\"119 (46 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"76 (29 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"61 (24 \\\")\",\"unit\":\"cm\"},{\"label\":\"Length, open\",\"value\":\"209 (82 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"52 (20 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"37 (14 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"126 (49 5/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "FRIDHULT",
+    "subcategory": "2-Seater Fabric Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Depth\",\"value\":\"151 (59 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"140 (55 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"204 (80 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Back Cushions Height\",\"value\":\"86 (33 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Backrest Height\",\"value\":\"66 (26 \\\")\",\"unit\":\"cm\"}]",
+    "name": "FRIHETEN",
+    "subcategory": "Sectional Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Diameter\",\"value\":\"88 (34 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"35 (13 3/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "FRÖTORP",
+    "subcategory": "Marble Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"53 (20 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Diameter\",\"value\":\"45 (17 1/2 \\\")\",\"unit\":\"cm\"}]",
+    "name": "GLADOM",
+    "subcategory": "Round Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Armrest Height\",\"value\":\"57 (22 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Width\",\"value\":\"3.5 (1 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"78 (30 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height Under Furniture\",\"value\":\"23 (9 \\\")\",\"unit\":\"cm\"},{\"label\":\"Backrest Height\",\"value\":\"68 (26 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"54 (21 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"41 (16 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width\",\"value\":\"114 (44 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"121 (47 5/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "GLOSTAD",
+    "subcategory": "2-Seater Fabric Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"45\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"59\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"36\",\"unit\":\"cm\"},{\"label\":\"Height under furniture\",\"value\":\"16\",\"unit\":\"cm\"}]",
+    "name": "GRÅFJÄLLET",
+    "subcategory": "Metal Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"201.2\",\"unit\":\"cm\"},{\"label\":\"Width right\",\"value\":\"160.5\",\"unit\":\"cm\"},{\"label\":\"Width left\",\"value\":\"210.5\",\"unit\":\"cm\"}]",
+    "name": "GRIMO/ÅHEIM",
+    "subcategory": "Corner Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"53\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"69\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"43\",\"unit\":\"cm\"},{\"label\":\"Drawer depth (inside)\",\"value\":\"33\",\"unit\":\"cm\"},{\"label\":\"Drawer width (inside)\",\"value\":\"36\",\"unit\":\"cm\"},{\"label\":\"Distance between shelves\",\"value\":\"23\",\"unit\":\"cm\"},{\"label\":\"Height of drawer (inside)\",\"value\":\"20\",\"unit\":\"cm\"},{\"label\":\"Height under furniture\",\"value\":\"14\",\"unit\":\"cm\"}]",
+    "name": "GULLABERG",
+    "subcategory": "Modern Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"43 (16 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"80 (31 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"64 (25 1/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "HÅKANSKÄR",
+    "subcategory": "Wooden Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length Open\",\"value\":\"200 (78 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"128 (50 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width Open\",\"value\":\"128 (50 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"85 (33 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"78 (30 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"70 (27 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"38 (15 \\\")\",\"unit\":\"cm\"},{\"label\":\"Bed Width\",\"value\":\"120 (47 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Bed Length\",\"value\":\"190 (74 3/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "HAMMARN",
+    "subcategory": "Sofa Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"118\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"55\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"199\",\"unit\":\"cm\"}]",
+    "name": "HAUGA",
+    "subcategory": "Sliding Door Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Dimension\",\"value\":\"9.25 x 55.2 x 11.81\",\"unit\":\"in\"}]",
+    "name": "HEAVENLY YOUTH 55",
+    "subcategory": "Floating TV Stand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"75\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"82\",\"unit\":\"cm\"}]",
+    "name": "HEMLINGBY",
+    "subcategory": "2-Seater Fabric Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"211\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"164\",\"unit\":\"cm\"},{\"label\":\"Footboard height\",\"value\":\"66\",\"unit\":\"cm\"},{\"label\":\"Headboard height\",\"value\":\"120\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"150\",\"unit\":\"cm\"}]",
+    "name": "HEMNES",
+    "subcategory": "Queen Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Dimension\",\"value\":\"80 × 80 × 45 cm (31.5 × 31.5 × 17.7 in)\",\"unit\":\"cm\"}]",
+    "name": "HIELIVV",
+    "subcategory": "Marble Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"98 (38 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"50 (19 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"50 (19 5/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "HOL",
+    "subcategory": "Storage Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Depth\",\"value\":\"42.0 (16 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"56.2 (22 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"178.8 (70 3/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "HOLM",
+    "subcategory": "Wooden TV Stand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Dimension\",\"value\":\"15.9\\\"D x 55.1\\\"W x 23.6\\\"H\",\"unit\":\"in\"}]",
+    "name": "HOMISSUE",
+    "subcategory": "Corner TV Stand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Dimension\",\"value\":\"11\\\"D x 55\\\"W x 6.9\\\"H\",\"unit\":\"in\"}]",
+    "name": "HOOBRO 55",
+    "subcategory": "Floating TV Stand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Armrest Height\",\"value\":\"63 (24 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Width\",\"value\":\"11 (4 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"93 (36 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height Under Furniture\",\"value\":\"14 (5 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Backrest Height\",\"value\":\"82 (32 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Back Cushion Height\",\"value\":\"91 (35 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"60 (23 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"48 (18 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"232 (91 3/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "HYLTARP",
+    "subcategory": "3-Seater Fabric Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"207\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"161\",\"unit\":\"cm\"},{\"label\":\"Footboard height\",\"value\":\"63\",\"unit\":\"cm\"},{\"label\":\"Headboard height\",\"value\":\"112\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"150\",\"unit\":\"cm\"}]",
+    "name": "IDANÄS",
+    "subcategory": "King Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"89.0\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"30.0\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"124.0\",\"unit\":\"cm\"}]",
+    "name": "IVAR",
+    "subcategory": "Wine Storage Cabinet"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"180\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"90\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
+    "name": "JENSEN",
+    "subcategory": "Glass Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"150\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"90\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
+    "name": "JIMMI 6",
+    "subcategory": "Metal Industrial Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"79\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"55\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"176\",\"unit\":\"cm\"}]",
+    "name": "KLEPPSTAD",
+    "subcategory": "2-Door Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"37\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"45\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"28\",\"unit\":\"cm\"}]",
+    "name": "KNARREVIK",
+    "subcategory": "Metal Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"48 (18 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Diameter\",\"value\":\"90 (35 3/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "KRAGSTA",
+    "subcategory": "Round Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"42 (16 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Diameter\",\"value\":\"44 (17 3/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "KVISTBRO",
+    "subcategory": "Storage Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"142 (55 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"100 (39 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"87 (34 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"60 (23 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"39 (15 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Bed Width\",\"value\":\"140 (55 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Bed Length\",\"value\":\"188 (74 \\\")\",\"unit\":\"cm\"},{\"label\":\"Mattress Thickness\",\"value\":\"10 (3 7/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "LYCKSELE LÖVÅS",
+    "subcategory": "Sofa Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"19.7\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"20.9\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"33.5\",\"unit\":\"cm\"}]",
+    "name": "LYLE",
+    "subcategory": "Molded Resin Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"40\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"55\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"48\",\"unit\":\"cm\"},{\"label\":\"Drawer depth (inside)\",\"value\":\"43\",\"unit\":\"cm\"}]",
+    "name": "MALM",
+    "subcategory": "Nightstand with Drawer"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"209\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"166\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"100\",\"unit\":\"cm\"},{\"label\":\"Footboard height\",\"value\":\"38\",\"unit\":\"cm\"},{\"label\":\"Headboard height\",\"value\":\"100\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"150\",\"unit\":\"cm\"},{\"label\":\"Height under bed\",\"value\":\"21\",\"unit\":\"cm\"}]",
+    "name": "MALMM",
+    "subcategory": "Queen Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"157\",\"unit\":\"cm\"},{\"label\":\"Bed length\",\"value\":\"206\",\"unit\":\"cm\"},{\"label\":\"Bed width\",\"value\":\"97\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"90\",\"unit\":\"cm\"},{\"label\":\"Distance between beds\",\"value\":\"91\",\"unit\":\"cm\"},{\"label\":\"Height under furniture\",\"value\":\"21\",\"unit\":\"cm\"}]",
+    "name": "MYDAL",
+    "subcategory": "Bunk Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"154\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"97\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"100\",\"unit\":\"cm\"}]",
+    "name": "N-BELIEVA 3",
+    "subcategory": "Recliner Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"37 (14 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"37 (14 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"45 (17 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width\",\"value\":\"37 (14 3/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"37 (14 3/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "NÄMMARÖ",
+    "subcategory": "Wooden Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"75 (29 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"130 (51 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Max. length\",\"value\":\"190 (74 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"80 (31 1/2 \\\")\",\"unit\":\"cm\"}]",
+    "name": "NÄSINGE",
+    "subcategory": "Extendable Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"50.5\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"30.0\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"83.0\",\"unit\":\"cm\"}]",
+    "name": "NISSAFORS",
+    "subcategory": "Serving Trolleys"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"85.6\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"39.0\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"147.0\",\"unit\":\"cm\"}]",
+    "name": "NOBARA",
+    "subcategory": "Buffet Cabinet"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"46.0\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"36.0\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"181.0\",\"unit\":\"cm\"}]",
+    "name": "OMAR",
+    "subcategory": "Wine Storage Cabinet"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"94\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"42\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"30\",\"unit\":\"cm\"}]",
+    "name": "PADEN OUTDOOR",
+    "subcategory": "Metal Industrial Dining Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"17\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"19\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"31.5\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"18.25\",\"unit\":\"cm\"}]",
+    "name": "PAUL",
+    "subcategory": "Wooden Ornate Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"17\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"19\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"32\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"19\",\"unit\":\"cm\"}]",
+    "name": "PAULETTE",
+    "subcategory": "Wooden Ornate Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"150\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"201.2\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"66\",\"unit\":\"cm\"}]",
+    "name": "PAX / HASVIK",
+    "subcategory": "Sliding Door Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Dimension\",\"value\":\"30.32 × 13.39 × 6.70\",\"unit\":\"in\"},{\"label\":\"Maximum VESA\",\"value\":\"600 x 400\",\"unit\":\"mm\"}]",
+    "name": "PERLESMITH",
+    "subcategory": "TV Cart"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"180\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"181.1\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"57.1\",\"unit\":\"cm\"}]",
+    "name": "PLATSA",
+    "subcategory": "3-Door Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"79\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"176\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"55\",\"unit\":\"cm\"}]",
+    "name": "RAKKESTAD",
+    "subcategory": "2-Door Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"52 (20 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"50 (19 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"81 (31 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat width\",\"value\":\"45 (17 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat depth\",\"value\":\"36 (14 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat height\",\"value\":\"46 (18 1/8 \\\")\",\"unit\":\"cm\"}]",
+    "name": "SKÅLSTA",
+    "subcategory": "Modern Plastic Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"204.5\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"301\",\"unit\":\"cm\"},{\"label\":\"Thickness\",\"value\":\"2.7\",\"unit\":\"cm\"},{\"label\":\"Built-in depth\",\"value\":\"12.2\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"160\",\"unit\":\"cm\"}]",
+    "name": "SKYTTA",
+    "subcategory": "Walk-in Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"206\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"94\",\"unit\":\"cm\"},{\"label\":\"Footboard height\",\"value\":\"40\",\"unit\":\"cm\"},{\"label\":\"Headboard height\",\"value\":\"85\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"90\",\"unit\":\"cm\"}]",
+    "name": "SLATTUM",
+    "subcategory": "Single Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Diameter\",\"value\":\"97 (38 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"38 (15 \\\")\",\"unit\":\"cm\"}]",
+    "name": "STOCKHOLM",
+    "subcategory": "Glass Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"210\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"170\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"150\",\"unit\":\"cm\"},{\"label\":\"Footboard height\",\"value\":\"41\",\"unit\":\"cm\"},{\"label\":\"Headboard height\",\"value\":\"114\",\"unit\":\"cm\"},{\"label\":\"Height under bed\",\"value\":\"19\",\"unit\":\"cm\"}]",
+    "name": "TÄRNKULLEN",
+    "subcategory": "Double Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"209\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"98\",\"unit\":\"cm\"},{\"label\":\"Footboard height\",\"value\":\"32\",\"unit\":\"cm\"},{\"label\":\"Headboard height\",\"value\":\"92\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"90\",\"unit\":\"cm\"}]",
+    "name": "TARVA",
+    "subcategory": "Single Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"46 (18 1/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"54 (21 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"80 (31 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat width\",\"value\":\"40 (15 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat depth\",\"value\":\"37 (14 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat height\",\"value\":\"45 (17 3/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "TEODORES",
+    "subcategory": "Modern Plastic Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Depth\",\"value\":\"37.2 (14 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"54.9 (21 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"178.4 (70 1/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "TONSTAD",
+    "subcategory": "Wooden TV Stand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"59\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"40\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"40\",\"unit\":\"cm\"},{\"label\":\"Drawer depth (inside)\",\"value\":\"30\",\"unit\":\"cm\"},{\"label\":\"Drawer width (inside)\",\"value\":\"28\",\"unit\":\"cm\"},{\"label\":\"Height under nightstand\",\"value\":\"11\",\"unit\":\"cm\"}]",
+    "name": "TONSTAD",
+    "subcategory": "Wooden Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"200.5\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"120.6\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"47.2\",\"unit\":\"cm\"}]",
+    "name": "TONSTAD TALL",
+    "subcategory": "Dining Hutch Cabinet"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"119.9\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"202.3\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"37.2\",\"unit\":\"cm\"}]",
+    "name": "TONSTAD WIDE",
+    "subcategory": "Dining Hutch Cabinet"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"109\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"51.0\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"120.0\",\"unit\":\"cm\"}]",
+    "name": "TOP RESUME",
+    "subcategory": "Pantry Cabinets"
+  },
+  {
+    "dimensions": "[{\"label\":\"Diameter\",\"value\":\"88 cm (34 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height Under Furniture\",\"value\":\"12 cm (4 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"45 cm (17 3/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "TORSJÖ",
+    "subcategory": "Glass Coffee Table"
+  },
+  {
+    "dimensions": "[{\"label\":\"Length\",\"value\":\"207\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"96.5\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"130.5\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"90\",\"unit\":\"cm\"},{\"label\":\"Distance between beds\",\"value\":\"84\",\"unit\":\"cm\"},{\"label\":\"Height under furniture\",\"value\":\"14.5\",\"unit\":\"cm\"}]",
+    "name": "TUFFING",
+    "subcategory": "Bunk Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"45\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"218\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"45\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"80\",\"unit\":\"cm\"}]",
+    "name": "UNICOLY",
+    "subcategory": "Walk-in Wardrobe"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"27\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"207\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"186\",\"unit\":\"cm\"},{\"label\":\"Footboard height\",\"value\":\"27\",\"unit\":\"cm\"},{\"label\":\"Height under furniture\",\"value\":\"20\",\"unit\":\"cm\"}]",
+    "name": "VEVELSTAD",
+    "subcategory": "King Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"150\",\"unit\":\"cm\"}]",
+    "name": "VIHALS",
+    "subcategory": "Double Size Bed"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"40\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"65\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"39\",\"unit\":\"cm\"},{\"label\":\"Drawer width (inside)\",\"value\":\"33\",\"unit\":\"cm\"},{\"label\":\"Drawer depth (inside)\",\"value\":\"33\",\"unit\":\"cm\"},{\"label\":\"Height of drawer (inside)\",\"value\":\"7\",\"unit\":\"cm\"}]",
+    "name": "VIKHAMMER",
+    "subcategory": "Modern Nightstand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Back Cushions Height\",\"value\":\"80 (31 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Dept Chaise\",\"value\":\"164 (64 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"98 (38 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Chaise Lounge Seat Depth\",\"value\":\"125 (49 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width Right\",\"value\":\"192 (75 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width Left\",\"value\":\"273 (107 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height Under Furniture\",\"value\":\"4 (1 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Width\",\"value\":\"15 (5 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Height\",\"value\":\"65 (25 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"55 cm (21 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"45 (17 3/4 \\\")\",\"unit\":\"cm\"}]",
+    "name": "VIMLE",
+    "subcategory": "Sectional Sofa"
+  },
+  {
+    "dimensions": "[{\"label\":\"Height\",\"value\":\"80\",\"unit\":\"cm\"},{\"label\":\"Width\",\"value\":\"56\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"48\",\"unit\":\"cm\"}]",
+    "name": "VINTAGE METAL",
+    "subcategory": "Metal Industrial Dining Chairs"
+  },
+  {
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"58.3\",\"unit\":\"in\"},{\"label\":\"Depth\",\"value\":\"15.7\",\"unit\":\"in\"},{\"label\":\"Height\",\"value\":\"19.7\",\"unit\":\"in\"}]",
+    "name": "WLIVE",
+    "subcategory": "Modern TV Stand"
+  },
+  {
+    "dimensions": "[{\"label\":\"Dimensions\",\"value\":\"19.7\\\"D x 47.2\\\"W x 28\\\"H\",\"unit\":\"in\"}]",
+    "name": "YITAHOME",
+    "subcategory": "Corner TV Stand"
+  }
+]
