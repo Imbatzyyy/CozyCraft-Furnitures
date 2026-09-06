@@ -1,3 +1,4 @@
+import { adminMfaGate } from "@/lib/auth/admin-mfa-gate";
 import {
   createContext,
   useCallback,
@@ -541,6 +542,8 @@ export function AdminShell({
   const [mfaCode, setMfaCode] = useState("");
   const [mfaError, setMfaError] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaEnrollmentNeeded, setMfaEnrollmentNeeded] = useState(false);
+  const [mfaEnrollmentQr, setMfaEnrollmentQr] = useState("");
   const [adminSecurity, setAdminSecurity] = useState({ require_admin_mfa: true, session_timeout_minutes: 30 });
   const [idleSecondsLeft, setIdleSecondsLeft] = useState<number | null>(null);
   const {
@@ -587,8 +590,16 @@ export function AdminShell({
       setMfaError("Secure access could not be verified. Check your connection and retry.");
       return;
     }
-    if (assurance.nextLevel !== "aal2" || assurance.currentLevel === "aal2") {
+    const gate = adminMfaGate(assurance.currentLevel, assurance.nextLevel, policy?.require_admin_mfa !== false);
+    if (gate === "ready") {
+      setMfaEnrollmentNeeded(false);
+      setMfaEnrollmentQr("");
       setMfaRequired(false);
+      return;
+    }
+    if (gate === "enroll") {
+      setMfaEnrollmentNeeded(true);
+      setMfaRequired(true);
       return;
     }
     const { data: factors, error: factorError } = await supabase.auth.mfa.listFactors();
@@ -674,6 +685,26 @@ export function AdminShell({
     if (error) { setMfaError("That authenticator code is invalid or expired. Enter the newest code."); return; }
     setMfaCode("");
     await checkMfa();
+    await refreshWorkspace();
+  };
+  const beginAdminMfa = async () => {
+    if (mfaBusy) return;
+    setMfaBusy(true);
+    setMfaError("");
+    try {
+      const factors = await supabase.auth.mfa.listFactors();
+      if (factors.error) throw factors.error;
+      for (const factor of factors.data.totp.filter(factor => factor.status === "unverified" && factor.friendly_name === "CozyCraft admin")) {
+        const removed = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        if (removed.error) throw removed.error;
+      }
+      const result = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "CozyCraft admin" });
+      if (result.error) throw result.error;
+      setMfaFactorId(result.data.id);
+      setMfaEnrollmentQr(result.data.totp.qr_code);
+    } catch {
+      setMfaError("Authenticator setup could not start. Please retry or sign in again.");
+    } finally { setMfaBusy(false); }
   };
   const allAdminPaths = adminNav.map((item) => item[2]);
   const allowedPaths = adminPathsForRole(role, allAdminPaths);
@@ -710,6 +741,15 @@ export function AdminShell({
   if (!authReady || (user && !databaseRole)) return <div className="grid min-h-screen place-items-center bg-[#f3f0ea] text-sm text-muted-foreground">Checking secure access…</div>;
   if (!isStaffRole(databaseRole)) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><LockKeyhole className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">Administrator access required.</h1><p className="mt-3 text-sm text-muted-foreground">Sign in with an approved staff or admin account.</p><Link to="/admin/login" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Go to admin sign in</Link></section></main>;
   if (mfaRequired === null) return <div className="grid min-h-screen place-items-center bg-[#f3f0ea] text-sm text-muted-foreground">Verifying secure session…</div>;
+  if (mfaEnrollmentNeeded) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><form onSubmit={verifyMfa} className="w-full max-w-md rounded-3xl bg-card p-8 text-center shadow-xl">
+    <ShieldCheck className="mx-auto"/>
+    <h1 className="mt-4 font-serif text-3xl">Protect your admin account.</h1>
+    <p className="mt-3 text-sm leading-6 text-muted-foreground">Set up an authenticator before accessing customer records and store operations.</p>
+    {mfaEnrollmentQr ? <><img src={mfaEnrollmentQr} alt="Scan this code with your authenticator app" className="mx-auto my-5 h-48 w-48"/><label className="grid gap-2 text-left text-sm font-semibold">Authenticator code<input value={mfaCode} onChange={event=>setMfaCode(event.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" autoComplete="one-time-code" className="h-12 rounded-xl border border-border px-4 text-center text-lg tracking-[.35em]"/></label><button type="submit" disabled={mfaBusy||mfaCode.length!==6} className="mt-5 w-full rounded-xl bg-foreground px-5 py-3 font-semibold text-background disabled:opacity-50">{mfaBusy?"Verifying…":"Verify and enter"}</button></>
+      : <button type="button" onClick={()=>void beginAdminMfa()} disabled={mfaBusy} className="mt-5 w-full rounded-xl bg-foreground px-5 py-3 font-semibold text-background disabled:opacity-50">{mfaBusy?"Preparing…":"Set up authenticator"}</button>}
+    {mfaError&&<p role="alert" className="mt-4 text-sm text-red-700">{mfaError}</p>}
+    <button type="button" onClick={()=>void signOut()} className="mt-5 text-sm underline">Sign out</button>
+  </form></main>;
   if (mfaRequired) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><form onSubmit={verifyMfa} className="w-full max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary"><ShieldCheck size={20}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">TWO-STEP VERIFICATION</p><h1 className="mt-2 font-serif text-4xl">Confirm it’s you.</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">Enter the current six-digit code from your authenticator app to open operations.</p>{mfaFactorId&&<label className="mt-6 grid gap-2 text-left text-sm font-semibold">Authenticator code<input autoFocus value={mfaCode} onChange={event=>setMfaCode(event.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" autoComplete="one-time-code" className="h-12 rounded-xl border border-border bg-background px-4 text-center text-lg tracking-[.35em]"/></label>}{mfaError&&<p className="mt-4 rounded-xl bg-[#f3e5d4] p-3 text-left text-xs font-semibold text-[#8b5c46]">{mfaError}</p>}<button type={mfaFactorId?"submit":"button"} onClick={mfaFactorId?undefined:()=>void checkMfa()} disabled={mfaBusy||Boolean(mfaFactorId&&mfaCode.length!==6)} className="mt-5 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background disabled:opacity-50">{mfaBusy?"Verifying…":mfaFactorId?"Verify and enter":"Retry secure check"}</button><button type="button" onClick={()=>void signOut()} className="mt-3 text-sm font-semibold underline underline-offset-4">Sign out</button></form></main>;
   if (!canAccess) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="max-w-md rounded-3xl bg-card p-8 text-center shadow-xl"><ShieldCheck className="mx-auto"/><h1 className="mt-5 font-serif text-4xl">This feature is restricted.</h1><p className="mt-3 text-sm text-muted-foreground">Your {role.toLowerCase()} role does not have permission to open this page.</p><Link to="/admin" className="mt-6 inline-flex rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background">Return to overview</Link></section></main>;
   if (!workspaceReady) return <main className="grid min-h-screen place-items-center bg-[#e9e5de] p-5"><section className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-[0_20px_55px_rgba(35,32,28,.12)]"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary"><Database size={20} className={workspaceLoading ? "animate-pulse" : ""}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">LIVE ADMIN WORKSPACE</p><h1 className="mt-2 font-serif text-4xl">{workspaceError ? "Data needs another try." : "Preparing your workspace."}</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">{workspaceError ?? "Loading orders, products, customers, and support records once for every admin page."}</p>{workspaceError&&<button type="button" onClick={()=>void refreshWorkspace()} disabled={workspaceLoading} className="mt-6 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-semibold text-background disabled:opacity-50">{workspaceLoading ? "Retrying…" : "Retry workspace load"}</button>}</section></main>;
