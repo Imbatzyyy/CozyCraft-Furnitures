@@ -694,7 +694,7 @@ export function AdminShell({
     try {
       const factors = await supabase.auth.mfa.listFactors();
       if (factors.error) throw factors.error;
-      for (const factor of factors.data.totp.filter(factor => factor.status === "unverified" && factor.friendly_name === "CozyCraft admin")) {
+      for (const factor of factors.data.all.filter(factor => factor.factor_type === "totp" && factor.status === "unverified" && factor.friendly_name === "CozyCraft admin")) {
         const removed = await supabase.auth.mfa.unenroll({ factorId: factor.id });
         if (removed.error) throw removed.error;
       }
