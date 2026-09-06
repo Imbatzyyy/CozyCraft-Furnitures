@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { reconcileElapsedPaymongoSession } from "../_shared/paymongo-expiry.ts";
 
@@ -40,7 +41,7 @@ const failOrder = async (
   }
 };
 
-Deno.serve(async (request) => {
+serveProtected(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") return json(request, { error: "Method not allowed." }, 405);
 
@@ -382,6 +383,7 @@ Deno.serve(async (request) => {
     // runtime keeps this background task alive after the response is returned.
     EdgeRuntime.waitUntil(
       adminClient.functions.invoke("send-transactional-email", {
+        headers: { Authorization: authorization },
         body: { eventType: "order_confirmation", orderId: order.id },
       }).then(() => undefined),
     );

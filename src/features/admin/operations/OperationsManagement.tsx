@@ -2449,7 +2449,7 @@ export function CustomersPage() {
 export function ReviewsPage() {
   type ReviewRow = {
     id: string; rating: number; title: string; body: string; approved: boolean;
-    image_urls: string[]; created_at: string;
+    image_urls: string[]; image_paths: string[]; created_at: string;
     profiles: { full_name: string | null; email: string | null; avatar_url: string | null } | null;
     products: { name: string } | null;
   };
@@ -2459,13 +2459,13 @@ export function ReviewsPage() {
   const [gallery, setGallery] = useState<{ reviewId: string; index: number } | null>(null);
   const loadReviews = useCallback(async () => {
     const { data, error } = await supabase.from("reviews").select(
-      "id,rating,title,body,approved,image_urls,created_at,profiles!reviews_user_id_fkey(full_name,email,avatar_url),products!reviews_product_id_fkey(name)",
+      "id,rating,title,body,approved,image_urls,image_paths,created_at,profiles!reviews_user_id_fkey(full_name,email,avatar_url),products!reviews_product_id_fkey(name)",
     ).order("created_at", { ascending: false });
     if (error) setNotice(error.message);
     else {
       const normalizedReviews = (data ?? []).map((row) => ({
         ...row,
-        image_urls: Array.isArray(row.image_urls) ? row.image_urls.filter(Boolean) : [],
+        image_urls: Array.isArray(row.image_paths) ? row.image_paths.filter(Boolean) : [],
         profiles: Array.isArray(row.profiles) ? row.profiles[0] ?? null : row.profiles,
         products: Array.isArray(row.products) ? row.products[0] ?? null : row.products,
       })) as ReviewRow[];
@@ -2473,8 +2473,22 @@ export function ReviewsPage() {
         normalizedReviews.map((review) => review.profiles?.avatar_url),
         supabase,
       );
+      const photoPaths = normalizedReviews.flatMap(review => review.image_urls.map(value => {
+        const marker = "/storage/v1/object/public/review-images/";
+        try { return decodeURIComponent(value.includes(marker) ? value.split(marker)[1].split("?")[0] : value); }
+        catch { return ""; }
+      })).filter(Boolean);
+      const photos = photoPaths.length
+        ? await supabase.storage.from("review-images").createSignedUrls(photoPaths, 300)
+        : { data: [] };
+      const photoMap = new Map((photos.data ?? []).map(photo => [photo.path, photo.signedUrl]));
       setReviews(normalizedReviews.map((review, index) => ({
         ...review,
+        image_urls: review.image_urls.map(value => {
+          const marker = "/storage/v1/object/public/review-images/";
+          try { return photoMap.get(decodeURIComponent(value.includes(marker) ? value.split(marker)[1].split("?")[0] : value)) ?? ""; }
+          catch { return ""; }
+        }).filter(Boolean),
         profiles: review.profiles
           ? { ...review.profiles, avatar_url: signedAvatars[index] }
           : null,

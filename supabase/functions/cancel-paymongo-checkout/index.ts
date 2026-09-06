@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { findPaidProviderPayment, providerSessionLivemode } from "../_shared/paymongo-session.ts";
 import { reconcileElapsedPaymongoSession } from "../_shared/paymongo-expiry.ts";
@@ -16,7 +17,7 @@ const corsHeaders = (request: Request) => ({
 const json = (request: Request, body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(request), "Content-Type": "application/json" } });
 
-Deno.serve(async (request) => {
+serveProtected(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") return json(request, { error: "Method not allowed." }, 405);
   const authorization = request.headers.get("Authorization");

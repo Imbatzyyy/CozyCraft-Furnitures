@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 
 const canonicalOrigin="https://www.cozycraftfurnitures.com";
@@ -6,7 +7,7 @@ const allowedOrigins=new Set([canonicalOrigin,"https://cozycraftfurnitures.com",
 const cors=(r:Request)=>({"Access-Control-Allow-Origin":allowedOrigins.has(r.headers.get("Origin")??"")?r.headers.get("Origin")!:canonicalOrigin,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-cozycraft-platform","Access-Control-Allow-Methods":"POST, OPTIONS","Vary":"Origin"});
 const json=(r:Request,b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors(r),"Content-Type":"application/json"}});
 
-Deno.serve(async(request)=>{
+serveProtected(async(request)=>{
   if(request.method==="OPTIONS")return new Response("ok",{headers:cors(request)});
   if(request.method!=="POST")return json(request,{error:"Method not allowed."},405);
   const authorization=request.headers.get("Authorization");

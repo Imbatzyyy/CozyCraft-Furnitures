@@ -1940,7 +1940,8 @@ type ProductReview = {
 const normalizeProductReviews = (rows: ProductReview[]): ProductReview[] => rows.map((row) => ({
   ...row,
   reviewer_display_name: row.reviewer_display_name?.trim() || "CozyCraft customer",
-  image_urls: Array.isArray(row.image_urls) ? row.image_urls.filter(Boolean) : [],
+  image_urls: Array.isArray(row.image_urls) ? row.image_urls.map((_, index) =>
+    `${String(import.meta.env.VITE_SUPABASE_URL).replace(/\/+$/, "")}/functions/v1/review-photo?review_id=${encodeURIComponent(row.id)}&index=${index}`) : [],
 }));
 
 const reviewAvatarUrl = (reviewId: string) =>

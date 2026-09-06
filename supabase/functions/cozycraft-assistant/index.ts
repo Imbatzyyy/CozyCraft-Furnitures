@@ -882,6 +882,13 @@ Deno.serve(async (request) => {
     ? await supabase.auth.getUser()
     : { data: { user: null } };
   const user = authData.user;
+  if (user) {
+    const access = await supabase.rpc("security_action_allowed").abortSignal(AbortSignal.timeout(8000));
+    if (access.error || access.data !== true) return jsonResponse({
+      reply: "Please sign in again and complete account verification so I can help with your CozyCraft account.",
+      authenticated: false, fallback: true,
+    });
+  }
   const address = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const addressHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(address))), byte => byte.toString(16).padStart(2, "0")).join("");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY");

@@ -47,6 +47,9 @@ verify_jwt = false
 # the supplied review exists and is approved for public display.
 verify_jwt = false
 
+[functions.review-photo]
+verify_jwt = false
+
 [functions.newsletter-subscribe]
 # Newsletter registration is available to signed-out storefront visitors. The
 # function validates the request and writes through a server-only client.

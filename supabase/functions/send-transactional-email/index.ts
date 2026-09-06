@@ -1,4 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serveProtected } from "../_shared/security-boundary.ts";
+import { reserveBudget } from "../_shared/abuse-budget.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
@@ -42,7 +44,7 @@ const eventSettingKey = {
 } as const;
 type EventType = keyof typeof eventSettingKey;
 
-Deno.serve(async (request) => {
+serveProtected(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") return json(request, { error: "Method not allowed." }, 405);
 
@@ -166,13 +168,21 @@ Deno.serve(async (request) => {
     if (recent) return json(request, { sent: true, duplicate: true, emailId: recent.provider_message_id });
   }
 
+  // Staff resends never bypass the hard safety budgets.
+  if (!await reserveBudget(adminClient, `transactional:${eventType}:${entityType}:${entityId}`, 1, 120)
+    || !await reserveBudget(adminClient, `transactional:actor:${user.id}`, 30, 3600)
+    || !await reserveBudget(adminClient, "transactional:global", 1000, 86400)) {
+    return json(request, { error: "Please wait before sending another email." }, 429);
+  }
   const subject = render(template.subject_template, variables).slice(0, 180);
   const heading = escapeHtml(render(template.heading, variables));
   const message = escapeHtml(render(template.body_template, variables));
   const storeName = escapeHtml(settings?.store_name || "CozyCraft Furnitures");
   const result = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(20_000),
+    headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json",
+      "Idempotency-Key": `transactional-${eventType}-${entityId}-${Math.floor(Date.now() / 120000)}` },
     body: JSON.stringify({
       from: Deno.env.get("RESEND_FROM_EMAIL") ?? "CozyCraft Furnitures <no-reply@auth.cozycraftfurnitures.com>",
       to: [recipient],

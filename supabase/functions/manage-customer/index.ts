@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
@@ -15,7 +16,7 @@ type Payload =
   | { action: "update"; userId: string; fullName: string; username: string; phone: string; gender: string; dateOfBirth: string | null }
   | { action: "set-status"; userId: string; active: boolean };
 
-Deno.serve(async (request) => {
+serveProtected(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors(request) });
   if (request.method !== "POST") return json(request, { error: "Method not allowed." }, 405);
   const authorization = request.headers.get("Authorization");

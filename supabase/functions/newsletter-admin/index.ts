@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { buildCampaignEmail } from "../_shared/newsletter-email.ts";
 
@@ -17,7 +18,7 @@ const json = (request: Request, body: unknown, status = 200) => new Response(JSO
 const validEmail = (value: unknown) => typeof value === "string" && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u.test(value);
 const text = (value: unknown, max: number) => typeof value === "string" ? value.trim().slice(0, max) : "";
 
-Deno.serve(async (request) => {
+serveProtected(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors(request) });
   if (request.method !== "POST") return json(request, { error: "Method not allowed." }, 405);
   const authorization = request.headers.get("Authorization");

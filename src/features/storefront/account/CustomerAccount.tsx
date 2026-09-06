@@ -982,7 +982,7 @@ function CustomerProfile() {
       const { error: uploadError } = await supabase.storage
         .from("review-images")
         .upload(path, optimized, {
-          cacheControl: "31536000",
+          cacheControl: "60",
           contentType: optimized.type,
           upsert: false,
         });

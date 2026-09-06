@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { buildConfirmationEmail } from "../_shared/newsletter-email.ts";
+import { privateBudgetKey, reserveBudget } from "../_shared/abuse-budget.ts";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
 const allowedOrigins = new Set([
@@ -61,7 +62,24 @@ Deno.serve(async (request) => {
     return json(request, { error: "The request is too large." }, 413);
   }
 
-  const body = await request.json().catch(() => null);
+  const reader = request.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  if (reader) while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    bytes += chunk.value.byteLength;
+    if (bytes > 2048) {
+      await reader.cancel();
+      return json(request, { error: "The request is too large." }, 413);
+    }
+    chunks.push(chunk.value);
+  }
+  const combined = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) { combined.set(chunk, offset); offset += chunk.length; }
+  const rawBody = new TextDecoder().decode(combined);
+  const body = (() => { try { return JSON.parse(rawBody); } catch { return null; } })();
   const email = normalizeEmail(body?.email);
   if (!isValidEmail(email)) {
     return json(request, { error: "Enter a valid email address." }, 400);
@@ -78,6 +96,17 @@ Deno.serve(async (request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  const destination = await privateBudgetKey(email, serviceRoleKey);
+  // The global ceiling also applies when a source header is absent or spoofed.
+  const source = await privateBudgetKey(request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown", serviceRoleKey);
+  if (!await reserveBudget(admin, "newsletter:global", 200, 86400)
+    || !await reserveBudget(admin, `newsletter:source:${source}`, 10, 3600)) {
+    return json(request, { error: "Please try subscribing again later." }, 429);
+  }
+  if (!await reserveBudget(admin, `newsletter:destination:${destination}`, 1, 120)) {
+    return json(request, { status: "confirmation_sent" });
+  }
+
   const { data: existing, error: lookupError } = await admin
     .from("newsletter_subscribers")
     .select("id,status,confirmation_token,confirmation_sent_at")
@@ -90,7 +119,7 @@ Deno.serve(async (request) => {
   }
 
   if (existing?.status === "active") {
-    return json(request, { status: "already_subscribed" });
+    return json(request, { status: "confirmation_sent" });
   }
 
   if (
@@ -138,7 +167,7 @@ Deno.serve(async (request) => {
       confirmation_sent_at: now,
     }).select("id").single();
 
-    if (insertError?.code === "23505") return json(request, { status: "already_subscribed" });
+    if (insertError?.code === "23505") return json(request, { status: "confirmation_sent" });
     if (insertError) {
       console.error("newsletter subscribe failed", insertError.code);
       return json(request, { error: "We could not save your subscription just now." }, 500);

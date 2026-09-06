@@ -612,11 +612,20 @@ export function AdminShell({
     return () => { void supabase.removeChannel(channel); };
   }, [checkMfa, databaseRole]);
   const ADMIN_ACTIVITY_KEY = "cozycraft-admin-last-activity";
+  const serverActivityAt = useRef(0);
   const continueAdminSession = useCallback(() => {
     const now = Date.now();
     window.localStorage.setItem(ADMIN_ACTIVITY_KEY, String(now));
     setIdleSecondsLeft(null);
-  }, []);
+    if (mfaRequired === false && now - serverActivityAt.current > 60_000) {
+      serverActivityAt.current = now;
+      void supabase.rpc("touch_admin_security_session").then(({ data, error }) => {
+        if (!error && data === false) {
+          void supabase.auth.signOut({ scope: "local" }).then(() => nav("/admin/login?reason=idle", { replace: true }));
+        }
+      });
+    }
+  }, [mfaRequired, nav]);
   useEffect(() => {
     if (!authReady || !isStaffRole(databaseRole)) return;
     const timeoutMs = adminSecurity.session_timeout_minutes * 60_000;
