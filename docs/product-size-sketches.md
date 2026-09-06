@@ -18,18 +18,11 @@ as bed-frame dimensions. Headboard/backrest/cushion heights retain their meaning
 
 ## Catalog follow-up
 
-Ten products have at least one missing or ambiguous overall measurement, so
-unavailable guides show a dash instead of a fabricated number:
-
-- ALBA, Eris: combined length field without explicit axis order.
-- ALBIE: combined diameter field without separately specified height.
-- FITUEYES, HEAVENLY YOUTH 55, HIELIVV, PERLESMITH: unlabelled combined dimensions.
-- HEMLINGBY: no separate depth.
-- VIHALS: mattress dimensions only.
-- VIMLE: no overall width (seat widths are not overall widths).
-
-Stored units and numerical accuracy have not been independently verified against
-manufacturer documentation. This change does not alter the product database.
+Seven of the original ten incomplete records now have researched, labelled
+measurements. See [the source audit](product-measurement-sources.md) for sources,
+model matching and the guarded database migration. FITUEYES, HIELIVV and PERLESMITH
+remain unresolved: unavailable guides show a dash rather than a guessed number.
+This audit does not claim independent manufacturer verification of all 91 products.
 
 ## Verification
 

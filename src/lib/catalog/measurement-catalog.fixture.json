@@ -5,12 +5,12 @@
     "subcategory": "Metal Industrial Dining Chairs"
   },
   {
-    "dimensions": "[{\"label\":\"Length\",\"value\":\"90 x 180\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"90\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"180\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
     "name": "ALBA",
     "subcategory": "Marble Top Dining Table"
   },
   {
-    "dimensions": "[{\"label\":\"Diameter\",\"value\":\"120 x 76\",\"unit\":\"cm\"}]",
+    "dimensions": "[{\"label\":\"Diameter\",\"value\":\"120\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"76\",\"unit\":\"cm\"}]",
     "name": "ALBIE",
     "subcategory": "Glass Dining Table"
   },
@@ -95,7 +95,7 @@
     "subcategory": "Recliner Sofa"
   },
   {
-    "dimensions": "[{\"label\":\"Length\",\"value\":\"100 x 220\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"100\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"220\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"75\",\"unit\":\"cm\"}]",
     "name": "Eris",
     "subcategory": "Marble Top Dining Table"
   },
@@ -170,12 +170,12 @@
     "subcategory": "Sliding Door Wardrobe"
   },
   {
-    "dimensions": "[{\"label\":\"Dimension\",\"value\":\"9.25 x 55.2 x 11.81\",\"unit\":\"in\"}]",
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"55.2\",\"unit\":\"in\"},{\"label\":\"Depth\",\"value\":\"9.25\",\"unit\":\"in\"},{\"label\":\"Height\",\"value\":\"11.81\",\"unit\":\"in\"}]",
     "name": "HEAVENLY YOUTH 55",
     "subcategory": "Floating TV Stand"
   },
   {
-    "dimensions": "[{\"label\":\"Width\",\"value\":\"75\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"82\",\"unit\":\"cm\"}]",
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"145\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"71.5\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"71.5\",\"unit\":\"cm\"}]",
     "name": "HEMLINGBY",
     "subcategory": "2-Seater Fabric Sofa"
   },
@@ -425,7 +425,7 @@
     "subcategory": "King Size Bed"
   },
   {
-    "dimensions": "[{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"150\",\"unit\":\"cm\"}]",
+    "dimensions": "[{\"label\":\"Width\",\"value\":\"156\",\"unit\":\"cm\"},{\"label\":\"Length\",\"value\":\"206\",\"unit\":\"cm\"},{\"label\":\"Height\",\"value\":\"66\",\"unit\":\"cm\"},{\"label\":\"Mattress length\",\"value\":\"200\",\"unit\":\"cm\"},{\"label\":\"Mattress width\",\"value\":\"150\",\"unit\":\"cm\"}]",
     "name": "VIHALS",
     "subcategory": "Double Size Bed"
   },
@@ -435,7 +435,7 @@
     "subcategory": "Modern Nightstand"
   },
   {
-    "dimensions": "[{\"label\":\"Back Cushions Height\",\"value\":\"80 (31 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Dept Chaise\",\"value\":\"164 (64 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"98 (38 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Chaise Lounge Seat Depth\",\"value\":\"125 (49 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width Right\",\"value\":\"192 (75 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width Left\",\"value\":\"273 (107 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height Under Furniture\",\"value\":\"4 (1 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Width\",\"value\":\"15 (5 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Height\",\"value\":\"65 (25 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"55 cm (21 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"45 (17 3/4 \\\")\",\"unit\":\"cm\"}]",
+    "dimensions": "[{\"label\":\"Back Cushions Height\",\"value\":\"80 (31 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Dept Chaise\",\"value\":\"164 (64 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Depth\",\"value\":\"98 (38 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Chaise Lounge Seat Depth\",\"value\":\"125 (49 1/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width Right\",\"value\":\"192 (75 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Width Left\",\"value\":\"273 (107 1/2 \\\")\",\"unit\":\"cm\"},{\"label\":\"Height Under Furniture\",\"value\":\"4 (1 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Width\",\"value\":\"15 (5 7/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Armrest Height\",\"value\":\"65 (25 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Depth\",\"value\":\"55 cm (21 5/8 \\\")\",\"unit\":\"cm\"},{\"label\":\"Seat Height\",\"value\":\"45 (17 3/4 \\\")\",\"unit\":\"cm\"},{\"label\":\"Width left\",\"value\":\"330\",\"unit\":\"cm\"},{\"label\":\"Width right\",\"value\":\"249\",\"unit\":\"cm\"}]",
     "name": "VIMLE",
     "subcategory": "Sectional Sofa"
   },

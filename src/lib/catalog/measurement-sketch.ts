@@ -62,7 +62,7 @@ export function sketchAxes(specs: DimensionSpec[], kind: SketchKind) {
   const maxLength = sketchMeasure(specs,["max. length", "max length"]);
   const lengthRange = minLength && maxLength && minLength.cm <= maxLength.cm ? {label:"length",cm:minLength.cm,text:`${minLength.cm}–${maxLength.cm} cm`} : null;
   return {
-    width: sketchMeasure(specs, ["width", "overall width", ...(isBed ? ["bed width"] : []), ...(kind === "corner-wardrobe" ? ["width left"] : []), "diameter"]),
+    width: sketchMeasure(specs, ["width", "overall width", ...(isBed ? ["bed width"] : []), ...(["corner-wardrobe", "sectional"].includes(kind) ? ["width left"] : []), "diameter"]),
     depth: sketchMeasure(specs, ["depth", "overall depth", "length", ...(isBed ? ["bed length"] : []), ...(kind === "corner-wardrobe" ? ["width right"] : [])]) || lengthRange,
     height: sketchMeasure(specs, ["height", "overall height", ...(isBed ? ["headboard height"] : []), ...(["sofa","sectional","recliner"].includes(kind) ? ["back cushions height","backrest height"] : [])]),
   };
