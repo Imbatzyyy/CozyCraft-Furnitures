@@ -16,6 +16,7 @@ async function runScenario(mfa, width, requireMfa = true) {
   page.on("pageerror", (error) => errors.push(error.message));
   const requests = [];
   const notes = [];
+  let replaceSelectedOrder = false;
   const user = { id: adminId, email: "admin@example.test", role: "authenticated", aud: "authenticated",
     created_at: date, app_metadata: {}, user_metadata: {},
     factors: mfa ? [{ id: "test-factor", factor_type: "totp", status: "verified", friendly_name: "Test" }] : [] };
@@ -32,14 +33,19 @@ async function runScenario(mfa, width, requireMfa = true) {
     const headers = route.request().headers();
     let aal = null;
     try { aal = JSON.parse(Buffer.from((headers.authorization || "").split(".")[1], "base64url").toString()).aal; } catch {}
-    requests.push({ path, aal, method:route.request().method(), search:url.search });
+    requests.push({ path, aal, method:route.request().method(), search:url.search, body:route.request().postData() });
     const reply = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
     if (path.endsWith("/token")) return reply(session("aal1"));
     if (path.endsWith("/user")) return reply(user);
     if (path.endsWith("/challenge")) return reply({ id: "test-challenge", type: "totp", expires_at: Math.floor(Date.now() / 1000) + 300 });
     if (path.endsWith("/verify")) return reply(session("aal2"));
     if (path.endsWith("/rpc/admin_overview_snapshot")) return reply({sales:12500,monthCount:1,pending:0,lowStock:0,fulfillment:0,cancellations:0,refunds:0,support:0,statuses:{delivered:1,processing:0,pending:0,cancelled:0},salesData:[{m:"Sep",v:12500}],recent:[order]});
+    if(path.endsWith('/rpc/admin_customer_page')) {
+      const {p_page=1}=route.request().postDataJSON();
+      return reply({total:23,profiles:Array.from({length:10},(_,i)=>({id:`customer-${(p_page-1)*10+i+1}`,full_name:`Customer ${(p_page-1)*10+i+1}`,email:'customer@example.test',username:'customer',gender:'',avatar_url:null,customer_active:true,addresses:[],orders:[],support_tickets:[],order_count:3,address_count:0,ticket_count:1,lifetime_value:12500,created_at:date}))});
+    }
     if (path.endsWith("/rpc/admin_order_queue")) {
+      if(replaceSelectedOrder) return reply({orders:[{...order,id:"replacement",order_number:"CC-REPLACEMENT",status:"processing"}],total:1,allCount:1,today:1,fulfillment:1,awaiting:0,attention:0,paymentMethods:["cod"]});
       const {p_page=1}=route.request().postDataJSON();
       return reply({orders:Array.from({length:p_page===1?5:3},(_,index)=>({...order,status:p_page===2&&index===0?"processing":"delivered",id:`test-order-${(p_page-1)*5+index+1}`,order_number:`CC-TEST-${(p_page-1)*5+index+1}`})),total:8,allCount:8,today:8,fulfillment:1,awaiting:0,attention:0,paymentMethods:["cod"]});
     }
@@ -48,7 +54,7 @@ async function runScenario(mfa, width, requireMfa = true) {
     if (path.endsWith("/profiles")) return reply(url.searchParams.has("id") ? (single ? profile : [profile]) : []);
     if (path.endsWith("/admin_security_settings")) return reply({ require_admin_mfa: requireMfa, session_timeout_minutes: 30 });
     if (path.endsWith("/store_settings")) return reply({ id: true, store_name: "CozyCraft Furnitures" });
-    if (path.endsWith("/products")) return reply([{ id: "test-product", name: "Test Table", category: "Dining room", price: 12000, stock_quantity: 20, status: "active", rating: 5, review_count: 1, images: [], created_at: date }]);
+    if (path.endsWith("/products")) return reply(route.request().method()==="PATCH" ? [] : [{ id: "test-product", name: "Test Table", description:"A comfortable table for the dining room.",subcategory:"Extendable Dining Table", category: "Dining room", price: 12000, stock_quantity: 20, status: "active", rating: 5, review_count: 1, images: ["/test-1.png","/test-2.png","/test-3.png","/test-4.png"], created_at: date, updated_at: date }]);
     if (path.endsWith("/categories")) return reply([{ name: "Dining room", active: true }]);
     if (path.endsWith("/orders")) return reply(route.request().method()==="PATCH" || (mfa && aal !== "aal2") ? [] : [order]);
     if (path.endsWith("/support_tickets")) return reply([{id:"test-ticket",ticket_number:"T-TEST",user_id:customerId,order_id:order.id,subject:"Delivery question",message:"Please check the delivery date.",status:"open",category:"delivery",priority:"normal",assigned_to:null,attachment_paths:[],admin_reply:null,created_at:date,updated_at:date}]);
@@ -78,6 +84,7 @@ async function runScenario(mfa, width, requireMfa = true) {
     assert.equal(requests.filter((r) => r.path.endsWith("/admin_overview_snapshot")).length, 1, "One compact summary per verified login");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "No horizontal overflow");
     assert.deepEqual(errors, []);
+    assert.equal(requests.filter(r=>r.path.endsWith('/profiles')&&!r.search.includes('id=')).length,0,'Overview must not download the customer directory');
     await page.getByRole("link",{name:"View all",exact:true}).click();
     await page.getByText("CC-TEST-1",{exact:false}).first().waitFor();
     assert.equal(await page.getByRole("button",{name:/Queue position/}).count(),5,"Five orders per page");
@@ -93,9 +100,21 @@ async function runScenario(mfa, width, requireMfa = true) {
     const change=requests.find(r=>r.path.endsWith("/orders")&&r.method==="PATCH");
     assert.match(change?.search||"",/status=eq.processing/,"Status writes must guard the version the admin saw");
     assert.equal(requests.filter(r=>r.path.includes("send-transactional-email")).length,0,"Conflicting status must not send an email");
+    await page.getByLabel('Delivery status for order CC-TEST-6').selectOption('cancelled');
+    await page.getByRole('dialog',{name:'Cancel order #CC-TEST-6?'}).waitFor();
+    replaceSelectedOrder=true;
+    await page.evaluate(()=>window.dispatchEvent(new Event('cozycraft:admin-data-changed')));
+    await page.getByRole('dialog',{name:'Cancel order #CC-TEST-6?'}).waitFor({state:'hidden'});
+    assert.equal(requests.filter(r=>r.path.includes('cancel-order')).length,0,'Queue changes cannot cancel a replacement order');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,"Order desk fits viewport");
     await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({path:`/tmp/cozycraft-admin-qa-${width}.png`,fullPage:true});
+    await page.goto(`${baseUrl}/admin/customers`);
+    await page.getByRole('heading',{name:'Customer 1',exact:true}).waitFor();
+    await page.getByRole('button',{name:'Next',exact:true}).click();
+    await page.getByRole('heading',{name:'Customer 11',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Customer directory fits viewport');
+    await page.screenshot({path:`/tmp/cozy-customer-directory-${width}.png`});
     if(width===1440 && mfa && requireMfa) {
       await page.goto(`${baseUrl}/admin/support`);
       await page.getByText("Staff handover · internal only").click();
@@ -109,6 +128,18 @@ async function runScenario(mfa, width, requireMfa = true) {
       assert.equal(notes[0].author_id,adminId);
       assert.equal(notes[0].ticket_id,"test-ticket");
       await page.screenshot({path:"/tmp/cozycraft-support-qa.png",fullPage:true});
+      await page.goto(`${baseUrl}/admin/products`);
+      await page.getByRole('button',{name:'Actions for Test Table'}).first().click();
+      await page.getByRole('button',{name:'Edit product',exact:true}).click();
+      assert.equal(await page.getByLabel(/Stock quantity/).isDisabled(),true,'Existing stock is managed only in Inventory');
+      await page.getByLabel(/^Product description/).fill('Updated description while another customer purchases this table.');
+      await page.getByRole('button',{name:'Save changes',exact:true}).click();
+      await page.getByText(/This product changed while you were editing/).waitFor();
+      const productWrite=requests.find(r=>r.path.endsWith('/products')&&r.method==='PATCH');
+      assert.ok(productWrite);
+      assert.match(productWrite.search,/updated_at=eq\./);
+      assert.equal('stock_quantity' in JSON.parse(productWrite.body),false,'Content edits cannot overwrite live stock');
+      assert.match(await page.getByLabel(/^Product description/).inputValue(),/Updated description/,'Stale edit keeps the draft');
     }
     assert.deepEqual(errors,[]);
     console.log(`PASS fresh ${mfa ? "MFA" : "password-only"} login at ${width}px (store MFA policy ${requireMfa}): compact overview, database pages and stable Today view`);

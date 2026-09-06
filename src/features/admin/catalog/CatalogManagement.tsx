@@ -258,7 +258,7 @@ const isManagedProductDraft = (value: unknown): value is ManagedProduct => {
 export function ProductManager() {
   const location = useLocation();
   const { adminProducts, saveProduct, deleteProduct, uploadProductImages, storeSettings } = useStore();
-  const toManaged = (p: Product): ManagedProduct => ({ id:p.id, name:p.name, description:p.description, category:p.category, subcategory:p.subcategory ?? subcategoryFor(p.id), price:p.price, quantity:p.stockQuantity ?? 0, status:p.status === "draft" ? "Draft" : p.status === "inactive" ? "Inactive" : "Active", images:[...p.images], main:p.mainImageIndex ?? 0, material:p.material ?? materialFor(p.id), dimensions:p.dimensions });
+  const toManaged = (p: Product): ManagedProduct => ({ updatedAt:p.updatedAt, id:p.id, name:p.name, description:p.description, category:p.category, subcategory:p.subcategory ?? subcategoryFor(p.id), price:p.price, quantity:p.stockQuantity ?? 0, status:p.status === "draft" ? "Draft" : p.status === "inactive" ? "Inactive" : "Active", images:[...p.images], main:p.mainImageIndex ?? 0, material:p.material ?? materialFor(p.id), dimensions:p.dimensions });
   const [items, setItems] = useState<ManagedProduct[]>(adminProducts.map(toManaged));
   useEffect(() => setItems(adminProducts.map(toManaged)), [adminProducts]);
   const [view, setView] = useState<"grid" | "list">("list");
@@ -357,7 +357,7 @@ export function ProductManager() {
     setMenu(null);
     if (type === "edit") showForm(item);
     if (type === "delete") { const issue = await deleteProduct(item.id); if (issue) setNotice(issue); else { setItems(current=>current.filter(i=>i.id!==item.id)); setNotice(item.name+" deleted."); } }
-    if (type === "toggle") { const next = { ...item, status:(item.status==="Inactive"?"Active":"Inactive") as ManagedProduct["status"] }; const issue = await saveProduct(next); if (issue) setNotice(issue); else { setItems(current=>current.map(i=>i.id===item.id?next:i)); setNotice(item.name+" status updated."); } }
+    if (type === "toggle") { const next = { ...item, status:(item.status==="Inactive"?"Active":"Inactive") as ManagedProduct["status"] }; const issue = await saveProduct(next); if (issue) setNotice(issue); else { setNotice(item.name+" status updated."); } }
   };
   return (
     <AdminShell title="Products">
@@ -481,6 +481,7 @@ export function ProductManager() {
                     </td>
                     <td className="relative px-5 py-3">
                       <button
+                        aria-label={`Actions for ${item.name}`}
                         onClick={() =>
                           setMenu(menu === item.id ? null : item.id)
                         }
@@ -511,6 +512,7 @@ export function ProductManager() {
                     className="h-full w-full object-cover"
                   />
                   <button
+                    aria-label={`Actions for ${item.name}`}
                     onClick={() => setMenu(menu === item.id ? null : item.id)}
                     className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-lg bg-card/95"
                   >
@@ -832,6 +834,7 @@ export function ProductEditor({
             <label className="grid gap-2 text-sm font-semibold">
               Stock quantity
               <input
+                disabled={Boolean(product.id)}
                 value={product.quantity || ""}
                 onChange={(e) =>
                   setProduct({ ...product, quantity: Number(e.target.value) })
@@ -839,6 +842,7 @@ export function ProductEditor({
                 type="number"
                 className="h-11 rounded-xl border border-border px-3 font-normal"
               />
+              {product.id && <span className="text-xs font-normal text-muted-foreground">Use Inventory to adjust stock safely. Product edits never change stock.</span>}
             </label>
             <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
               Publishing status

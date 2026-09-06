@@ -109,6 +109,7 @@ export type DbSupportTicket = {
 };
 
 export type DbProduct = {
+  updated_at?: string;
   id: string;
   name: string;
   category: string;

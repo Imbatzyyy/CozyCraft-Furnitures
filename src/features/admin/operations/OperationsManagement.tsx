@@ -1120,6 +1120,7 @@ export function OrdersWorkspacePage() {
   const [selectedId, setSelectedId] = useState(() => searchParams.get("order") ?? "");
   const [notice, setNotice] = useState("");
   const [showCancellation, setShowCancellation] = useState(false);
+  const [cancellationTarget, setCancellationTarget] = useState("");
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [sendingRefundEmail, setSendingRefundEmail] = useState(false);
@@ -1263,6 +1264,16 @@ export function OrdersWorkspacePage() {
 
   const selected =
     filteredOrders.find((order) => order.id === selectedId) ?? filteredOrders[0];
+  useEffect(() => {
+    setCancellationReason("");
+    setReturnNote("");
+  }, [selected?.id]);
+  useEffect(() => {
+    if (showCancellation && cancellationTarget !== JSON.stringify(selected)) {
+      setShowCancellation(false);
+      setNotice("The order changed. Please review it before starting cancellation again.");
+    }
+  }, [selected, showCancellation, cancellationTarget]);
   const selectedPayment = currentPaymentTransaction(selected?.payment_transactions);
   const selectedReturn = selected ? returnRequests.find((request) => request.order_id === selected.id) : undefined;
   const downloadInvoice = async (order: DbOrder) => {
@@ -1363,6 +1374,7 @@ export function OrdersWorkspacePage() {
         return;
       }
       setCancellationReason("");
+      setCancellationTarget(JSON.stringify(selected));
       setShowCancellation(true);
       return;
     }
@@ -1374,7 +1386,7 @@ export function OrdersWorkspacePage() {
     finally { setOrderUpdating(false); }
   };
   const confirmCancellation = async () => {
-    if (!selected || cancellationReason.trim().length < 5) {
+    if (!selected || cancellationTarget !== JSON.stringify(selected) || cancellationReason.trim().length < 5) {
       setNotice("Please provide a clear cancellation reason.");
       return;
     }
@@ -1791,7 +1803,7 @@ export function OrdersWorkspacePage() {
                     </div>
                     <span className="rounded-full border border-current px-3 py-1 text-[10px] font-bold uppercase">{selected.cancellation_status}</span>
                   </div>
-                  {selected.cancellation_status === "pending" && canManageFinancials && <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"><label className="grid gap-1.5 text-xs font-semibold">Decision note <input value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} maxLength={500} placeholder="Optional note for the customer" className="h-10 rounded-xl border border-current/25 bg-white/70 px-3 text-foreground outline-none"/></label><button type="button" disabled={cancelling} onClick={() => void rejectCancellationRequest()} className="h-10 rounded-xl border border-current px-4 text-xs font-semibold disabled:opacity-50">Reject request</button><button type="button" disabled={cancelling} onClick={() => { setCancellationReason(selected.cancellation_reason || ""); setShowCancellation(true); }} className="h-10 rounded-xl bg-[#8f4f38] px-4 text-xs font-semibold text-white disabled:opacity-50">Approve &amp; cancel</button></div>}
+                  {selected.cancellation_status === "pending" && canManageFinancials && <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"><label className="grid gap-1.5 text-xs font-semibold">Decision note <input value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} maxLength={500} placeholder="Optional note for the customer" className="h-10 rounded-xl border border-current/25 bg-white/70 px-3 text-foreground outline-none"/></label><button type="button" disabled={cancelling} onClick={() => void rejectCancellationRequest()} className="h-10 rounded-xl border border-current px-4 text-xs font-semibold disabled:opacity-50">Reject request</button><button type="button" disabled={cancelling} onClick={() => { setCancellationReason(selected.cancellation_reason || ""); setCancellationTarget(JSON.stringify(selected)); setShowCancellation(true); }} className="h-10 rounded-xl bg-[#8f4f38] px-4 text-xs font-semibold text-white disabled:opacity-50">Approve &amp; cancel</button></div>}
                 </section>
               )}
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
@@ -2182,8 +2194,24 @@ export function PaymentsPage() {
   );
 }
 
+type CustomerDirectoryRecord = DbCustomerProfile & { order_count: number; address_count: number; ticket_count: number; lifetime_value: number };
 export function CustomersPage() {
-  const { customerProfiles, refreshCustomers } = useStore();
+  const [customerSearchParams] = useSearchParams();
+  const [customerQuery, setCustomerQuery] = useState(() => customerSearchParams.get("q") ?? "");
+  const { userId, workspaceReady } = useAdminSession();
+  const [page, setPage] = useState(1);
+  const directory = useAdminQuery<{ profiles: CustomerDirectoryRecord[]; total: number }>("admin_customer_page", { p_page: page, p_query: customerQuery }, workspaceReady, userId);
+  const customerProfiles = directory.data?.profiles ?? [];
+  const [avatars, setAvatars] = useState<Record<string,string | null>>({});
+  useEffect(() => {
+    let active = true;
+    const profiles = directory.data?.profiles ?? [];
+    void privateAvatarUrls(profiles.map(profile => profile.avatar_url), supabase).then(urls => {
+      if (active) setAvatars(Object.fromEntries(profiles.map((profile,index) => [profile.id,urls[index] ?? null])));
+    });
+    return () => { active = false; };
+  }, [directory.data]);
+  const refreshCustomers = directory.reload;
   const [selectedId, setSelectedId] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ fullName: "", username: "", phone: "", gender: "", dateOfBirth: "" });
@@ -2200,8 +2228,7 @@ export function CustomersPage() {
   const customer =
     customerProfiles.find((item) => item.id === selectedId) ??
     customerProfiles[0];
-  const lifetimeValue = (profile: DbCustomerProfile) =>
-    customerLifetimeValue(profile.orders);
+  const lifetimeValue = (profile: CustomerDirectoryRecord) => Number(profile.lifetime_value);
   const primaryAddress = customer?.addresses.find(
     (address) => address.is_primary,
   ) ?? customer?.addresses[0];
@@ -2232,12 +2259,19 @@ export function CustomersPage() {
           </p>
         </div>
         <span className="rounded-xl bg-card px-4 py-3 text-sm shadow-sm">
-          <b>{customerProfiles.length}</b> registered customers
+          <b>{directory.data?.total ?? "—"}</b> registered customers
         </span>
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
+        <input aria-label="Search customers" value={customerQuery} disabled={editing} onChange={event => { setCustomerQuery(event.target.value); setPage(1); }} placeholder="Search customers" className="min-h-10 rounded-xl border border-border bg-card px-3" />
+        <button disabled={page === 1 || directory.loading || editing} onClick={() => setPage(value => value-1)} className="rounded-xl border border-border px-4 py-2 disabled:opacity-40">Previous</button>
+        <span>Page {page} of {Math.max(1, Math.ceil((directory.data?.total ?? 0)/10))}</span>
+        <button disabled={directory.loading || editing || page*10 >= (directory.data?.total ?? 0)} onClick={() => setPage(value => value+1)} className="rounded-xl border border-border px-4 py-2 disabled:opacity-40">Next</button>
+        {directory.error && <span role="alert">{directory.error} <button className="underline" onClick={directory.reload}>Try again</button></span>}
       </div>
       {!customer ? (
         <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
-          No registered customer profiles yet.
+          {directory.loading ? "Loading customer records…" : directory.error ? "Customer records could not be loaded." : "No registered customer profiles yet."}
         </div>
       ) : (
         <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(300px,.75fr)_minmax(520px,1.25fr)]">
@@ -2254,9 +2288,9 @@ export function CustomersPage() {
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#b8a58d] text-sm font-bold">
-                    {profile.avatar_url ? (
+                    {avatars[profile.id] ? (
                       <img
-                        src={profile.avatar_url}
+                        src={avatars[profile.id]!}
                         alt=""
                         className="h-full w-full object-cover"
                       />
@@ -2276,7 +2310,7 @@ export function CustomersPage() {
                 <span className="shrink-0 text-right text-xs">
                   <b>{money(lifetimeValue(profile))}</b>
                   <span className="mt-1 block text-muted-foreground">
-                    {profile.orders.length} orders
+                    {profile.order_count} orders
                   </span>
                 </span>
               </button>
@@ -2286,9 +2320,9 @@ export function CustomersPage() {
             <div className="bg-[#292622] p-6 text-[#f4f2ee]">
               <div className="flex flex-wrap items-center gap-4">
                 <span className="grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-[#b8a58d] text-xl font-bold text-foreground">
-                  {customer.avatar_url ? (
+                  {avatars[customer.id] ? (
                     <img
-                      src={customer.avatar_url}
+                      src={avatars[customer.id]!}
                       alt=""
                       className="h-full w-full object-cover"
                     />
@@ -2311,9 +2345,9 @@ export function CustomersPage() {
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   ["Lifetime value", money(lifetimeValue(customer))],
-                  ["Orders", customer.orders.length],
-                  ["Addresses", customer.addresses.length],
-                  ["Support tickets", customer.support_tickets.length],
+                  ["Orders", customer.order_count],
+                  ["Addresses", customer.address_count],
+                  ["Support tickets", customer.ticket_count],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-xl bg-white/8 p-3">
                     <p className="text-[10px] text-white/50">{label}</p>

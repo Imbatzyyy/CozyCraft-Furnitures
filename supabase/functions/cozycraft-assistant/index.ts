@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.111.0";
 import {
   classifyAssistantRequest,
   customerFacingScopeReply,
@@ -166,36 +166,6 @@ const guestReplyCache = new Map<string, { expiresAt: number; reply: string; mode
 const GROQ_MODEL_CACHE_TTL_MS = 15 * 60_000;
 let groqModelCache: { expiresAt: number; models: string[] } | null = null;
 let groqRateLimitedUntil = 0;
-const REQUEST_BUDGET_WINDOW_MS = 60_000;
-const requestBudgets = new Map<string, { startedAt: number; count: number }>();
-
-const shortHash = (value: string) => {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return (hash >>> 0).toString(36);
-};
-
-const anonymousRequestKey = (request: Request) => {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const address = request.headers.get("cf-connecting-ip") ?? forwarded ?? "unknown";
-  const agent = request.headers.get("user-agent")?.slice(0, 160) ?? "unknown";
-  return `guest:${shortHash(`${address}|${agent}`)}`;
-};
-
-const consumeRequestBudget = (key: string, maximum: number) => {
-  const now = Date.now();
-  const current = requestBudgets.get(key);
-  if (!current || current.startedAt + REQUEST_BUDGET_WINDOW_MS <= now) {
-    requestBudgets.set(key, { startedAt: now, count: 1 });
-    return true;
-  }
-  if (current.count >= maximum) return false;
-  current.count += 1;
-  return true;
-};
 
 const cacheGuestReply = (
   key: string | null,
@@ -733,7 +703,7 @@ const safeFallbackReply = ({
 };
 
 const loadPublicKnowledge = async (
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
 ): Promise<PublicKnowledge> => {
   const now = Date.now();
   if (publicKnowledgeCache && publicKnowledgeCache.expiresAt > now) {
@@ -912,10 +882,14 @@ Deno.serve(async (request) => {
     ? await supabase.auth.getUser()
     : { data: { user: null } };
   const user = authData.user;
-  const requestBudgetKey = user?.id
-    ? `customer:${user.id}`
-    : anonymousRequestKey(request);
-  if (!consumeRequestBudget(requestBudgetKey, user ? 45 : 30)) {
+  const address = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const addressHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(address))), byte => byte.toString(16).padStart(2, "0")).join("");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY");
+  // Fail closed: a quota outage must never turn into unlimited paid AI calls.
+  const budget = serviceKey ? await createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } }).rpc("reserve_assistant_request", {
+    p_key: user ? `customer:${user.id}` : `guest:${addressHash}`, p_authenticated: Boolean(user),
+  }).abortSignal(AbortSignal.timeout(5000)) : { data: false, error: true };
+  if (budget.error || budget.data !== true) {
     return jsonResponse({
       reply: "I’m still here to help with CozyCraft. This browser has sent many messages in a short time, so please wait about a minute before asking again. For an urgent order concern, open My Account → Support.",
       authenticated: Boolean(user),
@@ -1294,7 +1268,7 @@ Deno.serve(async (request) => {
       }
 
       result = await groqResponse.json();
-      const choices = result.choices as Array<{ message?: { content?: string } }> | undefined;
+      const choices = result?.choices as Array<{ message?: { content?: string } }> | undefined;
       const rawReply = choices?.[0]?.message?.content?.trim();
       reply = rawReply ? cleanAssistantReply(rawReply) : "";
       if (reply) break;

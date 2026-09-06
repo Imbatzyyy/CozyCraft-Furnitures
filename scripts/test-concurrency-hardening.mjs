@@ -1,0 +1,54 @@
+// Isolated, disposable PostgreSQL only. Never uses the linked project.
+import { readFileSync } from 'node:fs';
+import { execFileSync, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import assert from 'node:assert/strict';
+const container = 'cozy-hardening-test-db';
+const database = `hardening_${Date.now()}`;
+execFileSync('docker',['exec',container,'createdb','-U','postgres',database]);
+const args = ['exec','-i',container,'psql','-U','postgres','-d',database,'-X','-qAt','-v','ON_ERROR_STOP=1'];
+const sql = text => execFileSync('docker',args,{input:text,encoding:'utf8'}).trim();
+const concurrent = async text => (await promisify(execFile)('docker',[...args,'-c',text],{encoding:'utf8'})).stdout.trim();
+sql(`
+create schema if not exists private;
+create or replace function private.is_staff() returns boolean language sql as 'select true';
+create or replace function private.customer_mfa_satisfied() returns boolean language sql as 'select true';
+create or replace function private.admin_mfa_satisfied() returns boolean language sql as 'select true';
+create table public.profiles(id uuid primary key,phone text,phone_verified_at timestamptz,role text default 'customer',customer_active boolean default true,
+full_name text,email text,avatar_url text,username text,gender text,date_of_birth date,preferred_payment_method text,staff_active boolean,created_at timestamptz default now());
+create unique index phone_owner on public.profiles(phone) where phone_verified_at is not null;
+create table public.phone_verification_challenges(id uuid primary key,user_id uuid,phone_e164 text,code_digest text,status text default 'pending',attempts integer default 0 check(attempts between 0 and 5),expires_at timestamptz,created_at timestamptz default now(),verified_at timestamptz);
+create table public.addresses(id uuid,user_id uuid,is_primary boolean);
+create table public.orders(id uuid,user_id uuid,order_number text,status text,payment_status text,total numeric,created_at timestamptz);
+create table public.support_tickets(id uuid,user_id uuid,ticket_number text,status text,created_at timestamptz);
+create table public.activity_logs(actor_id uuid,action text,entity_type text,entity_id text,details jsonb);
+insert into public.profiles(id,full_name) values ('00000000-0000-4000-8000-000000000001','Test One'),('00000000-0000-4000-8000-000000000002','Test Two');
+`);
+sql(readFileSync(new URL('../supabase/migrations/20260906020220_harden_concurrent_operations.sql',import.meta.url),'utf8'));
+const user='00000000-0000-4000-8000-000000000001';
+const reserved=await Promise.all(Array.from({length:20},()=>concurrent(`select public.reserve_phone_challenge('${user}','+639171111111',gen_random_uuid(),'digest');`)));
+assert.equal(reserved.filter(value=>JSON.parse(value).reserved).length,1,'Only one concurrent SMS reservation');
+const id=sql(`update public.phone_verification_challenges set status='sent' returning id;`);
+await Promise.all(Array.from({length:20},()=>concurrent(`select public.consume_phone_challenge('${user}','${id}','wrong');`)));
+assert.equal(sql(`select attempts||':'||status from public.phone_verification_challenges where id='${id}';`),'5:locked');
+assert.match(sql(`select public.consume_phone_challenge('${user}','${id}','digest');`),/error/,'Locked code cannot succeed');
+sql(`insert into public.phone_verification_challenges(id,user_id,phone_e164,code_digest,status,expires_at)
+select gen_random_uuid(),id,'+639172222222','right','sent',now()+interval '5 minutes' from public.profiles;`);
+const challenges=sql(`select user_id||','||id from public.phone_verification_challenges where code_digest='right';`).split('\n');
+const verified=await Promise.all(challenges.map(row=>{const [u,c]=row.split(',');return concurrent(`select public.consume_phone_challenge('${u}','${c}','right');`);}));
+assert.equal(verified.filter(value=>JSON.parse(value).status==='verified').length,1,'One phone can belong to only one account');
+const quota=await Promise.all(Array.from({length:60},()=>concurrent("select public.reserve_assistant_request('customer:test',true);")));
+assert.equal(quota.filter(value=>value==='t').length,45,'Shared quota is atomic across connections');
+sql('truncate private.assistant_request_budgets;');
+assert.equal(sql("select count(*) from generate_series(1,2001) i where public.reserve_assistant_request('daily-test:'||i,false);"),'2000','Global daily ceiling holds even with unique identities');
+assert.equal(sql("select has_function_privilege('anon','public.reserve_phone_challenge(uuid,text,uuid,text)','execute');"),'f');
+assert.equal(sql("select has_function_privilege('authenticated','public.consume_phone_challenge(uuid,uuid,text)','execute');"),'f');
+assert.equal(sql("select has_function_privilege('anon','public.reserve_assistant_request(text,boolean)','execute');"),'f');
+assert.equal(JSON.parse(sql("select public.admin_customer_page(1,'Test One');")).total,1);
+sql("insert into public.profiles(id,full_name) select gen_random_uuid(),'Paging Test '||i from generate_series(1,25) i;");
+const page=JSON.parse(sql("select public.admin_customer_page(1,'');"));
+assert.equal(page.total,27);
+assert.equal(page.profiles.length,10);
+assert.equal(JSON.parse(sql("select public.admin_customer_page(3,'');")).profiles.length,7);
+assert.ok(page.profiles.every(profile=>profile.orders.length===0&&profile.support_tickets.length===0),'Directory returns aggregates, not histories');
+console.log('PASS: concurrent SMS reservation, OTP lockout, phone uniqueness, shared AI quota, grants, directory search.');

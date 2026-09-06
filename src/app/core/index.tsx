@@ -126,6 +126,7 @@ export type Product = {
   images: string[];
   mainImageIndex?: number;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 export const fallbackProducts: Product[] = [
@@ -2098,6 +2099,7 @@ export function Status({ children, text }: { children?: ReactNode; text?: string
 }
 
 export type ManagedProduct = {
+  updatedAt?: string;
   id: string;
   name: string;
   description: string;

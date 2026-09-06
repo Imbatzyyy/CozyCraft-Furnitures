@@ -337,6 +337,7 @@ function WorkspaceSearch({
       : [];
 
     return [
+      ...(term ? [{key:"search-customer-database",title:`Search customers for “${query.trim()}”`,detail:"Search customer records",route:`/admin/customers?q=${encodeURIComponent(query.trim())}`,Icon:Users}] : []),
       ...(term ? [{key:"search-order-database", title:`Search orders for “${query.trim()}”`,detail:"Search the complete order history",route:`/admin/orders?range=all&q=${encodeURIComponent(query.trim())}`,Icon:ClipboardList}] : []),
       ...sections.filter((item) => !term || [item.title, item.detail].some(matches)),
       ...records,

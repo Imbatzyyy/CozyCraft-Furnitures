@@ -1993,6 +1993,7 @@ const productCollectionPath = (product: Product) => {
 };
 
 export function ProductPage() {
+  const [loadFailed, setLoadFailed] = useState(false);
   const { productId } = useParams();
   const { products } = useStore();
   const visibleProduct = products.find((product) => product.id === productId);
@@ -2013,20 +2014,37 @@ export function ProductPage() {
   }, [visibleProduct]);
 
   useEffect(() => {
+    setLoadFailed(false);
+    if (productSnapshot) return;
+    const timer = window.setTimeout(() => setLoadFailed(true), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [productId, productSnapshot]);
+
+  useEffect(() => {
     if (!productId) {
       setAvailability("unavailable");
       return;
     }
 
     let active = true;
+    let availabilityRequest: AbortController | undefined;
     const loadAvailability = async () => {
-      const { data, error } = await supabase
+      availabilityRequest?.abort();
+      const controller = new AbortController();
+      availabilityRequest = controller;
+      const timeout = window.setTimeout(() => controller.abort(), 8_000);
+      try {
+        const { data, error } = await supabase
         .from("product_availability")
         .select("available")
         .eq("product_id", productId)
-        .maybeSingle();
-      if (!active || error) return;
-      setAvailability(data?.available ? "available" : "unavailable");
+        .abortSignal(controller.signal).maybeSingle();
+        if (!active || availabilityRequest !== controller) return;
+        if (error) { setLoadFailed(true); return; }
+        setAvailability(data?.available ? "available" : "unavailable");
+      } catch {
+        if (active && availabilityRequest === controller) setLoadFailed(true);
+      } finally { window.clearTimeout(timeout); }
     };
 
     void loadAvailability();
@@ -2053,6 +2071,7 @@ export function ProductPage() {
     return () => {
       active = false;
       window.removeEventListener("focus", refreshOnFocus);
+      availabilityRequest?.abort();
       void supabase.removeChannel(channel);
     };
   }, [productId]);
@@ -2061,7 +2080,13 @@ export function ProductPage() {
     return (
       <Layout>
         <main className="mx-auto grid min-h-[62vh] max-w-[1440px] place-items-center px-5 py-12 lg:px-10">
-          {availability !== "unavailable" ? (
+          {loadFailed && availability !== "unavailable" ? (
+            <section className="max-w-md text-center" role="alert">
+              <h1 className="font-serif text-3xl">We couldn’t load this piece.</h1>
+              <p className="mt-3 text-sm text-muted-foreground">Please check your connection and try again. This does not mean the product is unavailable.</p>
+              <button onClick={() => window.location.reload()} className="mt-5 min-h-12 rounded-xl bg-foreground px-6 text-sm font-semibold text-background">Try again</button>
+            </section>
+          ) : availability !== "unavailable" ? (
             <div className="text-center" role="status" aria-live="polite">
               <span className="mx-auto block h-9 w-9 animate-spin rounded-full border-2 border-border border-t-foreground" />
               <p className="mt-4 text-sm font-semibold">Checking this piece…</p>

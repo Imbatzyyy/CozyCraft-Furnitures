@@ -347,6 +347,7 @@ function App() {
     images: row.images ?? [],
     mainImageIndex: row.main_image_index,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }), []);
 
   const refreshProducts = useCallback(() => {
@@ -359,7 +360,7 @@ function App() {
         portalSupabase
           .from("products")
           .select(
-            "id,name,category,subcategory,price,stock_quantity,status,color,material,dimensions,description,images,main_image_index,rating,review_count,created_at",
+            "id,name,category,subcategory,price,stock_quantity,status,color,material,dimensions,description,images,main_image_index,rating,review_count,created_at,updated_at",
           )
           .order("created_at", { ascending: false }),
         portalSupabase.from("categories").select("name,active"),
@@ -513,6 +514,12 @@ function App() {
   }, []);
 
   const refreshCustomers = useCallback(() => {
+    // The paged directory owns customer loading. Only the report export needs
+    // the legacy collection; realtime elsewhere must not download this graph.
+    if (adminPortal && window.location.pathname !== "/admin/reports") {
+      notifyAdminDataChanged();
+      return Promise.resolve(null);
+    }
     const requestScope = ordersScope;
     if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
     const existing = customersRefreshInFlight.current;
@@ -521,12 +528,12 @@ function App() {
       const { data, error } = await portalSupabase
         .from("profiles")
         .select(
-          "id,full_name,email,phone,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at,addresses!addresses_user_id_fkey(id,user_id,label,recipient_name,mobile,email,address_line,barangay,city,province,postal_code,delivery_note,is_primary),orders!orders_user_id_fkey(id,order_number,status,payment_status,total,created_at),support_tickets!support_tickets_user_id_fkey(id,ticket_number,status,created_at)",
+          "id,full_name,email,phone,phone_verified_at,avatar_url,username,gender,date_of_birth,preferred_payment_method,role,staff_active,customer_active,created_at",
         )
         .eq("role", "customer")
         .order("created_at", { ascending: false });
       if (error) return error.message;
-      const profiles = (data ?? []) as DbCustomerProfile[];
+      const profiles = (data ?? []).map(profile => ({ ...profile, addresses: [], orders: [], support_tickets: [] })) as DbCustomerProfile[];
       const signedAvatars = await privateAvatarUrls(
         profiles.map((profile) => profile.avatar_url),
         portalSupabase,
@@ -596,7 +603,6 @@ function App() {
       const results = await Promise.all([
         refreshProducts(),
         refreshOrders(),
-        refreshCustomers(),
         refreshTickets(),
       ]);
       const issue = results.find((result): result is string => Boolean(result)) ?? null;
@@ -1895,7 +1901,6 @@ function App() {
       category: product.category,
       subcategory: product.subcategory,
       price: product.price,
-      stock_quantity: product.quantity,
       status: product.status.toLowerCase(),
       images: canonicalImages.images,
       main_image_index: canonicalImages.mainImageIndex,
@@ -1903,9 +1908,12 @@ function App() {
       dimensions: product.dimensions,
     };
     const result = options.create
-      ? await adminSupabase.from("products").insert(payload)
-      : await adminSupabase.from("products").update(payload).eq("id", product.id);
+      ? await adminSupabase.from("products").insert({ ...payload, stock_quantity: product.quantity }).select("id")
+      : product.updatedAt
+        ? await adminSupabase.from("products").update(payload).eq("id", product.id).eq("updated_at", product.updatedAt).select("id")
+        : { data: null, error: { message: "This draft has no current version. Reopen the product before saving; your draft has been kept.", code: "STALE" } };
     const { error } = result;
+    if (!error && !result.data?.length) return "This product changed while you were editing. Reopen it and review the latest details before saving. Your draft has been kept.";
     if (error?.code === "23505") {
       return `A product named “${product.name}” already exists in ${product.category} → ${product.subcategory}. Choose another name or product type.`;
     }

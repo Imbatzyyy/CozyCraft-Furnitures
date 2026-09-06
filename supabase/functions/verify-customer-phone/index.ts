@@ -75,16 +75,6 @@ const digestOtp = async (
   ).join("");
 };
 
-const safeEqual = (left: string, right: string) => {
-  const a = new TextEncoder().encode(left);
-  const b = new TextEncoder().encode(right);
-  let difference = a.length ^ b.length;
-  const length = Math.max(a.length, b.length);
-  for (let index = 0; index < length; index += 1) {
-    difference |= (a[index] ?? 0) ^ (b[index] ?? 0);
-  }
-  return difference === 0;
-};
 
 type RequestPayload =
   | { action: "request"; phone?: string }
@@ -174,47 +164,16 @@ Deno.serve(async (request) => {
       }, 409);
     }
 
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { data: recent, error: recentError } = await admin
-      .from("phone_verification_challenges")
-      .select("id,created_at,status")
-      .eq("user_id", user.id)
-      .gte("created_at", oneHourAgo)
-      .order("created_at", { ascending: false })
-      .limit(6);
-    if (recentError) return json(request, { error: "Phone verification could not start." }, 500);
-    const latestSent = recent?.find((item) => item.status === "sent" || item.status === "pending");
-    if (latestSent) {
-      const retryAfter = Math.ceil(60 - (Date.now() - Date.parse(latestSent.created_at)) / 1000);
-      if (retryAfter > 0) {
-        return json(request, { error: `Please wait ${retryAfter} seconds before requesting another code.`, retryAfter }, 429);
-      }
-    }
-    if ((recent?.length ?? 0) >= 5) {
-      return json(request, { error: "Too many verification codes were requested. Please try again in one hour." }, 429);
-    }
-    const { count: phoneRequestCount } = await admin
-      .from("phone_verification_challenges")
-      .select("id", { count: "exact", head: true })
-      .eq("phone_e164", phone)
-      .gte("created_at", oneHourAgo);
-    if ((phoneRequestCount ?? 0) >= 5) {
-      return json(request, { error: "Too many verification codes were requested for this number. Please try again in one hour." }, 429);
-    }
-
     const challengeId = crypto.randomUUID();
     const code = randomOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const codeDigest = await digestOtp(otpHashSecret, challengeId, user.id, phone, code);
-    const { error: insertError } = await admin.from("phone_verification_challenges").insert({
-      id: challengeId,
-      user_id: user.id,
-      phone_e164: phone,
-      code_digest: codeDigest,
-      status: "pending",
-      expires_at: expiresAt,
+    const { data: reservation, error: reservationError } = await admin.rpc("reserve_phone_challenge", {
+      p_user: user.id, p_phone: phone, p_id: challengeId, p_digest: codeDigest,
     });
-    if (insertError) return json(request, { error: "Phone verification could not start." }, 500);
+    if (reservationError || !reservation?.reserved) {
+      return json(request, { error: reservation?.error ?? "Phone verification is temporarily unavailable.", retryAfter: reservation?.retryAfter }, reservationError ? 503 : 429);
+    }
 
     const apiSecret = Deno.env.get("UNISMS_API_SECRET");
     const senderId = Deno.env.get("UNISMS_SENDER_ID");
@@ -252,10 +211,11 @@ Deno.serve(async (request) => {
       return json(request, { error: "The verification message could not be sent. Check the number and try again." }, 502);
     }
 
-    await admin.from("phone_verification_challenges").update({
+    const { data: sent, error: sentError } = await admin.from("phone_verification_challenges").update({
       status: "sent",
       provider_reference: providerReference,
-    }).eq("id", challengeId);
+    }).eq("id", challengeId).eq("status", "pending").select("id");
+    if (sentError || !sent?.length) return json(request, { error: "The code could not be activated. Please wait a minute and request a new code." }, 503);
     return json(request, {
       status: "code_sent",
       challengeId,
@@ -279,87 +239,12 @@ Deno.serve(async (request) => {
   if (challengeError || !challenge) {
     return json(request, { error: "This verification code is no longer valid. Request a new one." }, 400);
   }
-  if (challenge.status !== "sent" || challenge.attempts >= 5) {
-    return json(request, { error: "This verification code can no longer be used. Request a new one." }, 400);
-  }
-  const { data: latestChallenge, error: latestChallengeError } = await admin
-    .from("phone_verification_challenges")
-    .select("id")
-    .eq("user_id", user.id)
-    .in("status", ["pending", "sent"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (latestChallengeError) {
-    return json(request, { error: "The verification code could not be checked." }, 500);
-  }
-  if (!latestChallenge || latestChallenge.id !== challenge.id) {
-    return json(request, { error: "A newer verification code was requested. Enter the latest code instead." }, 400);
-  }
-  if (Date.parse(challenge.expires_at) <= Date.now()) {
-    await admin.from("phone_verification_challenges").update({ status: "expired" }).eq("id", challenge.id);
-    return json(request, { error: "The verification code expired. Request a new one." }, 400);
-  }
-
-  const submittedDigest = await digestOtp(
-    otpHashSecret,
-    challenge.id,
-    user.id,
-    challenge.phone_e164,
-    code,
-  );
-  if (!safeEqual(challenge.code_digest, submittedDigest)) {
-    const attempts = challenge.attempts + 1;
-    await admin.from("phone_verification_challenges").update({
-      attempts,
-      status: attempts >= 5 ? "locked" : "sent",
-    }).eq("id", challenge.id);
-    return json(request, {
-      error: attempts >= 5
-        ? "Too many incorrect attempts. Request a new verification code."
-        : `That code is incorrect. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} remaining.`,
-      attemptsRemaining: Math.max(0, 5 - attempts),
-    }, 400);
-  }
-
-  const verifiedAt = new Date().toISOString();
-  const phoneWasChanged = Boolean(
-    profile.phone_verified_at && profile.phone && profile.phone !== challenge.phone_e164,
-  );
-  const { error: updateError } = await admin.from("profiles").update({
-    phone: challenge.phone_e164,
-    phone_verified_at: verifiedAt,
-  }).eq("id", user.id);
-  if (updateError?.code === "23505") {
-    return json(request, { error: "This mobile number is already verified on another CozyCraft account." }, 409);
-  }
-  if (updateError) return json(request, { error: "The verified number could not be saved." }, 500);
-
-  await Promise.all([
-    admin.from("phone_verification_challenges").update({
-      status: "verified",
-      verified_at: verifiedAt,
-    }).eq("id", challenge.id),
-    admin.from("phone_verification_challenges").update({ status: "expired" })
-      .eq("user_id", user.id)
-      .neq("id", challenge.id)
-      .in("status", ["pending", "sent"]),
-    admin.from("activity_logs").insert({
-      actor_id: user.id,
-      action: phoneWasChanged ? "customer_phone_changed" : "customer_phone_verified",
-      entity_type: "profile",
-      entity_id: user.id,
-      details: {
-        phone_masked: maskPhone(challenge.phone_e164),
-        previous_phone_masked: phoneWasChanged && profile.phone ? maskPhone(profile.phone) : null,
-        provider: "unisms",
-      },
-    }),
-  ]);
-
-  return json(request, {
-    status: "verified",
-    phone: challenge.phone_e164,
-    phoneVerifiedAt: verifiedAt,
+  const submittedDigest = await digestOtp(otpHashSecret, challenge.id, user.id, challenge.phone_e164, code);
+  const { data: verification, error: verificationError } = await admin.rpc("consume_phone_challenge", {
+    p_user: user.id, p_id: challenge.id, p_digest: submittedDigest,
   });
+  if (verificationError || verification?.status !== "verified") {
+    return json(request, { error: verification?.error ?? "Verification is temporarily unavailable.", attemptsRemaining: verification?.attemptsRemaining }, verificationError ? 503 : 400);
+  }
+  return json(request, verification);
 });
