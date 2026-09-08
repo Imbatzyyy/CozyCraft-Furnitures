@@ -1,4 +1,5 @@
 import { PaymentPreferences } from './PaymentPreferences';
+import { paginateDevices } from '@/lib/auth/device-pagination';
 import { joinRecipientName, splitRecipientName } from './recipient-name';
 import {
   createContext,
@@ -843,6 +844,9 @@ function CustomerProfile() {
   const [confirmDeviceSignOut, setConfirmDeviceSignOut] =
     useState<CustomerDeviceSession | null>(null);
   const [deviceSessions, setDeviceSessions] = useState<CustomerDeviceSession[]>([]);
+  const [devicePage, setDevicePage] = useState(1);
+  const pagedDevices = paginateDevices(deviceSessions, devicePage);
+  useEffect(() => { setDevicePage(pagedDevices.page); }, [pagedDevices.page]);
   const [deviceSessionsLoading, setDeviceSessionsLoading] = useState(false);
   const [deviceSessionActionId, setDeviceSessionActionId] = useState<string | null>(null);
   useLayoutEffect(() => {
@@ -2498,7 +2502,7 @@ function CustomerProfile() {
                             No recent device information is available yet.
                           </div>
                         ) : (
-                          deviceSessions.map((session) => (
+                          pagedDevices.items.map((session) => (
                             <div
                               key={session.session_id}
                               className={`flex flex-col gap-4 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
@@ -2556,6 +2560,11 @@ function CustomerProfile() {
                         )}
                       </div>
 
+                      {pagedDevices.pages > 1 && <nav aria-label="Device list pages" className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                        <button type="button" disabled={pagedDevices.page === 1 || deviceSessionsLoading || Boolean(deviceSessionActionId)} onClick={() => setDevicePage(pagedDevices.page - 1)} className="min-h-11 rounded-lg border border-border px-3 text-xs font-semibold disabled:opacity-50">Previous</button>
+                        <p role="status" className="text-center text-xs text-muted-foreground">Page {pagedDevices.page} of {pagedDevices.pages}<span className="mt-1 block">{deviceSessions.length} devices</span></p>
+                        <button type="button" disabled={pagedDevices.page === pagedDevices.pages || deviceSessionsLoading || Boolean(deviceSessionActionId)} onClick={() => setDevicePage(pagedDevices.page + 1)} className="min-h-11 rounded-lg border border-border px-3 text-xs font-semibold disabled:opacity-50">Next</button>
+                      </nav>}
                       {deviceSessions.some((session) => !session.is_current) && (
                         <button
                           type="button"
