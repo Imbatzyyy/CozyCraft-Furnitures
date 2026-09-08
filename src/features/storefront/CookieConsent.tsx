@@ -9,9 +9,12 @@ export function CookieConsent() {
   const panel = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    document.documentElement.toggleAttribute('data-cookie-notice', visible);
-    window.dispatchEvent(new CustomEvent('cozycraft-cookie-visibility', { detail: visible }));
-    return () => { document.documentElement.removeAttribute('data-cookie-notice'); };
+    if (!visible || !panel.current) return;
+    const update = () => document.documentElement.style.setProperty('--cookie-notice-space', `${(panel.current?.offsetHeight ?? 0) + 24}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(panel.current);
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--cookie-notice-space'); };
   }, [visible]);
   useEffect(() => {
     const open = () => { returnFocus.current = document.activeElement as HTMLElement; setVisible(true); requestAnimationFrame(() => panel.current?.focus()); };
@@ -24,9 +27,8 @@ export function CookieConsent() {
   }, []);
   if (!visible) return null;
   return <section className="cookie-notice" aria-labelledby="cookie-notice-title" tabIndex={-1} ref={panel}>
-    <div><p className="cookie-eyebrow">YOUR PRIVACY, SIMPLY</p><h2 id="cookie-notice-title">Just the essentials.</h2>
-      <p>We use cookies and similar browser storage to keep your account secure and your shopping working. We currently use no optional advertising or analytics trackers.</p>
-      <p className="cookie-small">Your choice stays in this browser for 180 days. If storage is blocked, it lasts for this visit only.</p></div>
+    <div><h2 id="cookie-notice-title">Just the essentials.</h2>
+      <p>Essential cookies & browser storage keep your shopping secure. No optional advertising or analytics trackers.</p></div>
     <div className="cookie-actions"><button onClick={() => {
       try { localStorage.setItem(COOKIE_CHOICE_KEY, cookieChoiceRecord()); } catch { /* In-memory acknowledgement still works. */ }
       setVisible(false); returnFocus.current?.focus();
