@@ -2950,7 +2950,7 @@ function CustomerProfile() {
                         >
                           <MessageCircle size={14} /> Contact support
                         </button>
-                        <Link to="/orders" className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary min-[390px]:col-span-2 sm:col-auto">
+                        <Link to={`/orders?order=${encodeURIComponent(selectedOrder.id)}`} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold hover:bg-secondary min-[390px]:col-span-2 sm:col-auto">
                           <ArrowRight size={14} /> Full tracking
                         </Link>
                         {["pending", "processing", "packed"].includes(selectedOrder.status) && !selectedOrder.cancellation_status && isCancellationWindowOpen(selectedOrder.created_at, new Date(), storeSettings.fulfillment_settings.cancellation_window_hours) && (

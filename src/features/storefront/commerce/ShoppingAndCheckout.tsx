@@ -1,3 +1,4 @@
+import { FullTracking } from './FullTracking';
 import {
   createContext,
   useCallback,
@@ -723,159 +724,15 @@ export function Wishlist() {
 }
 
 export function CustomerOrders() {
-  const { user, orders, products } = useStore();
-  const [active, setActive] = useState("");
-  useEffect(() => {
-    if (!active && orders[0]) setActive(orders[0].id);
-  }, [active, orders]);
+  const { user, orders, authReady } = useStore();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const requested = new URLSearchParams(location.search).get('order');
+  if (!authReady) return <Layout><main className="full-tracking" role="status">Loading your account…</main></Layout>;
   if (!user) return <Account mode="login" />;
-  if (!orders.length)
-    return (
-      <Layout>
-        <main className="mx-auto max-w-[1120px] px-5 py-16">
-          <Empty
-            title="No orders yet."
-            text="Your confirmed purchases will appear here and in the admin workspace instantly."
-            cta="Browse collection"
-            to="/home#shop"
-          />
-        </main>
-      </Layout>
-    );
-  const order = orders.find((item) => item.id === active) ?? orders[0];
-  const statusLabel = order.status
-    .replace(/_/g, " ")
-    .replace(/^./, (character) => character.toUpperCase());
-  const progress = ["pending", "processing", "packed", "shipped", "delivered"];
-  return (
-    <Layout>
-      <main className="mx-auto max-w-[1120px] px-5 py-12">
-        <Link
-          to="/profile"
-          className="text-xs font-semibold underline underline-offset-4"
-        >
-          ← Back to account
-        </Link>
-        <div className="mt-5 flex justify-between">
-          <div>
-            <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
-              LIVE ORDER TRACKING
-            </p>
-            <h1 className="mt-2 font-serif text-4xl">
-              Follow your delivery.
-            </h1>
-          </div>
-          <Status>{statusLabel}</Status>
-        </div>
-        <div className="mt-7 grid gap-5 lg:grid-cols-[.65fr_1.35fr]">
-          <aside className="overflow-hidden rounded-3xl border border-border bg-card">
-            {orders.map((item) => (
-              <button
-                onClick={() => setActive(item.id)}
-                key={item.id}
-                className={`w-full border-b border-border p-5 text-left ${
-                  active === item.id ? "bg-secondary" : ""
-                }`}
-              >
-                <b className="text-sm">#{item.order_number}</b>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {item.status.replace(/_/g, " ")} · {money(Number(item.total))}
-                </p>
-              </button>
-            ))}
-          </aside>
-          <section className="overflow-hidden rounded-3xl border border-border bg-card">
-            <div className="flex gap-5 p-6">
-              {order.order_items[0]?.image_url && (
-                <ResilientImage
-                  src={order.order_items[0].image_url}
-                  alt="Order item"
-                  className="h-32 w-28 rounded-2xl object-cover"
-                />
-              )}
-              <div>
-                <h2 className="font-serif text-3xl">
-                  Order #{order.order_number}
-                </h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {order.order_items
-                    .map(
-                      (item) =>
-                        item.product_name +
-                        (item.quantity > 1 ? ` × ${item.quantity}` : ""),
-                    )
-                    .join(" · ")}
-                </p>
-                <p className="mt-3 font-semibold">
-                  {money(Number(order.total))}
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Placed{" "}
-                  {new Date(order.created_at).toLocaleString("en-PH")}
-                </p>
-              </div>
-            </div>
-            <ol className="grid gap-5 border-t border-border p-6">
-              {progress.map((step, index) => {
-                const current = progress.indexOf(order.status);
-                return (
-                  <li key={step} className="flex gap-3">
-                    <span
-                      className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${
-                        index <= current
-                          ? "bg-foreground text-background"
-                          : "bg-secondary text-muted-foreground"
-                      }`}
-                    >
-                      {index <= current && <Check size={13} />}
-                    </span>
-                    <span className="pt-1 text-sm capitalize text-muted-foreground">
-                      {step}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-            {order.status === "delivered" && (
-              <div className="border-t border-border bg-[#f4f0e9] p-6">
-                <p className="text-sm font-semibold">
-                  How did your furniture feel at home?
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Rate each delivered product. Your verified review will appear
-                  on its product page.
-                </p>
-                <div className="mt-4 grid gap-2">
-                  {order.order_items.map((item) => {
-                    const reviewProductId =
-                      item.product_id ??
-                      products.find(
-                        (product) =>
-                          product.name.trim().toLowerCase() ===
-                          item.product_name.trim().toLowerCase(),
-                      )?.id;
-                    return reviewProductId ? (
-                      <Link
-                        key={item.id}
-                        to={`/products/${reviewProductId}#reviews`}
-                        className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold transition hover:bg-secondary"
-                      >
-                        <span>{item.product_name}</span>
-                        <span className="flex items-center gap-2 text-xs">
-                          <Star size={14} />
-                          Review product
-                        </span>
-                      </Link>
-                    ) : null;
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
-        </div>
-      </main>
-    </Layout>
-  );
+  const order = requested ? orders.find(item=>item.id===requested) : orders[0];
+  if (!order) return <Layout><main className="full-tracking"><Empty title={requested?"Order tracking is not available yet.":"No orders to track yet."} text={requested?"This order may still be loading or is not available to your account. Return to your orders to try again.":"Your placed orders will appear in your account."} cta="Back to orders" to="/profile?tab=orders"/></main></Layout>;
+  return <Layout><FullTracking order={order} orders={orders} onSelect={id=>navigate('/orders?order='+encodeURIComponent(id))}/></Layout>;
 }
 
 export function Checkout() {
