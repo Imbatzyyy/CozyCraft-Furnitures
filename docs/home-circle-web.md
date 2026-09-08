@@ -44,8 +44,22 @@ The worker uses a stable provider idempotency key and guarded leases, with at
 most six attempts within 23 hours. An indexed cron check makes an outbound
 request only when a job is due. The branded HTML and plain-text email contain
 the actual value, minimum spend, points cost and Philippine-time expiry.
-Only the public email logo permits cross-origin embedding. Claim success means
+New outbox inserts trigger dispatch immediately after transaction commit;
+the one-minute cron is now only a recovery path. Failed dispatch never undoes
+the voucher claim. Only the public email logo permits cross-origin embedding. Claim success means
 the email is queued, not a guarantee of inbox delivery.
+
+## Website payment email verification
+
+GCash and card use the shared `verify-mobile-payment` service before creating
+the PayMongo session. The website presents a native modal with a six-digit code,
+five-minute expiry, a 60-second resend cooldown and server-side attempt limits.
+Recipient email comes from the authenticated account, never the request body.
+Authorization binds the exact customer, checkout key, method, address, products,
+quantities and voucher; the checkout function enforces it for every platform.
+COD is unchanged. Short-lived approvals live only in memory for matching retries.
+OTP emails are submitted directly to the provider; inbox delivery timing remains
+outside the application's control. No database polling is added for the timer.
 
 ## Verification
 

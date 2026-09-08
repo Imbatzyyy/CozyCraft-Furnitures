@@ -1,3 +1,6 @@
+import { PaymentEmailDialog } from '@/features/storefront/commerce/PaymentEmailDialog';
+import { requestPaymentEmailVerification, type PaymentEmailChallenge, type PaymentEmailAuthorization } from '@/features/storefront/commerce/payment-email-verification';
+import '@/features/storefront/commerce/payment-email-dialog.css';
 import {
   createContext,
   useCallback,
@@ -203,6 +206,8 @@ type CustomerAccountLoadResult =
   | "denied";
 
 function App() {
+  const [paymentEmailPrompt,setPaymentEmailPrompt] = useState<{challenge:PaymentEmailChallenge;resolve:(value:PaymentEmailAuthorization|null)=>void}|null>(null);
+  const paymentEmailApprovals = useRef(new Map<string,PaymentEmailAuthorization>());
   const [adminPortal, setAdminPortal] = useState(() =>
     window.location.pathname.startsWith("/admin"),
   );
@@ -1743,6 +1748,13 @@ function App() {
       writeSessionItem(checkoutStorageKey, checkoutKey);
     }
     if (["card", "gcash"].includes(paymentMethod)) {
+      let verified:PaymentEmailAuthorization|null|undefined=paymentEmailApprovals.current.get(checkoutStorageKey);
+      if(!verified || verified.checkoutKey!==checkoutKey || verified.expiresAt<=Date.now()) {
+        const challenge = await requestPaymentEmailVerification({addressId,checkoutKey,paymentMethod:paymentMethod as 'card'|'gcash',redemptionId:redemptionId || null,items:orderCart.map(item=>({product_id:item.id,quantity:item.quantity}))});
+        verified = await new Promise<PaymentEmailAuthorization|null>(resolve=>setPaymentEmailPrompt({challenge,resolve}));
+        if(verified)paymentEmailApprovals.current.set(checkoutStorageKey,verified);
+      }
+      if(!verified) return {id:null,orderNumber:null,checkoutUrl:null,expiresAt:null,error:'Payment verification cancelled. Your bag has not been changed.'};
       const { data, error } = await supabase.functions.invoke(
         "create-paymongo-checkout",
         {
@@ -1750,6 +1762,7 @@ function App() {
             addressId,
             paymentMethod,
             checkoutKey,
+            paymentAuthorizationId: verified.id,
             redemptionId: redemptionId || null,
             returnOrigin: window.location.origin,
             items: orderCart.map((item) => ({
@@ -1772,6 +1785,7 @@ function App() {
         const responseStatus = (error as {context?:Response}|null)?.context?.status;
         const definitiveRejection = isHandledFunctionResponse(error) && responseStatus != null && responseStatus >= 400 && responseStatus < 500 && ![408,409,425,429].includes(responseStatus);
         if ((data?.error && data?.retryable === false) || definitiveRejection) {
+          paymentEmailApprovals.current.delete(checkoutStorageKey);
           removeSessionItem(checkoutStorageKey);
         }
         return {
@@ -1787,6 +1801,7 @@ function App() {
       // with redundant cart writes, catalog refreshes, or email delivery.
       // Realtime subscriptions reconcile the local stores in the background.
       removeSessionItem(checkoutStorageKey);
+      paymentEmailApprovals.current.delete(checkoutStorageKey);
       return {
         id: data.orderId ?? null,
         orderNumber: data.orderNumber ?? null,
@@ -2312,6 +2327,7 @@ function App() {
   };
   return (
     <StoreContext.Provider value={store}>
+      {paymentEmailPrompt && <PaymentEmailDialog initial={paymentEmailPrompt.challenge} finish={value=>{paymentEmailPrompt.resolve(value);setPaymentEmailPrompt(null);}}/>}
       <AdminSessionContext.Provider
         value={{
           role: adminRole,

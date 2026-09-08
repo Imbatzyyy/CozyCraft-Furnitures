@@ -3,6 +3,7 @@ import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { reconcileElapsedPaymongoSession } from "../_shared/paymongo-expiry.ts";
 import { buildPaymongoLineItems } from "../_shared/paymongo-line-items.ts";
+import { isUuid, normalizeMobilePaymentIntent, mobilePaymentIntentDigest } from '../_shared/mobile-payment-authorization.ts';
 
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
 
@@ -69,7 +70,7 @@ serveProtected(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired. Please sign in again." }, 401);
 
-  let payload: { addressId?: string; paymentMethod?: string; returnOrigin?: string; checkoutKey?: string; redemptionId?: string | null; items?: Array<{ product_id: string; quantity: number }> };
+  let payload: { addressId?: string; paymentMethod?: string; returnOrigin?: string; checkoutKey?: string; paymentAuthorizationId?: string; redemptionId?: string | null; items?: Array<{ product_id: string; quantity: number }> };
   try {
     payload = await request.json();
   } catch {
@@ -95,6 +96,14 @@ serveProtected(async (request) => {
   }
 
   let orderId: string | null = null;
+  if(!isUuid(payload.paymentAuthorizationId)) return json(request,{error:'Verify the payment code sent to your email before opening PayMongo.',paymentVerificationRequired:true},403);
+  let intentDigest: string;
+  try { intentDigest=await mobilePaymentIntentDigest(user.id,normalizeMobilePaymentIntent({...payload,items})); }
+  catch { return json(request,{error:'Invalid payment verification details.'},400); }
+  const authorizationArgs={p_challenge_id:payload.paymentAuthorizationId,p_checkout_key:payload.checkoutKey,p_payment_method:paymentMethod,p_intent_digest:intentDigest};
+  const {data:valid,error:validationError}=await userClient.rpc('mobile_payment_authorization_valid',authorizationArgs);
+  if(validationError)return json(request,{error:'Payment verification is temporarily unavailable. Please retry.'},503);
+  if(valid!==true)return json(request,{error:'The payment code expired or checkout details changed. Request a new code.',paymentVerificationRequired:true},403);
   let providerRequestStarted = false;
   try {
     const { data, error } = await userClient.rpc("place_order_with_reward", {
@@ -106,6 +115,8 @@ serveProtected(async (request) => {
     });
     if (error) return json(request, { error: error.message }, 400);
     orderId = data as string;
+    const {data:consumed,error:consumeError}=await userClient.rpc('consume_mobile_payment_authorization',{...authorizationArgs,p_order_id:orderId});
+    if(consumeError || consumed!==true)return json(request,{error:'Your order is reserved, but payment verification could not be secured. Please retry.',orderId,retryable:true},503);
 
     // These reads are independent once the atomic order reservation returns.
     // Running them together removes one database round-trip from every online

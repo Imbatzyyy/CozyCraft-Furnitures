@@ -80,3 +80,6 @@ verify_jwt = true
 
 [functions.voucher-email-worker]
 verify_jwt = false
+
+[functions.verify-mobile-payment]
+verify_jwt = false
