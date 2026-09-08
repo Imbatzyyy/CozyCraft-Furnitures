@@ -1349,6 +1349,7 @@ export function Layout({
                 </div>
               ))}
             </div>
+            <div className="flex flex-wrap justify-center gap-5 border-t border-white/10 px-5 py-5 text-sm text-white/70"><Link to="/cookies">Cookie policy</Link><button type="button" onClick={() => window.dispatchEvent(new Event('cozycraft-cookie-settings'))}>Cookie settings</button></div>
             <div className="border-t border-white/10 px-5 py-5 text-center text-[10px] tracking-[.12em] text-white/40">© 2026 {storeSettings.store_name.toUpperCase()} · {storeSettings.contact_email}</div>
           </footer>
         </div>

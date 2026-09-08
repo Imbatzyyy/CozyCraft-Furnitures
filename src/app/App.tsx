@@ -1,3 +1,4 @@
+import { CookieConsent } from '@/features/storefront/CookieConsent';
 import { PaymentEmailDialog } from '@/features/storefront/commerce/PaymentEmailDialog';
 import { requestPaymentEmailVerification, type PaymentEmailChallenge, type PaymentEmailAuthorization } from '@/features/storefront/commerce/payment-email-verification';
 import '@/features/storefront/commerce/payment-email-dialog.css';
@@ -2353,6 +2354,7 @@ function App() {
           signOut: signOutAdmin,
         }}
       >
+        {!splash && <CookieConsent />}
         {splash ? <Splash /> : <RouterProvider router={router} />}
         {!splash && <UsernameSetupGate />}
         {shopPrompt && (
@@ -2548,6 +2550,7 @@ const router = createBrowserRouter([
   { path: "/faq", lazy: () => storefrontCatalogRoute("StaticContentPage") },
   { path: "/terms", lazy: () => storefrontCatalogRoute("StaticContentPage") },
   { path: "/privacy", lazy: () => storefrontCatalogRoute("StaticContentPage") },
+  { path: "/cookies", lazy: () => import('@/features/storefront/CookiePolicy') },
   { path: "/collections/:room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/living-room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/bedroom", lazy: () => storefrontCatalogRoute("CollectionPage") },
