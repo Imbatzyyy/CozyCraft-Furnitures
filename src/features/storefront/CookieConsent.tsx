@@ -9,6 +9,11 @@ export function CookieConsent() {
   const panel = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    document.documentElement.toggleAttribute('data-cookie-notice', visible);
+    window.dispatchEvent(new CustomEvent('cozycraft-cookie-visibility', { detail: visible }));
+    return () => { document.documentElement.removeAttribute('data-cookie-notice'); };
+  }, [visible]);
+  useEffect(() => {
     const open = () => { returnFocus.current = document.activeElement as HTMLElement; setVisible(true); requestAnimationFrame(() => panel.current?.focus()); };
     const sync = (event: StorageEvent) => {
       if (event.key === COOKIE_CHOICE_KEY || event.key === null) setVisible(!validCookieChoice(event.newValue));

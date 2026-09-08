@@ -542,6 +542,13 @@ export function Logo({
 }
 
 export function Header({ immersive = false }: { immersive?: boolean }) {
+  const [cookieNoticeVisible, setCookieNoticeVisible] = useState(() => document.documentElement.hasAttribute('data-cookie-notice'));
+  useEffect(() => {
+    const update = () => setCookieNoticeVisible(document.documentElement.hasAttribute('data-cookie-notice'));
+    update();
+    window.addEventListener('cozycraft-cookie-visibility', update);
+    return () => window.removeEventListener('cozycraft-cookie-visibility', update);
+  }, []);
   const { cart, saved, userId, user, avatar, products, profileUsername, storeSettings, orders } = useStore();
   const nav = useNavigate();
   const location = useLocation();
@@ -743,9 +750,9 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const announcementVisible =
     storeSettings.announcement_enabled &&
     Boolean(storeSettings.announcement_text.trim());
-  const overHero = immersive && !scrolled;
+  const overHero = immersive && !scrolled && !cookieNoticeVisible;
   const headerLayer = menu ? "z-[90]" : "z-30";
-  const navClass = immersive
+  const navClass = immersive && !cookieNoticeVisible
     ? `fixed inset-x-0 top-0 ${headerLayer} transition-colors duration-300 ${overHero ? "border-b border-white/35 bg-transparent text-white" : "border-b border-border bg-background/95 text-foreground backdrop-blur"}`
     : `sticky top-0 ${headerLayer} border-b border-border/90 bg-background/95 text-foreground backdrop-blur`;
   return (
