@@ -11,6 +11,8 @@ import {
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { HomeCircle } from "./HomeCircle";
+import { ProfileOverview } from "./ProfileOverview";
 import {
   createBrowserRouter,
   Link,
@@ -151,6 +153,7 @@ const profileTabFromSearch = (search: string) => {
   return (
     [
       "Profile",
+      "Home Circle",
       "Orders",
       "Addresses",
       "Payments",
@@ -1718,6 +1721,7 @@ function CustomerProfile() {
   }
   const tabs = [
     "Profile",
+    "Home Circle",
     "Orders",
     "Addresses",
     "Payments",
@@ -2055,7 +2059,8 @@ function CustomerProfile() {
               </Link>
             </div>
           </aside>
-          <section className="min-h-[420px] rounded-[1.25rem] border border-border bg-card p-4 shadow-[0_10px_30px_rgba(35,31,27,.035)] sm:rounded-[1.75rem] sm:p-9 lg:min-h-[560px]">
+          <section className="min-w-0 min-h-[420px] rounded-[1.25rem] border border-border bg-card p-4 shadow-[0_10px_30px_rgba(35,31,27,.035)] sm:rounded-[1.75rem] sm:p-9 lg:min-h-[560px]">
+            {userId && <HomeCircle key={userId} userId={userId} active={tab === "Home Circle"} />}
             {tab === "Profile" && (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2064,7 +2069,7 @@ function CustomerProfile() {
                       PERSONAL DETAILS
                     </p>
                     <h2 className="mt-2 font-serif text-3xl">
-                      Your account, your way.
+                      The details that make it yours.
                     </h2>
                     <p className="mt-2 text-sm text-muted-foreground">
                       Keep these details current for a seamless checkout and
@@ -2072,9 +2077,6 @@ function CustomerProfile() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-[10px] font-bold tracking-[.1em] text-[#56714f]">
-                      MEMBER
-                    </span>
                     {!profileEditing && (
                       <button
                         type="button"
@@ -2090,7 +2092,9 @@ function CustomerProfile() {
                     )}
                   </div>
                 </div>
+                {!profileEditing && <ProfileOverview name={`${first} ${last}`.trim()} username={username} email={email} phone={profilePhone || ""} verified={Boolean(profilePhoneVerifiedAt)} gender={gender} birth={birth} openCircle={() => setTab("Home Circle")} />}
                 <div className="mt-8 grid gap-5">
+                  {profileEditing && <>
                   <label className="grid gap-2 text-sm font-semibold">
                     Username
                     <input
@@ -2268,7 +2272,8 @@ function CustomerProfile() {
                       className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none disabled:cursor-default disabled:bg-secondary/40 disabled:text-muted-foreground"
                     />
                   </label>
-                  <div className="grid gap-3 rounded-2xl bg-secondary p-4 sm:grid-cols-3">
+                  </>}
+                  <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-[#faf8f4] p-4">
                     {[
                       ["Saved pieces", saved.length],
                       ["Orders", orders.length],
