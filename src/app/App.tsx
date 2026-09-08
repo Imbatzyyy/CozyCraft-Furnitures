@@ -1736,6 +1736,7 @@ function App() {
     paymentMethod: string,
     productIds?: string[],
     redemptionId?: string | null,
+    onPaymentAuthorized?: () => void,
   ) => {
     const { selected: orderCart, remaining: remainingCart } = selectCheckoutLines(cart, productIds);
     const signature = checkoutSignature(orderCart);
@@ -1755,6 +1756,7 @@ function App() {
         if(verified)paymentEmailApprovals.current.set(checkoutStorageKey,verified);
       }
       if(!verified) return {id:null,orderNumber:null,checkoutUrl:null,expiresAt:null,error:'Payment verification cancelled. Your bag has not been changed.'};
+      onPaymentAuthorized?.();
       const { data, error } = await supabase.functions.invoke(
         "create-paymongo-checkout",
         {

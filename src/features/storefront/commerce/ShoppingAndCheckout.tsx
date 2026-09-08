@@ -1491,7 +1491,6 @@ export function Checkout() {
                   setNotice("");
                   setPlacingPaymentMethod(payment);
                   setPlacing(true);
-                  if (usesPayMongo) setPaymentHandoff("preparing");
                   let result;
                   try {
                     result = await placeOrder(
@@ -1499,6 +1498,7 @@ export function Checkout() {
                       payment,
                       requestedIds,
                       selectedVoucher?.id,
+                      usesPayMongo ? () => setPaymentHandoff("preparing") : undefined,
                     );
                   } catch (error) {
                     setPaymentHandoff(null);
@@ -1574,7 +1574,7 @@ export function Checkout() {
                 className="mt-6 h-12 w-full rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-60"
               >
                 {placing
-                  ? payment === "cod" ? "Placing COD order…" : "Opening secure PayMongo checkout…"
+                  ? payment === "cod" ? "Placing COD order…" : "Verifying your checkout…"
                   : !chosen
                     ? "Save a delivery address to continue"
                     : checkoutError

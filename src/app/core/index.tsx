@@ -372,6 +372,7 @@ export type Store = {
     paymentMethod: string,
     productIds?: string[],
     redemptionId?: string | null,
+    onPaymentAuthorized?: () => void,
   ) => Promise<{
     id: string | null;
     orderNumber: string | null;
