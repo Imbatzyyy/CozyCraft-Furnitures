@@ -18,7 +18,10 @@ export function HomeCircle({ userId, active }: { userId: string; active: boolean
   const updatedAt = useRef(0);
   const loadedRevision = useRef(0);
   useEffect(() => {
-    if (!active || (revision === loadedRevision.current && Date.now() - updatedAt.current < 60_000)) return;
+    if (!active || (revision === loadedRevision.current && Date.now() - updatedAt.current < 60_000)) {
+      setBusy(false);
+      return;
+    }
     const controller = new AbortController();
     let live = true;
     const timeout = setTimeout(() => controller.abort(), 12_000);
