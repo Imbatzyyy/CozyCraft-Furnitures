@@ -1,5 +1,5 @@
-export const CUSTOMER_POLICY_VERSION = "2026-08-16";
-export const CUSTOMER_POLICY_EFFECTIVE_DATE = "August 16, 2026";
+export const CUSTOMER_POLICY_VERSION = "2026-09-09";
+export const CUSTOMER_POLICY_EFFECTIVE_DATE = "September 9, 2026";
 export const COZYCRAFT_PRIVACY_EMAIL = "cozycraftfurnitures2026@gmail.com";
 
 export type CustomerPolicyKind = "terms" | "privacy";
@@ -86,7 +86,7 @@ export const CUSTOMER_PRIVACY_SECTIONS: CustomerPolicySection[] = [
   {
     title: "Retention",
     body:
-      "Account and profile information is retained while the account is active. Following a verified deletion request, eligible profile information is deleted or anonymized within 90 days unless it must be kept for security, an active transaction, a dispute, or law. Order, payment-status, cancellation, refund, and accounting records may be retained for up to five years from the relevant transaction or longer when required by law or a continuing claim. Routine support and security records are ordinarily retained for up to two years unless an active issue requires longer preservation.",
+      "Account information supports your active account. Order and payment records may need to be retained for transaction, accounting, dispute, and legal obligations after an account closes. Contact customer care to request access, correction, or deletion and an explanation of the applicable retention period for your records. Requests require identity verification; information that must lawfully be retained cannot always be erased immediately. Clearing browser storage does not delete records held by CozyCraft or its payment providers.",
   },
   {
     title: "Security",

@@ -2248,7 +2248,7 @@ function CustomerProfile() {
                       )}
                     </div>
                     <label className="grid gap-2 text-sm font-semibold">
-                      Gender
+                      Gender (optional)
                       <select
                         disabled={!profileEditing}
                         value={gender}
@@ -2263,7 +2263,7 @@ function CustomerProfile() {
                     </label>
                   </div>
                   <label className="grid gap-2 text-sm font-semibold sm:max-w-[calc(50%-0.5rem)]">
-                    Date of birth
+                    Date of birth (optional)
                     <input
                       disabled={!profileEditing}
                       value={birth}

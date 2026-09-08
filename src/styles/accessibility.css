@@ -1,0 +1,8 @@
+/* Explicit foregrounds for shared low-opacity copy identified in the audit. */
+.text-black\/18,.text-black\/35,.text-black\/40,.text-black\/45,.text-black\/48,.text-black\/50,.text-black\/55,.text-black\/58 { color: #57534d; }
+.text-white\/40,.text-white\/45,.text-white\/50 { color: #bdbbb7; }
+html { scroll-padding-bottom: calc(var(--cookie-notice-space, 0px) + var(--mobile-store-nav-height, 0px) + 16px); }
+:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible { outline: 3px solid #667e4d; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

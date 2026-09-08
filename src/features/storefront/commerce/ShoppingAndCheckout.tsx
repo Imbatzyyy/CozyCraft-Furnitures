@@ -1129,6 +1129,7 @@ export function Checkout() {
             <p className="mt-3 text-sm text-muted-foreground">
               Delivery fees, timing, and free-delivery eligibility are calculated from your saved Philippine address.
             </p>
+            <p className="mt-3 text-sm"><Link to="/refunds" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">Read returns & refund policy (opens a new tab)</Link></p>
           </div>
           <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-xs font-semibold text-[#56714f]">
             Supabase-secured checkout

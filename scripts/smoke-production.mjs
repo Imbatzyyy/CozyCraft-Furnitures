@@ -7,6 +7,8 @@ const routes = [
   "/about",
   "/terms",
   "/privacy",
+  "/refunds",
+  "/cookies",
   "/login",
   "/signup",
   "/forgot-password",

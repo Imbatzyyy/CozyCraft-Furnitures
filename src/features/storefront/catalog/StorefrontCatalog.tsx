@@ -635,7 +635,7 @@ export function Home() {
                 id="newsletter-privacy"
                 className="mt-1 text-[11px] leading-relaxed text-muted-foreground"
               >
-                Occasional CozyCraft updates. Unsubscribe whenever you like.
+                By selecting Join, you request occasional CozyCraft email updates. Unsubscribe whenever you like. <Link to="/privacy" className="underline underline-offset-4">Privacy Policy</Link>
               </p>
             </form>
           </div>
@@ -717,7 +717,7 @@ export function StaticContentPage() {
   if (isLoading && !content) return <InformationPageLoading />;
 
   if (slug === "faq") {
-    return <FaqInformationPage content={page} sections={sections} />;
+    return <FaqInformationPage content={page} sections={sections.map(section => /how do reviews work/i.test(section.title) ? { ...section, body: 'Customers can review delivered products from their Orders page. Eligible reviews publish without an approval queue. Content that violates the review rules may be removed; legitimate negative feedback is not a reason for removal.' } : section)} />;
   }
   if (slug === "privacy" || slug === "terms") {
     return (
@@ -2655,16 +2655,16 @@ function ProductPageContent({
             <div className="mt-6 grid grid-cols-2 gap-3 text-xs">
               <div className="border border-border p-4">
                 <ShieldCheck size={18} />
-                <p className="mt-3 font-semibold">Made to last</p>
+                <p className="mt-3 font-semibold">Materials & care</p>
                 <p className="mt-1 leading-5 text-muted-foreground">
-                  Built with enduring materials.
+                  Review the listed materials and care details.
                 </p>
               </div>
               <div className="border border-border p-4">
                 <Package size={18} />
                 <p className="mt-3 font-semibold">Careful delivery</p>
                 <p className="mt-1 leading-5 text-muted-foreground">
-                  White-glove options available.
+                  Confirm delivery services for your address.
                 </p>
               </div>
             </div>
