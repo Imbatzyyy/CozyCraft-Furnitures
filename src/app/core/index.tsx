@@ -342,7 +342,8 @@ export type Store = {
   profileUsername: string;
   profileGender: string;
   profileBirth: string;
-  profilePaymentMethod: "cod";
+  profilePaymentMethod: "cod" | "card" | "gcash";
+  savePaymentPreference: (method: "cod" | "card" | "gcash") => Promise<string | null>;
   hasPassword: boolean | null;
   role: DbRole | null;
   authReady: boolean;

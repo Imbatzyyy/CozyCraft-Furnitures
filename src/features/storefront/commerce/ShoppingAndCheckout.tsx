@@ -736,10 +736,13 @@ export function CustomerOrders() {
 }
 
 export function Checkout() {
-  const { authReady, cart, user, userId, addresses, products, placeOrder, orders, refreshOrders, storeSettings } = useStore();
+  const { authReady, cart, user, userId, addresses, products, placeOrder, orders, refreshOrders, storeSettings, profilePaymentMethod } = useStore();
   const location = useLocation();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
+  const paymentChosenByCustomer=useRef(false);
+  useEffect(()=>{paymentChosenByCustomer.current=false;},[userId]);
+  useEffect(()=>{if(!paymentChosenByCustomer.current)setPayment(profilePaymentMethod);},[profilePaymentMethod,userId]);
   const [notice, setNotice] = useState("");
   const [placing, setPlacing] = useState(false);
   const [placingPaymentMethod, setPlacingPaymentMethod] = useState("");
@@ -1144,7 +1147,7 @@ export function Checkout() {
                   </h2>
                 </div>
                 <Link
-                  to="/profile"
+                  to="/profile?tab=addresses"
                   className="text-xs font-semibold underline underline-offset-4"
                 >
                   Manage
@@ -1252,7 +1255,7 @@ export function Checkout() {
                   <button
                     key={method.id}
                     disabled={!method.available}
-                    onClick={() => method.available && setPayment(method.id)}
+                    onClick={() => {if(method.available){paymentChosenByCustomer.current=true;setPayment(method.id);}}}
                     className={`flex items-center gap-3 rounded-2xl border p-4 text-left disabled:cursor-not-allowed disabled:opacity-45 ${payment === method.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border"}`}
                   >
                     <span

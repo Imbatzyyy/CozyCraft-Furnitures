@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { TrackingOrderPicker } from './TrackingOrderPicker';
+import { safeTrackingOrder } from './tracking-data';
 import { Check, Package, Truck, MapPin, ArrowLeft, MessageCircle } from 'lucide-react';
 import type { DbOrder } from '@/services/supabase/client';
 import './full-tracking.css';
@@ -9,16 +11,19 @@ const names=['pending','processing','packed','shipped','delivered'] as const;
 const labels={pending:'Order placed',processing:'Preparing your order',packed:'Packed with care',shipped:'On its way',delivered:'Delivered',cancelled:'Order cancelled'};
 const details={pending:'Your order has been recorded. Payment and fulfillment updates will appear here.',processing:'Our team is preparing your furniture for dispatch.',packed:'Your furniture has been packed for its delivery journey.',shipped:'Your order has been marked as shipped. Keep your contact number available for delivery coordination.',delivered:'Your order has been marked as delivered. Thank you for making room for CozyCraft.',cancelled:'This order is no longer progressing toward delivery.'};
 export function trackingSteps(order:DbOrder){
+  order=safeTrackingOrder(order);
   return names.map((status,index)=>{const event=[...(order.order_status_history||[])].filter(e=>e.status===status).sort((a,b)=>Date.parse(b.changed_at)-Date.parse(a.changed_at))[0];const at=event?.changed_at || (status==='pending'?order.created_at:null);return{status,at,complete:!!at || (order.status!=='cancelled' && index<=names.indexOf(order.status)),current:status===order.status};});
 }
 export function FullTracking({order,orders,onSelect}:{order:DbOrder;orders:DbOrder[];onSelect:(id:string)=>void}){
+  order=safeTrackingOrder(order);
+  orders=orders.filter(Boolean).map(safeTrackingOrder);
   const events=[...(order.order_status_history||[])].sort((a,b)=>Date.parse(b.changed_at)-Date.parse(a.changed_at));
   const address=order.shipping_address||{};
   const steps=trackingSteps(order);
   const label=labels[order.status] || order.status;
   const transaction=order.payment_transactions?.find(p=>p.status==='paid') || order.payment_transactions?.[0];
   return <main className="full-tracking">
-    <nav className="tracking-top"><Link to="/profile?tab=orders"><ArrowLeft size={15}/> Back to orders</Link><label>Switch order<select aria-label="Choose order to track" value={order.id} onChange={e=>onSelect(e.target.value)}>{orders.map(o=><option key={o.id} value={o.id}>#{o.order_number} · {o.status}</option>)}</select></label></nav>
+    <nav className="tracking-top"><Link to="/profile?tab=orders"><ArrowLeft size={15}/> Back to orders</Link><TrackingOrderPicker orders={orders} selected={order} onSelect={onSelect}/></nav>
     <header className="tracking-hero"><div><p className="tracking-eyebrow">THE JOURNEY TO YOUR HOME</p><h1>{label}</h1><p>{details[order.status]}</p><div className="tracking-ref"><span>#{order.order_number}</span><span>Placed {trackingDate(order.created_at)}</span></div></div><div className="tracking-hero-icon"><Truck size={42} strokeWidth={1}/></div></header>
     <div className="tracking-grid"><div className="tracking-main">
       <section className="tracking-card"><div className="tracking-heading"><div><p className="tracking-eyebrow">DELIVERY PROGRESS</p><h2>Every step, in view.</h2></div><Package size={23}/></div><p className="tracking-muted">Dates and times are shown in Philippine time (PHT).</p>

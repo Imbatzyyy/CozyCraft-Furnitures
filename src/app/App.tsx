@@ -241,7 +241,7 @@ function App() {
   const [profileGender, setProfileGender] = useState("");
   const [profileBirth, setProfileBirth] = useState("");
   const [profilePaymentMethod, setProfilePaymentMethod] =
-    useState<"cod">("cod");
+    useState<"cod"|'card'|'gcash'>("cod");
   const [hasPassword, setHasPassword] = useState<boolean | null>(null);
   const [role, setRole] = useState<DbRole | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -1159,7 +1159,7 @@ function App() {
       setProfileUsername(profile.username ?? "");
       setProfileGender(profile.gender ?? "");
       setProfileBirth(profile.date_of_birth ?? "");
-      setProfilePaymentMethod("cod");
+      setProfilePaymentMethod(profile.preferred_payment_method === 'card' || profile.preferred_payment_method === 'gcash' ? profile.preferred_payment_method : 'cod');
       if (profile.avatar_url !== avatarPath) {
         setAvatarPath(profile.avatar_url ?? null);
         setAvatar(await privateAvatarUrl(profile.avatar_url, supabase));
@@ -2124,7 +2124,6 @@ function App() {
         username: normalizedUsername,
         gender: details.gender,
         date_of_birth: details.birth || null,
-        preferred_payment_method: "cod",
       })
       .eq("id", userId);
     if (profileError) return profileError.message;
@@ -2132,7 +2131,14 @@ function App() {
     setProfileUsername(normalizedUsername);
     setProfileGender(details.gender);
     setProfileBirth(details.birth);
-    setProfilePaymentMethod("cod");
+    return null;
+  };
+  const savePaymentPreference = async (method: 'cod'|'card'|'gcash') => {
+    if(!userId)return 'Please sign in first.';
+    if(!['cod','card','gcash'].includes(method))return 'Choose a valid payment method.';
+    const {data,error}=await supabase.from('profiles').update({preferred_payment_method:method}).eq('id',userId).select('preferred_payment_method').single();
+    if(error || data?.preferred_payment_method!==method)return error?.message || 'Your preference could not be saved. Please retry.';
+    setProfilePaymentMethod(method);
     return null;
   };
   const requestPhoneVerification = async (phone: string) => {
@@ -2284,6 +2290,7 @@ function App() {
     profileGender,
     profileBirth,
     profilePaymentMethod,
+    savePaymentPreference,
     hasPassword,
     role,
     authReady,

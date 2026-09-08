@@ -64,7 +64,7 @@ export type DbProfile = {
   username: string;
   gender: string;
   date_of_birth: string | null;
-  preferred_payment_method: "cod";
+  preferred_payment_method: "cod" | "card" | "gcash";
   role: DbRole;
   staff_active: boolean;
   customer_active: boolean;

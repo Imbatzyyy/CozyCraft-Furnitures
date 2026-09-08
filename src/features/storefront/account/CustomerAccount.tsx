@@ -1,3 +1,5 @@
+import { PaymentPreferences } from './PaymentPreferences';
+import { joinRecipientName, splitRecipientName } from './recipient-name';
 import {
   createContext,
   useCallback,
@@ -257,6 +259,8 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     primary: addresses.length === 0,
   };
   const [draft, setDraft] = useState<Address | null>(null);
+  const [recipientFirst,setRecipientFirst]=useState('');
+  const [recipientLast,setRecipientLast]=useState('');
   const [provinceCode, setProvinceCode] = useState("");
   const [municipalityCode, setMunicipalityCode] = useState("");
   const [barangays, setBarangays] = useState<PsgcBarangay[]>([]);
@@ -383,6 +387,9 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
       (inferredRegion ? regionDisplayName(inferredRegion) : undefined) ??
       address.province;
     setProvinceCode(selectorValue);
+    const recipient=splitRecipientName(address.name || '');
+    setRecipientFirst(recipient.first);
+    setRecipientLast(recipient.last);
     setMunicipalityCode(cityMatch?.munCityCode ?? "");
     setDraft({
       ...address,
@@ -400,8 +407,10 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!draft) return;
+    if(!recipientFirst.trim() || !recipientLast.trim()){notify('Enter the recipient’s first name and last name.');return;}
     const error = await saveAddress({
       ...draft,
+      name:joinRecipientName(recipientFirst,recipientLast),
       email: userEmail ?? "",
       id: draft.id || String(Date.now()),
     });
@@ -519,13 +528,10 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
               placeholder="Address label (e.g. Home)"
               className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
             />
-            <input
-              value={draft.name}
-              onChange={(event) => update("name", event.target.value)}
-              required
-              placeholder="Recipient full name"
-              className="h-11 rounded-xl border border-border bg-card px-3 text-sm outline-none"
-            />
+            <div className="grid min-w-0 gap-3 sm:col-span-2 sm:grid-cols-2">
+              <label className="grid min-w-0 gap-2 text-xs font-semibold">Recipient first name<input value={recipientFirst} onChange={event=>setRecipientFirst(event.target.value)} required autoComplete="section-delivery given-name" maxLength={100} placeholder="First name" className="h-11 min-w-0 rounded-xl border border-border bg-card px-3 text-sm font-normal"/></label>
+              <label className="grid min-w-0 gap-2 text-xs font-semibold">Recipient last name<input value={recipientLast} onChange={event=>setRecipientLast(event.target.value)} required autoComplete="section-delivery family-name" maxLength={100} placeholder="Last name" className="h-11 min-w-0 rounded-xl border border-border bg-card px-3 text-sm font-normal"/></label>
+            </div>
             <input
               value={draft.mobile}
               onChange={(event) => update("mobile", event.target.value)}
@@ -697,6 +703,7 @@ function CustomerProfile() {
     profileGender,
     profileBirth,
     profilePaymentMethod,
+    savePaymentPreference,
     hasPassword,
     signOut,
     avatar,
@@ -2982,13 +2989,7 @@ function CustomerProfile() {
                   PAYMENT PREFERENCES
                 </p>
                 <h2 className="mt-2 font-serif text-3xl">Ways to pay.</h2>
-                <div className="mt-6 grid gap-3">
-                  {[
-                    ["cod", "Cash on delivery", storeSettings.checkout_settings.cod_enabled, "Pay when your delivery arrives"],
-                    ["card", "Debit or credit card", storeSettings.checkout_settings.card_enabled, "Secure hosted PayMongo checkout"],
-                    ["gcash", "GCash", storeSettings.checkout_settings.gcash_enabled, "Secure hosted PayMongo checkout"],
-                  ].filter(([, , enabled]) => enabled).map(([id, label, , detail]) => <div key={String(id)} className={`rounded-2xl border p-5 ${profilePaymentMethod === id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border"}`}><div className="flex items-center justify-between gap-4"><div><b className="text-sm">{label}</b><p className="mt-2 text-xs text-muted-foreground">{detail}</p></div><span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-[10px] font-bold text-[#56714f]">AVAILABLE</span></div></div>)}
-                </div>
+                <PaymentPreferences value={profilePaymentMethod} save={savePaymentPreference} enabled={{cod:storeSettings.checkout_settings.cod_enabled,card:storeSettings.checkout_settings.card_enabled,gcash:storeSettings.checkout_settings.gcash_enabled}}/>
                 <p className="mt-4 max-w-xl text-xs leading-5 text-muted-foreground">
                   Payment availability updates from Store Settings in realtime. Card and GCash details stay on PayMongo’s protected checkout; CozyCraft never stores card numbers.
                 </p>
