@@ -8,16 +8,21 @@ export function CookieConsent() {
   });
   const panel = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const [openRequest, setOpenRequest] = useState(0);
+  useEffect(() => {
+    if (visible && openRequest > 0) panel.current?.focus({ preventScroll: true });
+  }, [visible, openRequest]);
   useEffect(() => {
     if (!visible || !panel.current) return;
     const update = () => document.documentElement.style.setProperty('--cookie-notice-space', `${(panel.current?.offsetHeight ?? 0) + 24}px`);
     update();
-    const observer = new ResizeObserver(update);
-    observer.observe(panel.current);
-    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--cookie-notice-space'); };
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(panel.current);
+    window.addEventListener('resize', update);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', update); document.documentElement.style.removeProperty('--cookie-notice-space'); };
   }, [visible]);
   useEffect(() => {
-    const open = () => { returnFocus.current = document.activeElement as HTMLElement; setVisible(true); requestAnimationFrame(() => panel.current?.focus()); };
+    const open = () => { returnFocus.current = document.activeElement as HTMLElement; setVisible(true); setOpenRequest(value => value + 1); };
     const sync = (event: StorageEvent) => {
       if (event.key === COOKIE_CHOICE_KEY || event.key === null) setVisible(!validCookieChoice(event.newValue));
     };
@@ -29,9 +34,9 @@ export function CookieConsent() {
   return <section className="cookie-notice" aria-labelledby="cookie-notice-title" tabIndex={-1} ref={panel}>
     <div><h2 id="cookie-notice-title">Just the essentials.</h2>
       <p>Essential cookies & browser storage keep your shopping secure. No optional advertising or analytics trackers.</p></div>
-    <div className="cookie-actions"><button onClick={() => {
+    <div className="cookie-actions"><button type="button" onClick={() => {
       try { localStorage.setItem(COOKIE_CHOICE_KEY, cookieChoiceRecord()); } catch { /* In-memory acknowledgement still works. */ }
-      setVisible(false); returnFocus.current?.focus();
+      setVisible(false); returnFocus.current?.focus({ preventScroll: true });
     }}>Keep essential only</button><a href="/cookies">Read cookie policy</a></div>
   </section>;
 }
