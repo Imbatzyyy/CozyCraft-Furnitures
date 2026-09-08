@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.verify-customer-phone]
 verify_jwt = true
+
+[functions.voucher-email-worker]
+verify_jwt = false

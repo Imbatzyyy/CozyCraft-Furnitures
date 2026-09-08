@@ -9,6 +9,9 @@ import {
   type ReactNode,
   type FormEvent,
 } from "react";
+import { CheckoutVouchers } from "../account/CheckoutVouchers";
+import type { CircleReward } from "@/services/content/home-circle.service";
+import { voucherDiscount, voucherEligible } from "@/lib/loyalty/vouchers";
 import {
   createBrowserRouter,
   Link,
@@ -883,6 +886,11 @@ export function Checkout() {
   const [notice, setNotice] = useState("");
   const [placing, setPlacing] = useState(false);
   const [placingPaymentMethod, setPlacingPaymentMethod] = useState("");
+  const [selectedVoucher,setSelectedVoucher]=useState<CircleReward|null>(null);
+  useEffect(()=>setSelectedVoucher(null),[userId]);
+  const [voucherRevision,setVoucherRevision]=useState(0);
+  const [voucherNow,setVoucherNow]=useState(Date.now);
+  useEffect(()=>{const timer=setInterval(()=>setVoucherNow(Date.now()),1000);return()=>clearInterval(timer)},[]);
   const [paymentHandoff, setPaymentHandoff] = useState<
     "preparing" | "redirecting" | null
   >(null);
@@ -962,7 +970,9 @@ export function Checkout() {
     ? deliveryAreaForAddress(deliveryAreas, chosen)
     : null;
   const deliveryFee = deliveryArea ? deliveryFeeFor(deliveryArea, subtotal) : 0;
-  const total = subtotal + deliveryFee;
+  const discount = voucherDiscount(selectedVoucher,subtotal,deliveryFee,voucherNow);
+  const voucherError = selectedVoucher && !voucherEligible(selectedVoucher,subtotal,voucherNow) ? "Your voucher is expired or its minimum spend is not met. Choose another voucher or select No voucher." : "";
+  const total = subtotal + deliveryFee - discount;
   const checkoutError = validateCheckoutAmount(subtotal, storeSettings.checkout_settings);
   const methods = [
     {
@@ -1408,6 +1418,7 @@ export function Checkout() {
                 ))}
               </div>
             </section>
+            {userId && <div className="rounded-2xl border border-border bg-card p-4 sm:rounded-3xl sm:p-6"><CheckoutVouchers key={userId} userId={userId} requestedId={searchParams.get("voucher")} subtotal={subtotal} selected={selectedVoucher} onSelect={setSelectedVoucher} disabled={placing} revision={voucherRevision}/></div>}
           </div>
           <aside className="h-fit overflow-hidden rounded-3xl border border-border bg-card shadow-sm xl:sticky xl:top-24">
             <div className="bg-[#292622] p-6 text-[#f5f1e9]">
@@ -1451,13 +1462,15 @@ export function Checkout() {
                     Add {money(deliveryArea.free_delivery_minimum - subtotal)} more for free delivery to {deliveryArea.name}.
                   </p>
                 )}
+                {discount>0 && <p className="flex justify-between text-[#56714f]"><span>Home Circle voucher</span><span>−{money(discount)}</span></p>}
                 <p className="mt-2 flex justify-between text-base font-semibold">
                   <span>Total</span>
                   <span>{money(total)}</span>
                 </p>
+                {voucherError && <p className="circle-error" role="alert">{voucherError}</p>}
               </div>
               <button
-                disabled={placing || !chosen || !payment || Boolean(checkoutError)}
+                disabled={placing || !chosen || !payment || Boolean(checkoutError) || Boolean(voucherError)}
                 onClick={async () => {
                   if (!chosen) {
                     setNotice(
@@ -1474,6 +1487,7 @@ export function Checkout() {
                     return;
                   }
                   const usesPayMongo = payment === "card" || payment === "gcash";
+                  if(voucherError){setNotice(voucherError);return;}
                   setNotice("");
                   setPlacingPaymentMethod(payment);
                   setPlacing(true);
@@ -1484,6 +1498,7 @@ export function Checkout() {
                       chosen.id,
                       payment,
                       requestedIds,
+                      selectedVoucher?.id,
                     );
                   } catch (error) {
                     setPaymentHandoff(null);
@@ -1497,6 +1512,7 @@ export function Checkout() {
                     return;
                   }
                   if (result.error) {
+                    setVoucherRevision(n=>n+1);
                     setPaymentHandoff(null);
                     setPlacingPaymentMethod("");
                     setPlacing(false);
@@ -1550,7 +1566,7 @@ export function Checkout() {
                       (result.id ?? crypto.randomUUID())
                         .slice(0, 8)
                         .toUpperCase(),
-                    total,
+                    total: "total" in result && result.total != null ? Number(result.total) : total,
                   });
                   setPlacingPaymentMethod("");
                   setPlacing(false);

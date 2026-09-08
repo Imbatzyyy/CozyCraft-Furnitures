@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { reconcileElapsedPaymongoSession } from "../_shared/paymongo-expiry.ts";
+import { buildPaymongoLineItems } from "../_shared/paymongo-line-items.ts";
 
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
 
@@ -68,7 +69,7 @@ serveProtected(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired. Please sign in again." }, 401);
 
-  let payload: { addressId?: string; paymentMethod?: string; returnOrigin?: string; checkoutKey?: string; items?: Array<{ product_id: string; quantity: number }> };
+  let payload: { addressId?: string; paymentMethod?: string; returnOrigin?: string; checkoutKey?: string; redemptionId?: string | null; items?: Array<{ product_id: string; quantity: number }> };
   try {
     payload = await request.json();
   } catch {
@@ -96,11 +97,12 @@ serveProtected(async (request) => {
   let orderId: string | null = null;
   let providerRequestStarted = false;
   try {
-    const { data, error } = await userClient.rpc("place_order", {
+    const { data, error } = await userClient.rpc("place_order_with_reward", {
       p_address_id: payload.addressId,
       p_payment_method: paymentMethod,
       p_items: items,
       p_checkout_key: payload.checkoutKey,
+      p_redemption_id: payload.redemptionId || null,
     });
     if (error) return json(request, { error: error.message }, 400);
     orderId = data as string;
@@ -116,7 +118,7 @@ serveProtected(async (request) => {
         .maybeSingle(),
       adminClient
         .from("orders")
-        .select("id,order_number,total,shipping_address,order_items(product_name,unit_price,quantity)")
+        .select("id,order_number,total,delivery_fee,reward_discount,shipping_address,order_items(product_name,unit_price,quantity)")
         .eq("id", orderId)
         .eq("user_id", user.id)
         .single(),
@@ -211,26 +213,7 @@ serveProtected(async (request) => {
       }, 503);
     }
 
-    const lineItems = order.order_items.map((item: { product_name: string; unit_price: number; quantity: number }) => ({
-      name: item.product_name.slice(0, 255),
-      amount: Math.round(Number(item.unit_price) * 100),
-      currency: "PHP",
-      quantity: item.quantity,
-    }));
-    const merchandiseTotal = order.order_items.reduce(
-      (sum: number, item: { unit_price: number; quantity: number }) =>
-        sum + Number(item.unit_price) * item.quantity,
-      0,
-    );
-    const deliveryFee = Math.max(0, Number(order.total) - merchandiseTotal);
-    if (deliveryFee > 0) {
-      lineItems.push({
-        name: "CozyCraft delivery",
-        amount: Math.round(deliveryFee * 100),
-        currency: "PHP",
-        quantity: 1,
-      });
-    }
+    const lineItems = buildPaymongoLineItems({orderNumber:order.order_number,total:Number(order.total),deliveryFee:Number(order.delivery_fee),rewardDiscount:Number(order.reward_discount),items:order.order_items});
     const shipping = order.shipping_address as Record<string, string>;
     providerRequestStarted = true;
     const paymongoResponse = await fetch("https://api.paymongo.com/v2/checkout_sessions", {

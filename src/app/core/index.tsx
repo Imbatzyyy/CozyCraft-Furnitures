@@ -371,12 +371,14 @@ export type Store = {
     addressId: string,
     paymentMethod: string,
     productIds?: string[],
+    redemptionId?: string | null,
   ) => Promise<{
     id: string | null;
     orderNumber: string | null;
     checkoutUrl: string | null;
     expiresAt: string | null;
     error: string | null;
+    total?: number;
   }>;
   updateOrderStatus: (
     id: string,

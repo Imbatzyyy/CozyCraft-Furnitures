@@ -1730,10 +1730,11 @@ function App() {
     addressId: string,
     paymentMethod: string,
     productIds?: string[],
+    redemptionId?: string | null,
   ) => {
     const { selected: orderCart, remaining: remainingCart } = selectCheckoutLines(cart, productIds);
     const signature = checkoutSignature(orderCart);
-    const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${signature}`;
+    const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${signature}:${redemptionId || "none"}`;
     let checkoutKey = readSessionItem(checkoutStorageKey);
     if (!checkoutKey) {
       checkoutKey = crypto.randomUUID();
@@ -1749,6 +1750,7 @@ function App() {
             addressId,
             paymentMethod,
             checkoutKey,
+            redemptionId: redemptionId || null,
             returnOrigin: window.location.origin,
             items: orderCart.map((item) => ({
               product_id: item.id,
@@ -1765,11 +1767,11 @@ function App() {
                 error,
                 "Unable to start secure payment. Please try again.",
               );
-        // A handled non-2xx response means the server rejected and rolled back
-        // this attempt. Use a fresh key on retry instead of pinning the shopper
-        // to a failed/cancelled order forever. Network-unknown failures retain
-        // the key so the original request remains safely idempotent.
-        if (data?.error || isHandledFunctionResponse(error)) {
+        // Timeouts, conflicts and 5xx responses may already have reserved an
+        // order/voucher. Preserve their key so retry cannot create another order.
+        const responseStatus = (error as {context?:Response}|null)?.context?.status;
+        const definitiveRejection = isHandledFunctionResponse(error) && responseStatus != null && responseStatus >= 400 && responseStatus < 500 && ![408,409,425,429].includes(responseStatus);
+        if ((data?.error && data?.retryable === false) || definitiveRejection) {
           removeSessionItem(checkoutStorageKey);
         }
         return {
@@ -1796,12 +1798,12 @@ function App() {
     if (paymentMethod !== "cod") {
       return { id: null, orderNumber: null, checkoutUrl: null, expiresAt: null, error: "Unsupported payment method." };
     }
-    const { data, error } = await supabase.rpc("place_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })), p_checkout_key: checkoutKey });
+    const { data, error } = await supabase.rpc("place_order_with_reward", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })), p_checkout_key: checkoutKey, p_redemption_id: redemptionId || null });
     if (error) return { id:null, orderNumber:null, checkoutUrl:null, expiresAt:null, error:error.message };
     const orderId = data as string;
     const { data: createdOrder } = await supabase
       .from("orders")
-      .select("order_number")
+      .select("order_number,total")
       .eq("id", orderId)
       .single();
     if (userId && remainingCart.length) {
@@ -1833,6 +1835,7 @@ function App() {
     return {
       id: orderId,
       orderNumber: createdOrder?.order_number ?? null,
+      total: createdOrder?.total,
       checkoutUrl: null,
       expiresAt: null,
       error: null,

@@ -52,3 +52,10 @@
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# This intentionally public brand image is embedded by external email clients.
+# Keep the default same-origin policy on other assets and private pages.
+[[headers]]
+  for = "/email-logo.png"
+  [headers.values]
+    Cross-Origin-Resource-Policy = "cross-origin"

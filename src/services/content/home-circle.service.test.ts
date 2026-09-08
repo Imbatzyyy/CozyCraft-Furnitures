@@ -5,7 +5,7 @@ import { loadHomeCircle } from "./home-circle.service";
 const account={points_balance:123,tier:"plus",lifetime_eligible_spend:19000,tier_valid_until:null};
 function query(data: unknown, error: unknown = null) {
   const q: Record<string, any> = {};
-  for (const name of ["select","eq","gt","order","limit","abortSignal"]) q[name]=vi.fn(()=>q);
+  for (const name of ["select","eq","gt","order","limit","range","abortSignal"]) q[name]=vi.fn(()=>q);
   q.maybeSingle=vi.fn(async()=>({data,error}));
   q.then=(resolve: (value:unknown)=>unknown)=>Promise.resolve({data,error}).then(resolve);
   return q;
@@ -17,7 +17,7 @@ describe("Home Circle bounded authenticated reads",()=>{
     const result=await loadHomeCircle("customer-a",new AbortController().signal);
     expect(result.account.points_balance).toBe(123);
     for(const q of qs)expect(q.eq).toHaveBeenCalledWith("user_id","customer-a");
-    expect(qs[1].limit).toHaveBeenCalledWith(20);expect(qs[2].limit).toHaveBeenCalledWith(20);
+    expect(qs[1].limit).toHaveBeenCalledWith(20);expect(qs[2].range).toHaveBeenCalledWith(0,6);
     expect(qs[2].eq).toHaveBeenCalledWith("status","available");expect(mocks.rpc).not.toHaveBeenCalled();
   });
   it("initializes only a missing account through the authenticated existing RPC",async()=>{

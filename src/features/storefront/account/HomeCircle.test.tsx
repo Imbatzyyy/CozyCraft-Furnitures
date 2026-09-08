@@ -13,8 +13,8 @@ describe("Home Circle presentation", () => {
     expect(html).toContain("Cozy Plus"); expect(html).toContain("375"); expect(html).toContain("₱32,000");
     expect(html).toContain("Delivery 4"); expect(html).not.toContain("Delivery 5");
   });
-  it("excludes expired rewards and does not promise web redemption", () => {
-    const html=render(snapshot); expect(html).toContain("₱300 off");expect(html).not.toContain("₱999");expect(html).toContain("apply rewards in the CozyCraft app");
+  it("disables expired rewards and exposes website conversion", () => {
+    const html=render(snapshot); expect(html).toContain("₱300 off");expect(html).toContain('disabled="">Expired / unavailable');expect(html).toContain("Convert to voucher");
   });
   it("does not misrepresent unavailable data as a zero balance", () => {
     const html=render(null,"Please try again"); expect(html).toContain("Please try again");expect(html).toContain("Refresh to load"); expect(html).not.toContain("Your level");
