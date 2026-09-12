@@ -17,6 +17,8 @@ const clearlyUnrelated = /\b(python|javascript|typescript|java programming|c\+\+
 
 const cozyCraftSignal = /\b(cozycraft|cozy craft|furniture|furnitures|sofas?|couches?|chairs?|tables?|beds?|bedroom|living room|dining room|cabinets?|wardrobes?|dressers?|nightstands?|shelves|desks?|products?|catalog|stock|availability|available|prices?|budget|compare|shop|shopping|buy|purchase|new arrivals?|orders?|packages?|tracking|shipments?|delivery|shipping|fees?|checkout|paymongo|payments?|paid|cards?|gcash|cash on delivery|cod|cart|shopping bag|wishlist|favorites?|favourites?|cancel|cancellation|returns?|refunds?|reviews?|ratings?|photos?|account|profile|sign in|signin|login|password|authenticator|otp|verify|verification|verification code|phone|phone number|email address|delivery address|privacy|terms|faq|contact|customer care|support|tickets?|points?|loyalty|home circle|membership|tier|invoice|receipt|promo|voucher|discount|mobile app|website)\b/i;
 const politeConversation = /^(?:hi|hello|hey|good (?:morning|afternoon|evening)|kumusta|kamusta|hello po|hi po|thanks?|thank you|salamat(?: po)?|bye|goodbye|who are you|what can you do|are you (?:active|online|there)|can you help me)[!.?\s]*$/i;
+const localShoppingSignal = /\b(magkano|presyo|bayad|nabayaran|nabawasan|padala|nasaan|upuan|mesa|kama|aparador|resibo|numero|tirahan|basag|sira|ibalik|kansela|bibili|bilhin|bili|sukat|materyal|voucher|vouchers|dimensions|measurements|material|materials|assembly|assemble|restock|cookies?|notifications?|text size|font|human|agent)\b|\bCC[- ]?\d{3,12}\b|\b(?:do you (?:sell|have)|how much (?:is|for)|hello are you active)\b/i;
+const unrelatedFollowup = /\b(weather|bake|cake|poem|joke|riddle|celebrity|capital of|sports|football|basketball|medical|diagnos|legal advice|investment)\b/i;
 
 const hasCozyCraftSignal = (message: string) =>
   cozyCraftSignal.test(message);
@@ -29,20 +31,21 @@ export function classifyAssistantRequest(
   if (!text) return { allowed: false, reason: "off_topic" };
   if (safetyConcern.test(text)) return { allowed: false, reason: "safety" };
   if (securityProbe.test(text)) return { allowed: false, reason: "security_probe" };
-  if (clearlyUnrelated.test(text)) return { allowed: false, reason: "off_topic" };
-  if (politeConversation.test(text) || hasCozyCraftSignal(text)) {
+  if (clearlyUnrelated.test(text) || unrelatedFollowup.test(text)) return { allowed: false, reason: "off_topic" };
+  if (politeConversation.test(text) || localShoppingSignal.test(text) || hasCozyCraftSignal(text)) {
     return { allowed: true, reason: "cozycraft" };
   }
 
   const latestUserMessage = [...history]
     .reverse()
-    .find((item) => item.role === "user")?.content;
+    .filter((item) => item.role === "user").slice(0, 3)
+    .find(item => hasCozyCraftSignal(item.content) || localShoppingSignal.test(item.content))?.content;
   if (
-    text.length <= 160 &&
+    text.length <= 300 &&
     latestUserMessage &&
     !securityProbe.test(latestUserMessage) &&
     !clearlyUnrelated.test(latestUserMessage) &&
-    hasCozyCraftSignal(normalized(latestUserMessage))
+    (hasCozyCraftSignal(normalized(latestUserMessage)) || localShoppingSignal.test(latestUserMessage))
   ) {
     return { allowed: true, reason: "conversation" };
   }
