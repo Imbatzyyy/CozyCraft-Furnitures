@@ -1,3 +1,4 @@
+import { localStore } from "@/lib/shared/browser-storage";
 import {
   adminSupabase,
   isStaffRole,
@@ -132,7 +133,7 @@ export async function signInForPortal(
     { name: "Password sign-in", provider: "email" },
   );
   if (portal === "admin") {
-    window.localStorage.setItem("cozycraft-admin-last-activity", String(Date.now()));
+    localStore.setItem("cozycraft-admin-last-activity", String(Date.now()));
   }
 
   return { ok: true, role, error: null, reason: null };

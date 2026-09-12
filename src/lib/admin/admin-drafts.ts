@@ -1,9 +1,10 @@
+import { sessionStore } from "@/lib/shared/browser-storage";
 export type DraftStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const browserDraftStorage = (): DraftStorage | null => {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage;
+    return sessionStore;
   } catch {
     return null;
   }

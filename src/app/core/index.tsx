@@ -1,3 +1,4 @@
+import { localStore, sessionStore } from "@/lib/shared/browser-storage";
 import {
   createContext,
   useCallback,
@@ -565,7 +566,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
       )
     : undefined;
   const localRecoverablePayment = userId
-    ? readPendingPaymentRecovery(window.localStorage, userId, paymentClock)
+    ? readPendingPaymentRecovery(localStore, userId, paymentClock)
     : null;
   const recoverablePaymentId =
     loadedRecoverablePayment?.id ?? localRecoverablePayment?.orderId;
@@ -1317,6 +1318,7 @@ export function Layout({
               : "overflow-hidden rounded-[1.75rem] bg-background shadow-[0_18px_60px_rgba(49,41,31,0.10)]"
           }
         >
+          <ShoppingConnection />
           {children}
           <StorefrontServiceStrip />
           <footer className="bg-[#211f1d] text-[#f4f2ee]">
@@ -1447,7 +1449,7 @@ const readCareChatMessages = (storageKey: string): CareChatMessage[] => {
   if (typeof window === "undefined") return initialCareChatMessages();
 
   try {
-    const stored = window.sessionStorage.getItem(storageKey);
+    const stored = sessionStore.getItem(storageKey);
     if (!stored) return initialCareChatMessages();
 
     const parsed: unknown = JSON.parse(stored);
@@ -1491,7 +1493,7 @@ const persistCareChatMessages = (
       }))
       .filter((item) => item.text.length > 0)
       .slice(-CARE_CHAT_STORAGE_LIMIT);
-    window.sessionStorage.setItem(storageKey, JSON.stringify(safeMessages));
+    sessionStore.setItem(storageKey, JSON.stringify(safeMessages));
   } catch {
     // Chat remains usable when browser storage is disabled or unavailable.
   }
@@ -2276,3 +2278,4 @@ export function ShopSignInPrompt({ close }: { close: () => void }) {
     </div>
   );
 }
+import { ShoppingConnection } from "@/components/ShoppingConnection";

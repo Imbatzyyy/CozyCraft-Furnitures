@@ -5,12 +5,13 @@ import './cookie-consent.css';
 export function Component() {
   return <Layout><article className="cookie-policy">
     <p className="cookie-eyebrow">COZYCRAFT · YOUR PRIVACY</p><h1>Cookies, with clarity.</h1>
-    <p>Cookie & browser storage policy · Updated September 8, 2026</p>
+    <p>Cookie & browser storage policy · Updated September 12, 2026</p>
     <p>CozyCraft Furnitures uses browser storage to provide the shopping and account services you request. This includes cookies, local storage (saved in your browser), and session storage (usually limited to a browser tab). This notice complements our <a href="/privacy">Privacy Policy</a>.</p>
     <h2>What we use and why</h2>
     <dl>
       <dt>Account and security</dt><dd>Sign-in sessions, account recovery, verification requests, and security controls help protect your account. Session information may persist across visits until sign-out or expiry; temporary verification and recovery records expire or are cleared by their workflows.</dd>
       <dt>Shopping and checkout</dt><dd>Storage supports requested selections, product comparisons, and payment recovery so a reload does not lose your checkout context or repeat an action. Temporary payment records are cleared when resolved or expired. Some saved shopping state remains until changed or browser data is cleared.</dd>
+      <dt>Saved public information and reading preferences</dt><dd>A copy of the public product catalog and help pages may be kept on this browser for up to seven days to reduce repeat downloads and support browsing during a connection problem. Saved prices and stock are not a checkout guarantee. Your chosen text size stays on this browser until changed or cleared. Communication preferences are saved to your account separately and do not enable website tracking.</dd>
       <dt>Requested support and staff tools</dt><dd>Recent chatbot context and unsaved admin drafts can be kept in the current tab. These records support the conversation or editing task you initiate and are not advertising profiles.</dd>
       <dt>Your cookie choice</dt><dd>The local-storage record “cozycraft-cookie-choice” remembers your essential-only choice for 180 days. It contains the policy version, choice, and timestamp—not your name, email, or order details. An expired record is treated as unset on your next visit.</dd>
     </dl>

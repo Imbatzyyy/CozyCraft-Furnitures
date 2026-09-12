@@ -1,3 +1,6 @@
+import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { readOfflineCatalog, saveOfflineCatalog, setCatalogStale } from "@/lib/catalog/offline-catalog";
+import { isOffline, OFFLINE_MESSAGE } from "@/lib/shared/network";
 import { CookieConsent } from '@/features/storefront/CookieConsent';
 import { PaymentEmailDialog } from '@/features/storefront/commerce/PaymentEmailDialog';
 import { requestPaymentEmailVerification, type PaymentEmailChallenge, type PaymentEmailAuthorization } from '@/features/storefront/commerce/payment-email-verification';
@@ -147,14 +150,14 @@ import {
 const splashSessionKey = "cozycraft-welcome-seen";
 const readSessionItem = (key: string) => {
   try {
-    return window.sessionStorage.getItem(key);
+    return sessionStore.getItem(key);
   } catch {
     return null;
   }
 };
 const writeSessionItem = (key: string, value: string) => {
   try {
-    window.sessionStorage.setItem(key, value);
+    sessionStore.setItem(key, value);
     return true;
   } catch {
     return false;
@@ -162,7 +165,7 @@ const writeSessionItem = (key: string, value: string) => {
 };
 const removeSessionItem = (key: string) => {
   try {
-    window.sessionStorage.removeItem(key);
+    sessionStore.removeItem(key);
   } catch {
     // Storage can be unavailable in hardened/private browser contexts. The
     // database-backed order remains the payment source of truth.
@@ -223,10 +226,12 @@ function App() {
   const [splash, setSplash] = useState(
     () => readSessionItem(splashSessionKey) !== "1",
   );
-  const [products, setProducts] = useState<Product[]>(fallbackProducts);
+  const [products, setProducts] = useState<Product[]>(() => !adminPortal && isOffline() ? readOfflineCatalog() : fallbackProducts);
   const [storeSettings, setStoreSettings] = useState<PublicStoreSettings>(
     defaultStoreSettings,
   );
+  const storeSettingsRef = useRef(storeSettings);
+  storeSettingsRef.current = storeSettings;
   useEffect(() => {
     document.title = storeSettings.store_name || "CozyCraft Furnitures";
   }, [storeSettings.store_name]);
@@ -379,10 +384,15 @@ function App() {
           .single(),
       ]);
       if (productResult.error || !productResult.data) {
+        if (!requestScope.startsWith("admin:") && productsScopeRef.current === requestScope) {
+          const cached = readOfflineCatalog();
+          if (cached.length) setProducts(current => current.length ? current : cached);
+          setCatalogStale(true);
+        }
         return productResult.error?.message ?? "Products could not be loaded.";
       }
       if (productsScopeRef.current !== requestScope) return null;
-      const normalizedSettings = normalizeStoreSettings(
+      const normalizedSettings = settingResult.error ? storeSettingsRef.current : normalizeStoreSettings(
         settingResult.data as Partial<PublicStoreSettings> | null,
       );
       setStoreSettings(normalizedSettings);
@@ -398,8 +408,7 @@ function App() {
       );
       setAdminProducts(mapped);
       if (requestScope.startsWith("admin:")) notifyAdminDataChanged();
-      setProducts(
-        mapped.filter(
+      const publicProducts = mapped.filter(
           (item) =>
             item.status === "active" &&
             !unavailableProductIds.current.has(item.id) &&
@@ -407,8 +416,10 @@ function App() {
               [...activeCategories].some((category) =>
                 catalogValuesMatch(category, item.category),
               )),
-        ),
-      );
+        );
+      setProducts(publicProducts);
+      if (!requestScope.startsWith("admin:") && !categoryResult.error && !settingResult.error) saveOfflineCatalog(publicProducts);
+      setCatalogStale(false);
       return null;
     })();
     productsRefreshInFlight.current = { scope: requestScope, request };
@@ -422,6 +433,13 @@ function App() {
     );
     return request;
   }, [mapProduct, portalSupabase, productsScope]);
+
+  useEffect(() => {
+    const reconnect = () => { void refreshProducts(); };
+    window.addEventListener("online", reconnect);
+    window.addEventListener("cozycraft:refresh-catalog", reconnect);
+    return () => { window.removeEventListener("online", reconnect); window.removeEventListener("cozycraft:refresh-catalog", reconnect); };
+  }, [refreshProducts]);
 
   const refreshOrders = useCallback(() => {
     const requestScope = ordersScope;
@@ -866,7 +884,7 @@ function App() {
     void restoreSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY" && session?.user) {
-        writePasswordRecoveryGrant(window.sessionStorage, session.user.id);
+        writePasswordRecoveryGrant(sessionStore, session.user.id);
       }
       if (
         event === "PASSWORD_RECOVERY" &&
@@ -1728,7 +1746,7 @@ function App() {
       name: "Manual sign-out",
       reason: "user_requested",
     });
-    window.localStorage.removeItem("cozycraft-admin-last-activity");
+    localStore.removeItem("cozycraft-admin-last-activity");
     await adminSupabase.auth.signOut({ scope: "local" });
   }, []);
 
@@ -1739,6 +1757,7 @@ function App() {
     redemptionId?: string | null,
     onPaymentAuthorized?: () => void,
   ) => {
+    if (isOffline()) return { id: null, orderNumber: null, checkoutUrl: null, expiresAt: null, error: OFFLINE_MESSAGE };
     const { selected: orderCart, remaining: remainingCart } = selectCheckoutLines(cart, productIds);
     const signature = checkoutSignature(orderCart);
     const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${signature}:${redemptionId || "none"}`;
@@ -2212,13 +2231,18 @@ function App() {
   }, []);
   const confirmEmailChange = useCallback(
     async (expectedEmail: string) => {
-      const { data, error } = await supabase.auth.refreshSession();
+      const { data, error } = await supabase.auth.getUser();
       if (error) return { confirmed: false, error: error.message };
       const activeEmail = data.user?.email?.toLowerCase() ?? "";
+      if (!userId || customerUserIdRef.current !== userId || data.user?.id !== userId) return { confirmed: false, error: "Please sign in to check this email change." };
       if (activeEmail !== expectedEmail.toLowerCase()) {
         return { confirmed: false, error: null };
       }
       if (userId) {
+        if (customerUserIdRef.current !== userId || data.user?.id !== userId) return { confirmed: false, error: "Please sign in to check this email change." };
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) return { confirmed: false, error: refreshError.message };
+        if (customerUserIdRef.current !== userId) return { confirmed: false, error: "Your signed-in account changed. Please try again." };
         const { error: profileError } = await supabase
           .from("profiles")
           .update({ email: activeEmail })
@@ -2227,6 +2251,7 @@ function App() {
           return { confirmed: false, error: profileError.message };
         }
       }
+      if (customerUserIdRef.current !== userId) return { confirmed: false, error: "Your signed-in account changed. Please try again." };
       setUserEmail(activeEmail);
       return { confirmed: true, error: null };
     },
@@ -2583,6 +2608,13 @@ const router = createBrowserRouter([
   },
   { path: "/wishlist", lazy: () => storefrontCommerceRoute("Wishlist") },
   { path: "/orders", lazy: () => storefrontCommerceRoute("CustomerOrders") },
+  {
+    path: "/forgot-password",
+    lazy: async () => {
+      const { Account } = await import("@/features/storefront/authentication/CustomerAuth");
+      return { Component: () => <Account mode="login" initialView="forgot" /> };
+    },
+  },
   {
     path: "/login",
     lazy: async () => {

@@ -1,10 +1,11 @@
+import { localStore } from "@/lib/shared/browser-storage";
 const COMPARE_STORAGE_KEY = "cozycraft-product-compare";
 export const COMPARE_CHANGE_EVENT = "cozycraft:compare-change";
 export const MAX_COMPARE_PRODUCTS = 4;
 type CompareStorage = Pick<Storage, "getItem" | "setItem">;
 
 export function readComparedProductIds(storage?: CompareStorage): string[] {
-  const target = storage ?? (typeof window !== "undefined" ? window.localStorage : null);
+  const target = storage ?? (typeof window !== "undefined" ? localStore : null);
   if (!target) return [];
   try {
     const parsed = JSON.parse(target.getItem(COMPARE_STORAGE_KEY) ?? "[]");
@@ -18,10 +19,10 @@ export function readComparedProductIds(storage?: CompareStorage): string[] {
 
 export function writeComparedProductIds(ids: string[], storage?: CompareStorage): string[] {
   const next = [...new Set(ids)].slice(0, MAX_COMPARE_PRODUCTS);
-  const target = storage ?? (typeof window !== "undefined" ? window.localStorage : null);
+  const target = storage ?? (typeof window !== "undefined" ? localStore : null);
   if (!target) return next;
   target.setItem(COMPARE_STORAGE_KEY, JSON.stringify(next));
-  if (typeof window !== "undefined" && target === window.localStorage) {
+  if (typeof window !== "undefined" && target === localStore) {
     window.dispatchEvent(new CustomEvent(COMPARE_CHANGE_EVENT, { detail: next }));
   }
   return next;

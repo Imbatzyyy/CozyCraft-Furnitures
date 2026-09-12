@@ -1,3 +1,4 @@
+import { localStore, sessionStore } from "@/lib/shared/browser-storage";
 import { FullTracking } from './FullTracking';
 import {
   createContext,
@@ -182,7 +183,7 @@ function usePendingPaymentRedirect({
   useEffect(() => {
     if (!enabled || !userId) return;
     const localRecovery = readPendingPaymentRecovery(
-      window.localStorage,
+      localStore,
       userId,
     );
     const loadedRecovery = orders.find((order) =>
@@ -211,7 +212,7 @@ function usePendingPaymentRedirect({
     void (async () => {
       try {
         const localRecovery = readPendingPaymentRecovery(
-          window.localStorage,
+          localStore,
           userId,
         );
         if (localRecovery) {
@@ -227,7 +228,7 @@ function usePendingPaymentRedirect({
           await findPendingPaymentRecovery(userId);
         if (!active) return;
         if (recovery) {
-          writePendingPaymentRecovery(window.localStorage, userId, recovery);
+          writePendingPaymentRecovery(localStore, userId, recovery);
           nav(pendingPaymentOrderUrl(recovery.orderId), { replace: true });
           return;
         }
@@ -1394,7 +1395,7 @@ export function Checkout() {
                       result.expiresAt ??
                       new Date(Date.now() + 15 * 60 * 1000).toISOString();
                     if (userId) {
-                      writePendingPaymentRecovery(window.localStorage, userId, {
+                      writePendingPaymentRecovery(localStore, userId, {
                         orderId: result.id,
                         orderNumber: result.orderNumber,
                         expiresAt: recoveryExpiresAt,
@@ -1405,7 +1406,7 @@ export function Checkout() {
                     // restore the payment timer route rather than the submitted
                     // Checkout component whose cart rows were already consumed.
                     const handoffStaged = userId
-                      ? stagePaymentHandoff(window.sessionStorage, {
+                      ? stagePaymentHandoff(sessionStore, {
                           userId,
                           orderId: result.id,
                           orderNumber: result.orderNumber,

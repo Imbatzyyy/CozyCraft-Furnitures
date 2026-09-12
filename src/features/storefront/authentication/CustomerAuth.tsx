@@ -1,9 +1,12 @@
+import { sessionStore } from "@/lib/shared/browser-storage";
+import { customerAuthStorage } from "@/lib/auth/auth-persistence";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -265,13 +268,14 @@ function CustomerPolicyDialog({
 }
 
 
-export function Account({ mode }: { mode: "login" | "signup" }) {
+export function Account({ mode, initialView = "auth" }: { mode: "login" | "signup"; initialView?: "auth" | "forgot" }) {
   const { authReady, user, role, signOut, storeSettings } = useStore();
   const nav = useNavigate();
   const location = useLocation();
   const [view, setView] = useState<
     "auth" | "forgot" | "sent" | "verify"
-  >("auth");
+  >(initialView);
+  const [rememberSession, setRememberSession] = useState(false);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [username, setUsername] = useState("");
@@ -285,6 +289,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
   const [error, setError] = useState("");
   const [verificationNotice, setVerificationNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const recoveryInFlight = useRef(false);
   const customerDestination = useMemo(
     () => resolveCustomerAuthDestination(location.pathname, location.search),
     [location.pathname, location.search],
@@ -334,6 +339,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
     if (mode === "signup" && !acceptedPolicies) { setError("Please agree to the Terms of Use and confirm that you have read the Privacy Policy before creating your account."); return; }
     setSubmitting(true);
     if (mode === "login") {
+      customerAuthStorage.setPersistent(rememberSession);
       const result = await signInForPortal(email, password, "customer");
       setSubmitting(false);
       if (!result.ok) {
@@ -394,9 +400,10 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       });
       return;
     }
-    window.sessionStorage.setItem("cozycraft-google-sign-in-pending", "1");
+    customerAuthStorage.setPersistent(mode === "signup" || rememberSession);
+    sessionStore.setItem("cozycraft-google-sign-in-pending", "1");
     if (mode === "signup") {
-      window.sessionStorage.setItem(
+      sessionStore.setItem(
         "cozycraft-policy-consent-pending",
         JSON.stringify({
           termsVersion: CUSTOMER_POLICY_VERSION,
@@ -415,8 +422,8 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
       },
     });
     if (error) {
-      window.sessionStorage.removeItem("cozycraft-google-sign-in-pending");
-      window.sessionStorage.removeItem("cozycraft-policy-consent-pending");
+      sessionStore.removeItem("cozycraft-google-sign-in-pending");
+      sessionStore.removeItem("cozycraft-policy-consent-pending");
       setError(error.message);
     }
   };
@@ -427,6 +434,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
           <section className="auth-fixed-form w-full max-w-md">
             <button
               onClick={() => setView("auth")}
+              disabled={submitting}
               className="text-xs font-semibold underline underline-offset-4"
             >
               ← Back to sign in
@@ -435,12 +443,17 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  const { error } =
-                    await supabase.auth.resetPasswordForEmail(email, {
+                  if (recoveryInFlight.current) return;
+                  recoveryInFlight.current = true;
+                  setSubmitting(true); setError("");
+                  try {
+                    const { error } = await supabase.auth.resetPasswordForEmail(email, {
                       redirectTo:
                         window.location.origin + "/reset-password",
                     });
-                  if (error) setError(error.message); else setView("sent");
+                    if (error) setError(error.message); else setView("sent");
+                  } catch { setError("We couldn't send the reset link. Check your connection and try again."); }
+                  finally { recoveryInFlight.current = false; setSubmitting(false); }
                 }}
                 className="mt-10"
               >
@@ -452,7 +465,6 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                 </h1>
                 <p className="mt-4 text-sm leading-6 text-muted-foreground">
                   Enter your account email and we will send a secure reset link.
-                  We will email a secure reset link to your account.
                 </p>
                 <label className="mt-8 grid gap-2 text-sm font-semibold">
                   Email address
@@ -465,9 +477,10 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
                     className="h-12 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none focus:border-foreground"
                   />
                 </label>
-                <button className="mt-6 h-12 w-full rounded-xl bg-foreground text-sm font-semibold text-background">
-                  Send reset link
+                <button disabled={submitting} className="mt-6 h-12 w-full rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-50">
+                  {submitting ? "Sending reset link…" : "Send reset link"}
                 </button>
+                {error && <p role="alert" className="mt-4 text-sm leading-6 text-[#9c422f]">{error}</p>}
               </form>
             ) : view === "verify" ? (
               <div className="mt-10 rounded-3xl bg-[#eee8df] p-7">
@@ -784,7 +797,7 @@ export function Account({ mode }: { mode: "login" | "signup" }) {
             )}
             {mode === "login" && (
               <label className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" className="accent-foreground" />
+                <input type="checkbox" checked={rememberSession} onChange={event => setRememberSession(event.target.checked)} className="accent-foreground" />
                 Keep me signed in
               </label>
             )}
@@ -918,12 +931,12 @@ export function ResetPassword() {
         recoveryUser &&
         urlContainsPasswordRecoveryCredentials(window.location)
       ) {
-        writePasswordRecoveryGrant(window.sessionStorage, recoveryUser.id);
+        writePasswordRecoveryGrant(sessionStore, recoveryUser.id);
       }
       setStatus(
         recoveryUser &&
           hasValidPasswordRecoveryGrant(
-            window.sessionStorage,
+            sessionStore,
             recoveryUser.id,
           )
           ? "ready"
@@ -936,7 +949,7 @@ export function ResetPassword() {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       if (event === "PASSWORD_RECOVERY" && session?.user) {
-        writePasswordRecoveryGrant(window.sessionStorage, session.user.id);
+        writePasswordRecoveryGrant(sessionStore, session.user.id);
         setStatus("ready");
       }
     });
@@ -977,7 +990,7 @@ export function ResetPassword() {
       setError(updateError.message);
       return;
     }
-    clearPasswordRecoveryGrant(window.sessionStorage);
+    clearPasswordRecoveryGrant(sessionStore);
     await supabase.auth.signOut({ scope: "local" });
     setSubmitting(false);
     setStatus("saved");

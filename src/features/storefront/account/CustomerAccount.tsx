@@ -1,3 +1,7 @@
+import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { usePendingEmail } from "@/lib/auth/pending-email";
+import { AccountPreferences } from "./AccountPreferences";
+import { prepareCustomerPhoto, PHOTO_ACCEPT } from "@/lib/shared/prepare-photo";
 import { PaymentPreferences } from './PaymentPreferences';
 import { paginateDevices } from '@/lib/auth/device-pagination';
 import { joinRecipientName, splitRecipientName } from './recipient-name';
@@ -824,6 +828,14 @@ function CustomerProfile() {
   const [reviewTitle, setReviewTitle] = useState("");
   const [reviewBody, setReviewBody] = useState("");
   const [reviewPhotos, setReviewPhotos] = useState<ReviewPhotoDraft[]>([]);
+  const [preparingPhotos, setPreparingPhotos] = useState(false);
+  const reviewPhotoVersion = useRef(0);
+  const reviewPhotosRef = useRef(reviewPhotos);
+  reviewPhotosRef.current = reviewPhotos;
+  useEffect(() => () => {
+    reviewPhotoVersion.current += 1;
+    reviewPhotosRef.current.forEach(photo => URL.revokeObjectURL(photo.preview));
+  }, []);
   const [reviewError, setReviewError] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewSuccess, setReviewSuccess] = useState<{ productName: string } | null>(null);
@@ -934,6 +946,8 @@ function CustomerProfile() {
     };
   }, [refreshReviewedOrderItems, userId]);
   const clearReviewDraft = useCallback(() => {
+    reviewPhotoVersion.current += 1;
+    setPreparingPhotos(false);
     setReviewPhotos((current) => {
       current.forEach((photo) => URL.revokeObjectURL(photo.preview));
       return [];
@@ -948,24 +962,20 @@ function CustomerProfile() {
     clearReviewDraft();
     setReviewTarget(target);
   };
-  const addReviewPhotos = (files: FileList | null) => {
-    if (!files) return;
+  const addReviewPhotos = async (files: FileList | null) => {
+    if (!files || preparingPhotos) return;
     const available = 2 - reviewPhotos.length;
     const selected = Array.from(files).slice(0, available);
-    const invalid = selected.find(
-      (file) =>
-        file.size > 5 * 1024 * 1024 ||
-        !["image/jpeg", "image/png", "image/webp"].includes(file.type),
-    );
-    if (invalid) {
-      setReviewError("Review photos must be JPG, PNG, or WebP files no larger than 5 MB each.");
-      return;
-    }
+    const version = ++reviewPhotoVersion.current;
+    setPreparingPhotos(true);
     setReviewError("");
-    setReviewPhotos((current) => [
-      ...current,
-      ...selected.map((file) => ({ file, preview: URL.createObjectURL(file) })),
-    ]);
+    try {
+      const prepared: File[] = [];
+      for (const file of selected) prepared.push(await prepareCustomerPhoto(file));
+      if (version !== reviewPhotoVersion.current) return;
+      setReviewPhotos(current => [...current, ...prepared.map(file => ({ file, preview: URL.createObjectURL(file) }))].slice(0, 2));
+    } catch (error) { if (version === reviewPhotoVersion.current) setReviewError(error instanceof Error ? error.message : "Photos could not be prepared."); }
+    finally { if (version === reviewPhotoVersion.current) setPreparingPhotos(false); }
   };
   const removeReviewPhoto = (index: number) => {
     setReviewPhotos((current) => {
@@ -974,7 +984,7 @@ function CustomerProfile() {
     });
   };
   const submitOrderReview = async () => {
-    if (!userId || !reviewTarget || reviewSubmitting) return;
+    if (!userId || !reviewTarget || reviewSubmitting || preparingPhotos) return;
     if (reviewRating < 1) {
       setReviewError("Choose a star rating before submitting your review.");
       return;
@@ -1227,10 +1237,10 @@ function CustomerProfile() {
   );
   const [email, setEmail] = useState(userEmail ?? "");
   const [emailEditing, setEmailEditing] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState<string | null>(() =>
-    window.sessionStorage.getItem("cozycraft-pending-email"),
-  );
-  const [emailCheckMessage, setEmailCheckMessage] = useState("");
+  const { pendingEmail, setPendingEmail, emailCheckMessage, setEmailCheckMessage, verifyPendingEmail } = usePendingEmail(userId, confirmEmailChange, (verifiedEmail) => {
+    setEmail(verifiedEmail);
+    setNotice("Your new email address is verified and active.");
+  });
   const [emailRequesting, setEmailRequesting] = useState(false);
   const [phone, setPhone] = useState(profilePhone);
   const [gender, setGender] = useState(profileGender);
@@ -1259,36 +1269,6 @@ function CustomerProfile() {
   useEffect(() => {
     if (!profileEditing) resetProfileDraft();
   }, [profileEditing, resetProfileDraft]);
-  const verifyPendingEmail = useCallback(async () => {
-    if (!pendingEmail) return;
-    const result = await confirmEmailChange(pendingEmail);
-    if (result.error) {
-      setEmailCheckMessage(result.error);
-      return;
-    }
-    if (result.confirmed) {
-      window.sessionStorage.removeItem("cozycraft-pending-email");
-      setEmail(pendingEmail);
-      setPendingEmail(null);
-      setEmailCheckMessage("");
-      setNotice("Your new email address is verified and active.");
-    } else {
-      setEmailCheckMessage(
-        "Not confirmed yet. Open the email and click Confirm new email address.",
-      );
-    }
-  }, [confirmEmailChange, pendingEmail]);
-  useEffect(() => {
-    if (!pendingEmail) return;
-    window.sessionStorage.setItem("cozycraft-pending-email", pendingEmail);
-    const timer = window.setInterval(() => {
-      void verifyPendingEmail();
-    }, 5000);
-    void verifyPendingEmail();
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [pendingEmail, verifyPendingEmail]);
   useEffect(() => {
     if (!authReady || !user || !role || role === "customer") return;
     void signOut().then(() => {
@@ -1317,7 +1297,7 @@ function CustomerProfile() {
     let locallySavedRecovery: PendingPaymentRecovery | null = null;
     try {
       locallySavedRecovery = readPendingPaymentRecovery(
-        window.localStorage,
+        localStore,
         userId,
       );
     } catch {
@@ -1368,7 +1348,7 @@ function CustomerProfile() {
         if (recovery) {
           try {
             writePendingPaymentRecovery(
-              window.localStorage,
+              localStore,
               requestedUserId,
               recovery,
             );
@@ -1382,7 +1362,7 @@ function CustomerProfile() {
 
         if (!requestedPaymentOrderId || relevantLocalRecovery) {
           try {
-            clearPendingPaymentRecovery(window.localStorage, requestedUserId);
+            clearPendingPaymentRecovery(localStore, requestedUserId);
           } catch {
             // A stale browser marker is harmless when storage is unavailable.
           }
@@ -1466,7 +1446,7 @@ function CustomerProfile() {
     );
     if (matchingOrder && !isRecoverablePendingPayment(matchingOrder)) {
       try {
-        clearPendingPaymentRecovery(window.localStorage, userId);
+        clearPendingPaymentRecovery(localStore, userId);
       } catch {
         // The in-memory state below remains authoritative for this screen.
       }
@@ -1501,7 +1481,7 @@ function CustomerProfile() {
         pendingExpiry <= currentTime
       ) {
         if (userId) {
-          clearPendingPaymentRecovery(window.localStorage, userId);
+          clearPendingPaymentRecovery(localStore, userId);
         }
         setPendingPaymentRecovery((current) =>
           current?.orderId === pendingPaymentRecovery.orderId ? null : current,
@@ -1560,7 +1540,7 @@ function CustomerProfile() {
       setResumingPaymentId(null);
       if (userId) {
         try {
-          clearPendingPaymentRecovery(window.localStorage, userId);
+          clearPendingPaymentRecovery(localStore, userId);
         } catch {
           // Clearing browser storage is optional; the server remains the
           // source of truth for the settled order.
@@ -1605,7 +1585,7 @@ function CustomerProfile() {
     };
     try {
       writePendingPaymentRecovery(
-        window.localStorage,
+        localStore,
         userId,
         resumedRecovery,
       );
@@ -1749,25 +1729,18 @@ function CustomerProfile() {
       e.target.value = "";
       return;
     }
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setPhotoError("Please select a JPEG, PNG, or WebP image.");
-      e.target.value = "";
-      return;
-    }
     setPhotoError("");
     setPhotoUploading(true);
     try {
-      const result = await uploadAvatar(file);
+      const result = await uploadAvatar(await prepareCustomerPhoto(file));
       if (result.error) {
         setPhotoError(result.error);
         return;
       }
       setNotice("Profile picture updated and synced with your account.");
       if (result.url) setPhotoDialog(false);
-    } catch {
-      setPhotoError(
-        "The upload was interrupted. Check your connection and try again.",
-      );
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : "The upload was interrupted. Check your connection and try again.");
     } finally {
       setPhotoUploading(false);
       e.target.value = "";
@@ -1929,12 +1902,10 @@ function CustomerProfile() {
       setNotice(error);
       return;
     }
-    window.sessionStorage.setItem("cozycraft-pending-email", nextEmail);
     setPendingEmail(nextEmail);
     setEmailEditing(false);
   };
   const cancelEmailChange = () => {
-    window.sessionStorage.removeItem("cozycraft-pending-email");
     setPendingEmail(null);
     setEmailCheckMessage("");
     setEmail(userEmail ?? "");
@@ -2104,6 +2075,7 @@ function CustomerProfile() {
                   </div>
                 </div>
                 {!profileEditing && <ProfileOverview name={`${first} ${last}`.trim()} username={username} email={email} phone={profilePhone || ""} verified={Boolean(profilePhoneVerifiedAt)} gender={gender} birth={birth} openCircle={() => setTab("Home Circle")} />}
+                {!profileEditing && userId && <AccountPreferences key={userId} userId={userId} />}
                 <div className="mt-8 grid gap-5">
                   {profileEditing && <>
                   <label className="grid gap-2 text-sm font-semibold">
@@ -3268,6 +3240,7 @@ function CustomerProfile() {
               <button
                 type="button"
                 onClick={() => setConfirmMfaRemoval(null)}
+                data-dialog-close
                 disabled={mfaBusy}
                 className="flex-1 rounded-xl border border-border px-4 py-3 text-sm font-semibold disabled:opacity-50"
               >
@@ -3309,6 +3282,7 @@ function CustomerProfile() {
               <button
                 type="button"
                 onClick={() => setConfirmOtherSessionsSignOut(false)}
+                data-dialog-close
                 disabled={mfaBusy}
                 className="flex-1 rounded-xl border border-border px-4 py-3 text-sm font-semibold disabled:opacity-50"
               >
@@ -3350,6 +3324,7 @@ function CustomerProfile() {
               <button
                 type="button"
                 onClick={() => setConfirmDeviceSignOut(null)}
+                data-dialog-close
                 disabled={Boolean(deviceSessionActionId)}
                 className="flex-1 rounded-xl border border-border px-4 py-3 text-sm font-semibold disabled:opacity-50"
               >
@@ -3392,6 +3367,7 @@ function CustomerProfile() {
               <button
                 type="button"
                 onClick={() => setConfirmProfileSave(false)}
+                data-dialog-close
                 disabled={profileSaving}
                 className="flex-1 rounded-xl border border-border px-4 py-3 text-sm font-semibold disabled:opacity-50"
               >
@@ -3421,6 +3397,7 @@ function CustomerProfile() {
               <button
                 type="button"
                 onClick={cancelEmailChange}
+                data-dialog-close
                 aria-label="Cancel email change"
                 className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
               >
@@ -3545,7 +3522,7 @@ function CustomerProfile() {
                 {photoUploading ? "Uploading and saving…" : "Select image"}
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept={PHOTO_ACCEPT}
                   disabled={photoUploading}
                   onChange={(event) => void upload(event)}
                   className="hidden"
@@ -3648,15 +3625,16 @@ function CustomerProfile() {
                   <label className="mt-6 grid gap-2 text-sm font-semibold">Review title <span className="text-xs font-normal text-muted-foreground">Optional</span><input value={reviewTitle} onChange={(event)=>setReviewTitle(event.target.value.slice(0,120))} className="h-12 rounded-xl border border-border bg-card px-4 font-normal outline-none focus:border-foreground" placeholder="e.g. Beautiful and comfortable"/></label>
                   <label className="mt-5 grid gap-2 text-sm font-semibold">Your review <span className="text-[#9d5f49]">*</span><textarea value={reviewBody} onChange={(event)=>setReviewBody(event.target.value.slice(0,1200))} className="min-h-32 resize-y rounded-xl border border-border bg-card p-4 font-normal leading-6 outline-none focus:border-foreground" placeholder="How was the quality, comfort, size, assembly, or delivery experience?"/><span className="text-right text-[10px] font-normal text-muted-foreground">{reviewBody.length}/1200</span></label>
                   <div className="mt-5">
-                    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Add real-life photos</p><p className="mt-1 text-xs text-muted-foreground">Up to 2 JPG, PNG, or WebP images · 5 MB each</p></div><span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-semibold">{reviewPhotos.length}/2</span></div>
+                    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Add real-life photos</p><p className="mt-1 text-xs text-muted-foreground">Up to 2 JPG, PNG, WebP, HEIC, or HEIF images · 5 MB each</p></div><span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-semibold">{reviewPhotos.length}/2</span></div>
                     <div className="mt-3 grid grid-cols-2 gap-3 sm:flex">
                       {reviewPhotos.map((photo,index)=><div key={photo.preview} className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-secondary sm:h-28 sm:w-28"><img src={photo.preview} alt={`Review upload preview ${index+1}`} className="h-full w-full object-cover"/><button type="button" onClick={()=>removeReviewPhoto(index)} className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-white" aria-label={`Remove review photo ${index+1}`}><Trash2 size={14}/></button></div>)}
-                      {reviewPhotos.length < 2 && <label className="grid aspect-square cursor-pointer place-items-center rounded-2xl border border-dashed border-[#9f978a] bg-card text-center transition hover:bg-secondary sm:h-28 sm:w-28"><span><ImagePlus className="mx-auto" size={22}/><span className="mt-2 block text-[10px] font-semibold">Add photo</span></span><input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(event)=>{addReviewPhotos(event.target.files);event.target.value="";}}/></label>}
+                      {reviewPhotos.length < 2 && <label className="grid aspect-square cursor-pointer place-items-center rounded-2xl border border-dashed border-[#9f978a] bg-card text-center transition hover:bg-secondary sm:h-28 sm:w-28"><span><ImagePlus className="mx-auto" size={22}/><span className="mt-2 block text-[10px] font-semibold">Add photo</span></span><input type="file" accept={PHOTO_ACCEPT} disabled={preparingPhotos} multiple className="sr-only" onChange={(event)=>{void addReviewPhotos(event.target.files);event.target.value="";}}/></label>}
                     </div>
                   </div>
+                  {preparingPhotos && <p role="status" className="mt-4 text-sm leading-6 text-muted-foreground">Preparing your photos on this device…</p>}
                   {reviewError && <div className="mt-5 rounded-xl bg-[#f4e3d5] px-4 py-3 text-xs font-medium text-[#895b45]" role="alert">{reviewError}</div>}
                   <div className="mt-7 grid gap-3 min-[420px]:grid-cols-[1fr_auto]">
-                    <button type="button" onClick={()=>void submitOrderReview()} disabled={reviewSubmitting || reviewRating < 1 || reviewBody.trim().length < 5} className="min-h-12 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45">{reviewSubmitting ? "Publishing your review…" : "Submit review"}</button>
+                    <button type="button" onClick={()=>void submitOrderReview()} disabled={preparingPhotos || reviewSubmitting || reviewRating < 1 || reviewBody.trim().length < 5} className="min-h-12 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45">{reviewSubmitting ? "Publishing your review…" : "Submit review"}</button>
                     <button type="button" onClick={clearReviewDraft} disabled={reviewSubmitting} className="min-h-12 rounded-xl border border-border px-5 text-sm font-semibold disabled:opacity-50">Cancel</button>
                   </div>
                   <p className="mt-4 text-[10px] leading-5 text-muted-foreground">Only delivered purchases can be reviewed. Your review appears publicly as soon as it is submitted. CozyCraft may hide content later only when it violates our content standards.</p>

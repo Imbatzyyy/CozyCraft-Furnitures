@@ -9,12 +9,14 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:journeys": "vitest run src/features/storefront/catalog/content-loading.test.tsx src/features/storefront/authentication/auth-journeys.test.tsx src/features/storefront/account/AccountPreferences.test.tsx src/components/DialogAccessibility.test.tsx src/features/admin/content/ContentManagement.test.tsx src/lib/admin/draft-collection.test.tsx src/lib/auth/pending-email.test.tsx",
     "smoke:prod": "node scripts/smoke-production.mjs",
     "verify": "npm run typecheck && npm run test && npm run build",
     "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.111.0",
+    "heic-to": "1.5.2",
     "jspdf": "^4.2.1",
     "lucide-react": "0.487.0",
     "react": "18.3.1",
@@ -28,10 +30,11 @@
     "@types/react": "18.3.24",
     "@types/react-dom": "18.3.7",
     "@vitejs/plugin-react": "4.7.0",
+    "jsdom": "26.1.0",
     "tailwindcss": "4.1.12",
     "typescript": "^5.9.3",
     "vite": "6.4.3",
-    "vitest": "^3.2.7"
+    "vitest": "4.1.11"
   },
   "peerDependencies": {
     "react": "18.3.1",

@@ -1,3 +1,4 @@
+import { localStore } from "@/lib/shared/browser-storage";
 import { adminMfaGate } from "@/lib/auth/admin-mfa-gate";
 import {
   createContext,
@@ -626,7 +627,7 @@ export function AdminShell({
   const serverActivityAt = useRef(0);
   const continueAdminSession = useCallback(() => {
     const now = Date.now();
-    window.localStorage.setItem(ADMIN_ACTIVITY_KEY, String(now));
+    localStore.setItem(ADMIN_ACTIVITY_KEY, String(now));
     setIdleSecondsLeft(null);
     if (mfaRequired === false && now - serverActivityAt.current > 60_000) {
       serverActivityAt.current = now;
@@ -641,10 +642,10 @@ export function AdminShell({
     if (!authReady || !isStaffRole(databaseRole)) return;
     const timeoutMs = adminSecurity.session_timeout_minutes * 60_000;
     let loggingOut = false;
-    if (!Number(window.localStorage.getItem(ADMIN_ACTIVITY_KEY))) continueAdminSession();
+    if (!Number(localStore.getItem(ADMIN_ACTIVITY_KEY))) continueAdminSession();
     const noteActivity = () => continueAdminSession();
     const check = () => {
-      const lastActivity = Number(window.localStorage.getItem(ADMIN_ACTIVITY_KEY)) || Date.now();
+      const lastActivity = Number(localStore.getItem(ADMIN_ACTIVITY_KEY)) || Date.now();
       const remainingMs = timeoutMs - (Date.now() - lastActivity);
       if (remainingMs <= 0 && !loggingOut) {
         loggingOut = true;
@@ -654,7 +655,7 @@ export function AdminShell({
           reason: "inactivity",
           timeout_minutes: adminSecurity.session_timeout_minutes,
         }).finally(async () => {
-          window.localStorage.removeItem(ADMIN_ACTIVITY_KEY);
+          localStore.removeItem(ADMIN_ACTIVITY_KEY);
           await supabase.auth.signOut({ scope: "local" });
           nav("/admin/login?reason=idle", { replace: true });
         });

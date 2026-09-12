@@ -57,4 +57,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Production smoke test passed for ${routes.length} routes, security headers, robots.txt, and sitemap.xml.`);
+console.log(`HTTP shell checks passed for ${routes.length} routes, security headers, robots.txt, and sitemap.xml. These checks do NOT execute JavaScript or verify route rendering. Run npm run test:journeys and browser interaction checks before a release.`);

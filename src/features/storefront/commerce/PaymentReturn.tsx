@@ -1,3 +1,4 @@
+import { localStore, sessionStore } from "@/lib/shared/browser-storage";
 import {
   useCallback,
   useEffect,
@@ -194,7 +195,7 @@ export function PaymentReturn() {
       setRecovery(next);
       setPhase("recoverable");
       if (userId) {
-        writePendingPaymentRecovery(window.localStorage, userId, next);
+        writePendingPaymentRecovery(localStore, userId, next);
       }
     },
     [userId],
@@ -218,7 +219,7 @@ export function PaymentReturn() {
     (order: CompactOrderStatus | null) => {
       if (!order) return false;
       if (order.payment_status === "paid") {
-        if (userId) clearPendingPaymentRecovery(window.localStorage, userId);
+        if (userId) clearPendingPaymentRecovery(localStore, userId);
         setRecovery(null);
         setPhase("paid");
         return true;
@@ -238,7 +239,7 @@ export function PaymentReturn() {
         order.payment_status === "failed" ||
         (order.payment_expires_at && Date.parse(order.payment_expires_at) <= Date.now())
       ) {
-        if (userId) clearPendingPaymentRecovery(window.localStorage, userId);
+        if (userId) clearPendingPaymentRecovery(localStore, userId);
         setRecovery(null);
         setPhase("expired");
         return true;
@@ -260,7 +261,7 @@ export function PaymentReturn() {
         : undefined;
     if (handoff === undefined) {
       handoff = readPaymentHandoff(
-        window.sessionStorage,
+        sessionStore,
         requestedOrderId,
         userId,
       );
@@ -274,7 +275,7 @@ export function PaymentReturn() {
       expiresAt: handoff.expiresAt,
     };
     persistRecovery(next);
-    consumePaymentHandoff(window.sessionStorage, requestedOrderId, userId);
+    consumePaymentHandoff(sessionStore, requestedOrderId, userId);
 
     // Two frames let React commit the recoverable state before navigation.
     // That committed screen is what the browser restores from its back/forward
@@ -326,7 +327,7 @@ export function PaymentReturn() {
     let active = true;
 
     const restorePending = async () => {
-      const local = readPendingPaymentRecovery(window.localStorage, userId);
+      const local = readPendingPaymentRecovery(localStore, userId);
       const immediate =
         (local && (!requestedOrderId || local.orderId === requestedOrderId)
           ? local
@@ -410,7 +411,7 @@ export function PaymentReturn() {
       if (!active) return;
       void refreshOrders();
       if (data?.paid) {
-        if (userId) clearPendingPaymentRecovery(window.localStorage, userId);
+        if (userId) clearPendingPaymentRecovery(localStore, userId);
         setRecovery(null);
         setMessage("Payment was confirmed before the PayMongo page closed.");
         setPhase("paid");
@@ -427,7 +428,7 @@ export function PaymentReturn() {
         return;
       }
       if (data?.expired) {
-        if (userId) clearPendingPaymentRecovery(window.localStorage, userId);
+        if (userId) clearPendingPaymentRecovery(localStore, userId);
         setRecovery(null);
         setPhase("expired");
         return;
@@ -494,7 +495,7 @@ export function PaymentReturn() {
 
   useEffect(() => {
     if (!recovery || Date.parse(recovery.expiresAt) > now) return;
-    if (userId) clearPendingPaymentRecovery(window.localStorage, userId);
+    if (userId) clearPendingPaymentRecovery(localStore, userId);
     setRecovery(null);
     setPhase("expired");
   }, [now, recovery, userId]);
@@ -509,14 +510,14 @@ export function PaymentReturn() {
         { body: { orderId: recovery.orderId } },
       );
       if (data?.paid) {
-        if (userId) clearPendingPaymentRecovery(window.localStorage, userId);
+        if (userId) clearPendingPaymentRecovery(localStore, userId);
         setRecovery(null);
         setPhase("paid");
         await refreshOrders();
         return;
       }
       if (data?.expired) {
-        if (userId) clearPendingPaymentRecovery(window.localStorage, userId);
+        if (userId) clearPendingPaymentRecovery(localStore, userId);
         setRecovery(null);
         setPhase("expired");
         await refreshOrders();

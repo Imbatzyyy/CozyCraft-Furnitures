@@ -1,3 +1,4 @@
+import { localStore } from "@/lib/shared/browser-storage";
 import {
   createContext,
   useCallback,
@@ -685,21 +686,35 @@ export function StaticContentPage() {
   const slug = useLocation().pathname.replace(/^\//, "") || "contact";
   const [content, setContent] = useState<ContentPage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [contentError, setContentError] = useState("");
+  const [contentAttempt, setContentAttempt] = useState(0);
   useEffect(() => {
-    setContent(null);
+    let active = true;
+    let version = 0;
+    setContent(getCachedContentPage(slug));
     setIsLoading(true);
-    const load = () => void getContentPage(slug, true)
-      .then(setContent)
-      .catch(() => setContent(null))
-      .finally(() => setIsLoading(false));
+    setContentError("");
+    const load = (fresh = false) => {
+      const request = ++version;
+      void getContentPage(slug, fresh).then(value => {
+        if (active && request === version) {
+          setContent(value);
+          setContentError(value ? "" : "This information is currently unavailable.");
+        }
+      }).catch(() => {
+        if (active && request === version) setContentError("We couldn't load the latest information. Please check your connection and try again.");
+      }).finally(() => { if (active && request === version) setIsLoading(false); });
+    };
     load();
+    const reconnect = () => load(true);
+    window.addEventListener("online", reconnect);
     const channel = supabase.channel(`storefront-content-${slug}`).on(
       "postgres_changes",
       { event: "*", schema: "public", table: "content_pages", filter: `slug=eq.${slug}` },
-      () => { clearContentCache(slug); load(); },
+      () => { clearContentCache(slug); load(true); },
     ).subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [slug]);
+    return () => { active = false; window.removeEventListener("online", reconnect); void supabase.removeChannel(channel); };
+  }, [slug, contentAttempt]);
   const sections = useMemo(
     () => parseManagedSections(content?.body ?? ""),
     [content?.body],
@@ -715,9 +730,10 @@ export function StaticContentPage() {
   };
 
   if (isLoading && !content) return <InformationPageLoading />;
+  if (!content && contentError) return <Layout><main className="mx-auto min-h-[65vh] max-w-3xl px-5 py-16"><p className="text-xs font-semibold uppercase tracking-widest">CozyCraft help</p><h1 className="mt-4 font-serif text-3xl sm:text-5xl">Let's try that again.</h1><p role="alert" className="mt-5 leading-7">{contentError}</p><button type="button" onClick={() => setContentAttempt(value => value + 1)} className="mt-6 min-h-11 rounded-xl bg-foreground px-6 py-3 font-semibold text-background">Try again</button><Link to="/contact" className="ml-5 underline">Contact support</Link></main></Layout>;
 
   if (slug === "faq") {
-    return <FaqInformationPage content={page} sections={sections.map(section => /how do reviews work/i.test(section.title) ? { ...section, body: 'Customers can review delivered products from their Orders page. Eligible reviews publish without an approval queue. Content that violates the review rules may be removed; legitimate negative feedback is not a reason for removal.' } : section)} />;
+    return <FaqInformationPage content={page} cachedWarning={contentError} retry={() => setContentAttempt(value => value + 1)} sections={sections.map(section => /how do reviews work/i.test(section.title) ? { ...section, body: 'Customers can review delivered products from their Orders page. Eligible reviews publish without an approval queue. Content that violates the review rules may be removed; legitimate negative feedback is not a reason for removal.' } : section)} />;
   }
   if (slug === "privacy" || slug === "terms") {
     return (
@@ -728,7 +744,11 @@ export function StaticContentPage() {
       />
     );
   }
-  return <ContactInformationPage content={page} sections={sections} />;
+  return <ContactInformationPage content={page} sections={sections} cachedWarning={contentError} retry={() => setContentAttempt(value => value + 1)} />;
+}
+
+function CachedInformationNotice({ message, retry }: { message?: string; retry?: () => void }) {
+  return message ? <aside role="status" className="border-b border-border bg-secondary px-5 py-3 text-center text-sm leading-6">Showing saved information. {message} <button type="button" className="ml-2 min-h-11 font-semibold underline" onClick={retry}>Try again</button></aside> : null;
 }
 
 function InformationPageLoading() {
@@ -754,9 +774,13 @@ function InformationPageLoading() {
 function ContactInformationPage({
   content,
   sections,
+  cachedWarning,
+  retry,
 }: {
   content: ContentPage;
   sections: ManagedContentSection[];
+  cachedWarning?: string;
+  retry?: () => void;
 }) {
   const email =
     content.body.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0] ??
@@ -772,6 +796,7 @@ function ContactInformationPage({
   return (
     <Layout>
       <main className="min-h-[70vh] overflow-hidden bg-[#f3f0e9] text-[#1e1e1b]">
+        <CachedInformationNotice message={cachedWarning} retry={retry} />
         <section className="mx-auto max-w-[1440px] px-5 pb-5 pt-6 sm:px-7 lg:px-10 lg:pb-10 lg:pt-10">
           <div className="grid overflow-hidden rounded-[2rem] border border-black/10 bg-[#22231f] text-white shadow-[0_26px_80px_rgba(32,30,25,.14)] lg:min-h-[510px] lg:grid-cols-[1.08fr_.92fr]">
             <div className="flex min-w-0 flex-col justify-between p-7 sm:p-10 lg:p-14">
@@ -858,9 +883,13 @@ function ContactInformationPage({
 function FaqInformationPage({
   content,
   sections,
+  cachedWarning,
+  retry,
 }: {
   content: ContentPage;
   sections: ManagedContentSection[];
+  cachedWarning?: string;
+  retry?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [openTitle, setOpenTitle] = useState<string | null>(sections[0]?.title ?? null);
@@ -879,6 +908,7 @@ function FaqInformationPage({
   return (
     <Layout>
       <main className="min-h-[70vh] bg-[#faf9f6] text-[#20201d]">
+        <CachedInformationNotice message={cachedWarning} retry={retry} />
         <section className="border-b border-black/10">
           <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-14 sm:px-7 sm:py-20 lg:grid-cols-[.8fr_1.2fr] lg:items-end lg:px-10 lg:py-24">
             <div>
@@ -938,7 +968,7 @@ function FaqInformationPage({
                   What customers ask us.
                 </h2>
               </div>
-              <span className="shrink-0 text-sm text-black/45">{filtered.length} results</span>
+              <span className="shrink-0 text-sm text-black/45">{filtered.length} {filtered.length === 1 ? "result" : "results"}</span>
             </div>
 
             <div className="divide-y divide-black/10">
@@ -2234,10 +2264,10 @@ function ProductPageContent({
         return;
       }
       const key="cozycraft-recent-products";
-      const stored=JSON.parse(window.localStorage.getItem(key)??"[]") as unknown;
+      const stored=JSON.parse(localStore.getItem(key)??"[]") as unknown;
       const ids=Array.isArray(stored)?stored.filter((id):id is string=>typeof id==="string"):[];
       const next=[product.id,...ids.filter((id)=>id!==product.id)].slice(0,8);
-      window.localStorage.setItem(key,JSON.stringify(next));
+      localStore.setItem(key,JSON.stringify(next));
       if(active)setRecentProductIds(next.filter((id)=>id!==product.id).slice(0,4));
     };
     void remember();
@@ -2893,3 +2923,4 @@ function ProductPageContent({
     </Layout>
   );
 }
+import { getCachedContentPage } from "@/services/content/content.service";

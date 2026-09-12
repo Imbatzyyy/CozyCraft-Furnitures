@@ -1,3 +1,4 @@
+import { sessionStore } from "@/lib/shared/browser-storage";
 import { useEffect, useRef, useState } from "react";
 import { circleExchanges } from "@/lib/loyalty/vouchers";
 import { claimCircleReward } from "@/services/content/home-circle.service";
@@ -14,14 +15,14 @@ export function VoucherExchange({userId,points,disabled,onClaimed}:{userId:strin
     if(!chosen||pending.current||disabled||points<chosen.points)return;
     pending.current=true;setBusy(true);setError('');
     const storageKey=`cozy-voucher-claim:${userId}:${chosen.points}`;
-    let key=requestKeys.current[storageKey] || '';try{key=sessionStorage.getItem(storageKey)||key}catch{/* Request still has in-memory idempotency. */}
+    let key=requestKeys.current[storageKey] || '';try{key=sessionStore.getItem(storageKey)||key}catch{/* Request still has in-memory idempotency. */}
     if(!key)key=crypto.randomUUID();
     requestKeys.current[storageKey]=key;
-    try{sessionStorage.setItem(storageKey,key)}catch{/* Storage may be blocked. */}
+    try{sessionStore.setItem(storageKey,key)}catch{/* Storage may be blocked. */}
     const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);
     try{
       const reward=await claimCircleReward(chosen.points,key,controller.signal);
-      try{sessionStorage.removeItem(storageKey)}catch{/* Best effort. */}
+      try{sessionStore.removeItem(storageKey)}catch{/* Best effort. */}
       delete requestKeys.current[storageKey];
       setNotice(`Your ₱${reward.discount_amount} voucher is ready. Expires ${new Date(reward.expires_at).toLocaleDateString('en-PH',{timeZone:'Asia/Manila',month:'long',day:'numeric',year:'numeric'})}. A confirmation email has been queued.`);
       setChosen(null);onClaimed();

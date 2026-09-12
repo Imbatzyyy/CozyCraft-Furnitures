@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDraftCollection } from "@/lib/admin/draft-collection";
+import { useAdminSession } from "@/app/core";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { AdminShell } from "@/features/admin/shell/AdminShell";
 import { NewsletterManagement } from "@/features/admin/content/NewsletterManagement";
@@ -17,47 +19,85 @@ type EmailTemplate = {
 const blankBanner = (): HomepageBanner => ({
   id: crypto.randomUUID(), eyebrow: "", title: "", subtitle: "", image_url: "",
   cta_label: "Shop collection", cta_path: "/new-arrivals", active: true,
-  starts_at: null, ends_at: null, sort_order: 100, updated_at: new Date().toISOString(),
+  starts_at: null, ends_at: null, sort_order: 100, updated_at: "",
 });
 
 export function ContentManagementPage() {
+  const { userId } = useAdminSession();
+  return <ContentEditor key={userId ?? "signed-out"} owner={userId} />;
+}
+
+function ContentEditor({ owner }: { owner: string | null }) {
   const [view, setView] = useState<"Pages" | "Homepage" | "Newsletters" | "Email templates" | "Email log">("Pages");
-  const [pages, setPages] = useState<ContentPage[]>([]);
-  const [banners, setBanners] = useState<HomepageBanner[]>([]);
-  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const draftKey = (section: string) => owner ? `cozycraft-admin-content-v1:${owner}:${section}` : undefined;
+  const pageDraft = useDraftCollection<ContentPage>(row => row.slug, draftKey("pages"));
+  const bannerDraft = useDraftCollection<HomepageBanner>(row => row.id, draftKey("banners"));
+  const templateDraft = useDraftCollection<EmailTemplate>(row => row.event_type, draftKey("templates"));
+  const { rows: pages, setRows: setPages, refresh: refreshPages } = pageDraft;
+  const { rows: banners, setRows: setBanners, refresh: refreshBanners } = bannerDraft;
+  const { rows: templates, setRows: setTemplates, refresh: refreshTemplates } = templateDraft;
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
   const [notice, setNotice] = useState("");
-  const load = useCallback(async () => {
-    const [pageResult, bannerResult, templateResult, logResult] = await Promise.all([
-      supabase.from("content_pages").select("*").order("slug"),
-      supabase.from("homepage_banners").select("*").order("sort_order"),
-      supabase.from("email_templates").select("*").order("event_type"),
-      supabase.from("email_delivery_logs").select("*").order("created_at", { ascending: false }).limit(100),
-    ]);
-    if (pageResult.data) setPages(pageResult.data as ContentPage[]);
-    if (bannerResult.data) setBanners(bannerResult.data as HomepageBanner[]);
-    if (templateResult.data) setTemplates(templateResult.data as EmailTemplate[]);
-    if (logResult.data) setLogs(logResult.data as Array<Record<string, unknown>>);
-    const error = pageResult.error ?? bannerResult.error ?? templateResult.error ?? logResult.error;
-    if (error) setNotice(error.message);
-  }, []);
+  const active = useRef(true);
+  const inFlight = useRef(new Set<string>());
+  const queued = useRef(new Set<string>());
+  const saving = useRef(new Set<string>());
+  const load = useCallback(async (table: string) => {
+    if (!owner) return;
+    if (inFlight.current.has(table)) { queued.current.add(table); return; }
+    inFlight.current.add(table);
+    try {
+      const sort = table === "content_pages" ? "slug" : table === "homepage_banners" ? "sort_order" : table === "email_templates" ? "event_type" : "created_at";
+      const query = supabase.from(table).select("*").order(sort, { ascending: table !== "email_delivery_logs" });
+      const { data, error } = await (table === "email_delivery_logs" ? query.limit(100) : query);
+      if (!active.current) return;
+      if (error) { setNotice(error.message); return; }
+      if (table === "content_pages") refreshPages((data as ContentPage[]).filter(page => !["terms", "privacy", "refunds", "cookies"].includes(page.slug)));
+      if (table === "homepage_banners") refreshBanners(data as HomepageBanner[]);
+      if (table === "email_templates") refreshTemplates(data as EmailTemplate[]);
+      if (table === "email_delivery_logs") setLogs(data as Array<Record<string, unknown>>);
+    } catch { if (active.current) setNotice("Content could not be loaded. Switch back to this section to retry; your draft is preserved."); }
+    finally {
+      inFlight.current.delete(table);
+      if (queued.current.delete(table) && active.current) void load(table);
+    }
+  }, [owner, refreshPages, refreshBanners, refreshTemplates]);
   useEffect(() => {
-    void load();
+    active.current = true;
+    const table = view === "Pages" ? "content_pages" : view === "Homepage" ? "homepage_banners" : view === "Email templates" ? "email_templates" : view === "Email log" ? "email_delivery_logs" : null;
+    if (!table) return () => { active.current = false; };
+    void load(table);
     const channel = supabase.channel("admin-content-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "content_pages" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "homepage_banners" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "email_templates" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "email_delivery_logs" }, () => void load())
+      .on("postgres_changes", { event: "*", schema: "public", table }, () => void load(table))
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [load]);
+    return () => { active.current = false; void supabase.removeChannel(channel); };
+  }, [load, view]);
+  const dirty = pageDraft.dirty || bannerDraft.dirty || templateDraft.dirty;
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
-  const savePage = async (page: ContentPage) => {
-    const { updated_at: _updated, ...value } = page;
-    const { error } = await supabase.from("content_pages").upsert(value);
-    setNotice(error?.message ?? `${page.title} published successfully.`);
+  const saveOnce = async (id: string, action: () => Promise<void>) => {
+    if (!owner || saving.current.has(id)) return;
+    saving.current.add(id);
+    try { await action(); }
+    catch { if (active.current) setNotice("The save could not be confirmed. Your draft is preserved; check your connection before retrying."); }
+    finally { saving.current.delete(id); }
   };
-  const saveBanner = async (banner: HomepageBanner) => {
+  const saveError = (error: { code?: string; message: string } | null, success: string) => error?.code === "PGRST116"
+    ? "This record changed or was removed elsewhere. Your draft is preserved. Copy any edits you need, then discard drafts to review the latest version before saving."
+    : error?.message ?? success;
+
+  const savePage = (page: ContentPage) => saveOnce(`page:${page.slug}`, async () => {
+    const { updated_at: _updated, ...value } = page;
+    const { data, error } = await supabase.from("content_pages").update(value).eq("slug", page.slug).eq("updated_at", page.updated_at).select().single();
+    if (data) pageDraft.saved(page, data as ContentPage);
+    setNotice(saveError(error, `${page.title} published successfully.`));
+  });
+  const saveBanner = (banner: HomepageBanner) => saveOnce(`banner:${banner.id}`, async () => {
     if (!banner.title.trim() || !/^https:\/\//.test(banner.image_url) || !/^(\/|https:\/\/)/.test(banner.cta_path)) {
       setNotice("Banner title, HTTPS image, and a safe internal or HTTPS action path are required."); return;
     }
@@ -65,16 +105,20 @@ export function ContentManagementPage() {
       setNotice("The campaign end must be later than its start."); return;
     }
     const { updated_at: _updated, ...value } = banner;
-    const { error } = await supabase.from("homepage_banners").upsert(value);
-    setNotice(error?.message ?? "Homepage banner saved and synchronized.");
-  };
-  const saveTemplate = async (template: EmailTemplate) => {
+    const { data, error } = banner.updated_at ? await supabase.from("homepage_banners").update(value).eq("id", banner.id).eq("updated_at", banner.updated_at).select().single() : await supabase.from("homepage_banners").insert(value).select().single();
+    if (data) bannerDraft.saved(banner, data as HomepageBanner);
+    setNotice(saveError(error, "Homepage banner saved and synchronized."));
+  });
+  const saveTemplate = (template: EmailTemplate) => saveOnce(`template:${template.event_type}`, async () => {
     const { updated_at: _updated, ...value } = template;
-    const { error } = await supabase.from("email_templates").upsert(value);
-    setNotice(error?.message ?? "Transactional email template saved.");
-  };
+    const { data, error } = await supabase.from("email_templates").update(value).eq("event_type", template.event_type).eq("updated_at", template.updated_at).select().single();
+    if (data) templateDraft.saved(template, data as EmailTemplate);
+    setNotice(saveError(error, "Transactional email template saved."));
+  });
   return (
     <AdminShell title="Content">
+      {dirty && <div role="status" className="mb-4 rounded-xl bg-secondary p-3 text-sm leading-6">You have unsaved edits. Live updates will not replace them. Draft recovery stays in this browser tab for up to 24 hours when browser storage is available. <button type="button" className="ml-2 min-h-11 font-semibold underline" onClick={() => { if (window.confirm("Discard all unsaved content drafts? This cannot be undone.")) { pageDraft.discard(); bannerDraft.discard(); templateDraft.discard(); } }}>Discard drafts</button></div>}
+      {view === "Pages" && <aside className="mb-5 rounded-xl border border-border bg-card p-4 text-sm leading-6">Terms, Privacy, Returns and Cookie policies are managed in the website release to keep published policy text consistent. <a className="font-semibold underline" href="/terms" target="_blank" rel="noreferrer">View published policies</a>. Use the editors below for Contact and FAQ content.</aside>}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">CONTENT & COMMUNICATIONS</p><h1 className="mt-2 text-4xl font-semibold">Publishing studio</h1><p className="mt-2 text-sm text-muted-foreground">Manage public information, homepage campaigns, and transactional messages from one realtime workspace.</p></div>
         {view === "Homepage" && <button type="button" onClick={() => setBanners((current) => [...current, blankBanner()])} className="flex items-center gap-2 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"><Plus size={16}/>New banner</button>}
