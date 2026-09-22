@@ -339,6 +339,7 @@ export function Home() {
                   >
                     Explore rooms
                   </a>
+                  <Link to="/find-my-furniture" className="rounded-full border border-white/70 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10">Find my furniture</Link>
                 </div>
               </div>
             </div>
@@ -1661,9 +1662,7 @@ export function CollectionPage() {
                   ))}
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {items.length} pieces
-              </p>
+              <div className="flex flex-wrap items-center gap-3"><p className="text-xs text-muted-foreground">{items.length} pieces</p><Link to="/find-my-furniture" className="rounded-full border border-border px-4 py-2.5 text-xs font-semibold">Find my furniture</Link></div>
             </div>
             <div className="mt-5 border-t border-border pt-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center">

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
@@ -106,6 +107,8 @@ import {
 } from "@/lib/admin/order-desk";
 import { buildAdminAttentionItems } from "@/lib/admin/operations-attention";
 import { useAdminQuery } from "@/services/admin/use-admin-query";
+import { ForecastPanel } from "@/features/admin/intelligence/ForecastPanel";
+import { reportCsv } from "@/lib/intelligence/report-export";
 import { buildPackingListData } from "@/lib/admin/packing-list";
 import {
   buildOperationsHealthSnapshot,
@@ -3034,132 +3037,89 @@ export function ActivityLogsPage() {
 }
 
 export function ReportsPage() {
-  const { orders, adminProducts, customerProfiles, refreshOrders, refreshCustomers } = useStore();
+  const { adminProducts, storeSettings } = useStore();
+  const { userId, workspaceReady } = useAdminSession();
   const [range, setRange] = useState<AdminReportRange>("This month");
+  const rangeChosen = useRef(false);
+  const summary = useAdminQuery<{ start: string; generatedAt: string; grossSales: number; paidCount: number; orderCount: number; fulfilled: number; refundedValue: number; cancelledCount: number; repeatCustomers: number; customerCount: number; categoryRevenue: Record<string,number>; soldByProduct: Record<string,number>; trendData: Array<{label:string;revenue:number}> }>("admin_reports_summary", { p_range: range }, workspaceReady, userId);
+  const [exporting, setExporting] = useState(false);
   const [reportSchedule, setReportSchedule] = useState({ frequency: "weekly", timezone: "Asia/Manila" });
   const [format, setFormat] = useState("CSV");
   const [notice, setNotice] = useState("");
   const [scheduled, setScheduled] = useState(false);
   useEffect(() => {
-    void refreshOrders();
-    void refreshCustomers();
+    if (!workspaceReady) return;
+    let active = true;
+    let initialized = false;
     const loadReportSettings = () => void supabase
       .from("store_settings")
       .select("weekly_report_enabled,report_settings")
       .eq("id", true)
       .single()
       .then(({ data }) => {
+        if (!active || !data) return;
         setScheduled(Boolean(data?.weekly_report_enabled));
         const configured = data?.report_settings?.default_range;
-        if (["This week", "This month", "Quarter"].includes(configured)) setRange(configured as AdminReportRange);
+        if (!initialized && !rangeChosen.current && ["This week", "This month", "Quarter"].includes(configured)) setRange(configured as AdminReportRange);
+        initialized = true;
         setReportSchedule({ frequency: data?.report_settings?.frequency ?? "weekly", timezone: data?.report_settings?.timezone ?? "Asia/Manila" });
       });
     loadReportSettings();
     const channel = supabase.channel("admin-reports-settings").on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, loadReportSettings).subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [refreshCustomers, refreshOrders]);
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [workspaceReady, userId]);
   const reportNow = new Date();
-  const rangeStart = reportRangeStart(range, reportNow);
+  const rangeStart = summary.data ? new Date(summary.data.start) : reportRangeStart(range, reportNow);
   const rangeDuration = Math.max(1, reportNow.getTime() - rangeStart.getTime());
-  const rangeOrders = orders.filter(
-    (order) => new Date(order.created_at) >= rangeStart,
-  );
-  const paidOrders = rangeOrders.filter(isSettledSale);
-  const refundedOrders = rangeOrders.filter((order) => order.payment_status === "refunded");
-  const grossSales = settledRevenue(paidOrders);
-  const refundedValue = refundedOrders.reduce((sum,order)=>sum+Number(order.total),0);
-  const fulfilled = rangeOrders.filter(
-    (order) => order.status === "delivered",
-  ).length;
-  const averageOrderValue = paidOrders.length
-    ? grossSales / paidOrders.length
-    : 0;
-  const paidOrdersByCustomer = orders.filter(order=>order.payment_status === "paid").reduce<Record<string,number>>((counts,order)=>{counts[order.user_id]=(counts[order.user_id]??0)+1;return counts;},{});
-  const repeatCustomers = Object.values(paidOrdersByCustomer).filter(count=>count>1).length;
-  const trendData = Array.from({ length: 12 }, (_, index) => {
-    const bucketStart = new Date(
-      rangeStart.getTime() + (index * rangeDuration) / 12,
-    );
-    const bucketEnd = new Date(
-      rangeStart.getTime() + ((index + 1) * rangeDuration) / 12,
-    );
-    const bucketOrders = paidOrders.filter((order) => {
-        const created = new Date(order.created_at);
-        return created >= bucketStart && (index === 11 ? created <= bucketEnd : created < bucketEnd);
-      });
-    return {
-      label: bucketStart.toLocaleDateString("en-PH", { month: "short", day: "numeric" }),
-      revenue: settledRevenue(bucketOrders),
-      orders: bucketOrders.length,
-    };
-  });
-  const categoryRevenue = paidOrders
-    .flatMap((order) => order.order_items)
-    .reduce<Record<string, number>>((totals, item) => {
-      const category =
-        adminProducts.find((product) => product.id === item.product_id)
-          ?.category ?? "Uncategorized";
-      totals[category] =
-        (totals[category] ?? 0) + Number(item.unit_price) * item.quantity;
-      return totals;
-    }, {});
-  const leadingCategory =
-    Object.entries(categoryRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] ??
-    "No sales yet";
-  const downloadCsv = (name:string, rows:Array<Array<string|number>>) => {
-    const csv = rows.map((row)=>row.map((value)=>`"${String(value).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-    const link=document.createElement("a"); link.href=url; link.download=name; link.click(); URL.revokeObjectURL(url);
+  const grossSales = summary.data?.grossSales ?? 0;
+  const refundedValue = summary.data?.refundedValue ?? 0;
+  const fulfilled = summary.data?.fulfilled ?? 0;
+  const paidCount = summary.data?.paidCount ?? 0;
+  const orderCount = summary.data?.orderCount ?? 0;
+  const averageOrderValue = paidCount ? grossSales / paidCount : 0;
+  const repeatCustomers = summary.data?.repeatCustomers ?? 0;
+  const trendData = summary.data?.trendData ?? [];
+  const categoryRevenue = summary.data?.categoryRevenue ?? {};
+  const leadingCategory = Object.entries(categoryRevenue).sort((a,b) => b[1]-a[1])[0]?.[0] ?? "No sales yet";
+  const lowStockThreshold = storeSettings.low_stock_threshold ?? 8;
+  const reportOwner = useRef(userId);
+  reportOwner.current = userId;
+  const exportRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => { exportRequest.current?.abort(); exportRequest.current = null; }, [userId]);
+  const downloadCsv = (name: string, rows: Array<Array<string | number | null>>) => {
+    const url = URL.createObjectURL(new Blob([reportCsv(rows)], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = name; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
-  const exportReport = (reportName = "Sales performance") => {
-    const rows:Array<Array<string|number>> = reportName === "Inventory velocity" ? [
-      ["Product","Category","Stock","Status","Units sold in range"],
-      ...adminProducts.map(product=>[product.name,product.category,product.stockQuantity??0,product.status??"unknown",rangeOrders.flatMap(order=>order.order_items).filter(item=>item.product_id===product.id).reduce((sum,item)=>sum+item.quantity,0)]),
-    ] : reportName === "Customer retention" ? [
-      ["Customer","Email","Paid orders","Repeat customer"],
-      ...customerProfiles.map(profile=>[profile.full_name||profile.username||"Customer",profile.email??"",paidOrdersByCustomer[profile.id]??0,(paidOrdersByCustomer[profile.id]??0)>1?"Yes":"No"]),
-    ] : [
-      ["Order", "Status", "Payment", "Total", "Created"],
-      ...rangeOrders.map((order) => [
-        order.order_number,
-        order.status,
-        order.payment_status,
-        String(order.total),
-        order.created_at,
-      ]),
-    ];
-    downloadCsv(`cozycraft-${reportName.toLowerCase().replace(/\s/g,"-")}-${range.toLowerCase().replace(/\s/g,"-")}.csv`,rows);
-    setNotice(`${reportName} downloaded from live data.`);
+  const exportReport = async (reportName = "Sales performance") => {
+    if (exportRequest.current || !userId) return;
+    const owner = userId;
+    const controller = new AbortController(); exportRequest.current = controller;
+    const timer = window.setTimeout(() => controller.abort(), 30000);
+    setExporting(true);
+    try {
+      const rows: Array<Array<string | number | null>> = [];
+      for (let page = 1; page <= 200; page++) {
+        const { data, error } = await supabase.rpc("admin_report_export", { p_report: reportName, p_range: range, p_page: page }).abortSignal(controller.signal);
+        if (error || !Array.isArray(data?.rows)) throw new Error("Report download failed. Please retry.");
+        if (controller.signal.aborted || reportOwner.current !== owner) return;
+        if (page === 1) rows.push(data.headers);
+        rows.push(...data.rows);
+        if (data.rows.length < 250) break;
+        if (page === 200) throw new Error("This export is too large. Choose a smaller report period.");
+      }
+      if (reportOwner.current === owner && !controller.signal.aborted) {
+        downloadCsv("cozycraft-"+reportName.toLowerCase().replace(/\s/g,"-")+"-"+range.toLowerCase().replace(/\s/g,"-")+".csv",rows);
+        setNotice(reportName+" downloaded from live data.");
+      }
+    } catch (issue) { if (reportOwner.current === owner) setNotice(issue instanceof Error ? issue.message : "Export failed."); }
+    finally { window.clearTimeout(timer); if (exportRequest.current === controller) { exportRequest.current = null; setExporting(false); } }
   };
   const exportActionReport = () => {
-    const soldByProduct = rangeOrders
-      .flatMap((order) => order.order_items)
-      .reduce<Record<string, number>>((totals, item) => {
-        if (!item.product_id) return totals;
-        totals[item.product_id] = (totals[item.product_id] ?? 0) + item.quantity;
-        return totals;
-      }, {});
-    const priorityProducts = adminProducts
-      .filter((product) => (product.stockQuantity ?? 0) <= 8)
-      .sort((a, b) => (a.stockQuantity ?? 0) - (b.stockQuantity ?? 0));
-    downloadCsv(
-      `cozycraft-inventory-action-${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        ["Product", "Category", "Current stock", "Units sold in range", "Recommended action"],
-        ...priorityProducts.map((product) => [
-          product.name,
-          product.category,
-          product.stockQuantity ?? 0,
-          soldByProduct[product.id] ?? 0,
-          (product.stockQuantity ?? 0) === 0 ? "Restock immediately" : "Review and reorder",
-        ]),
-      ],
-    );
-    setNotice(
-      priorityProducts.length
-        ? `Action report downloaded with ${priorityProducts.length} priority products.`
-        : "Action report downloaded. No products currently require restocking.",
-    );
+    if (!summary.data) return;
+    const priorityProducts = adminProducts.filter(p => p.status === "active" && (p.stockQuantity ?? 0) <= lowStockThreshold).sort((a,b) => (a.stockQuantity ?? 0)-(b.stockQuantity ?? 0));
+    downloadCsv("cozycraft-inventory-action.csv", [["Product","Category","Current stock","Paid non-cancelled units in range","Suggested review"], ...priorityProducts.map(p => [p.name,p.category,p.stockQuantity ?? 0,summary.data!.soldByProduct[p.id] ?? 0,(p.stockQuantity ?? 0) === 0 ? "Review stock availability" : "Review reorder needs"])]);
+    setNotice("Inventory review downloaded. Suggestions do not place purchase orders.");
   };
   const reports = [
     {
@@ -3169,18 +3129,21 @@ export function ReportsPage() {
     },
     {
       name: "Inventory velocity",
-      meta: "Sell-through & stock aging",
+      meta: "Current stock & settled units",
       accent: "bg-[#879b7d]",
     },
     {
       name: "Customer retention",
-      meta: "Repeat buyers & cohorts",
+      meta: "All-time paid orders & repeat buyers",
       accent: "bg-[#7d8a9f]",
     },
   ];
   return (
     <AdminShell title="Reports">
-      <div className="rounded-2xl bg-[#252724] px-6 py-7 text-[#f7f3ec] shadow-sm lg:px-8">
+      <ForecastPanel />
+      {summary.error && <p className="my-4 rounded-xl border border-border p-4" role="alert">Report summary could not be loaded. <button onClick={summary.reload} className="underline">Retry</button></p>}
+      {!summary.data && <p className="my-4" role="status">{summary.error ? "Figures are unavailable, not zero." : "Loading the report summary…"}</p>}
+      <div className={`mt-6 rounded-2xl bg-[#252724] px-6 py-7 text-[#f7f3ec] shadow-sm lg:px-8 ${!summary.data ? "hidden" : ""}`}>
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div>
             <p className="font-mono text-[10px] font-bold tracking-[.18em] text-[#c8bcae]">
@@ -3196,7 +3159,7 @@ export function ReportsPage() {
             {(["This week", "This month", "Quarter"] as AdminReportRange[]).map((item) => (
               <button
                 key={item}
-                onClick={() => setRange(item)}
+                onClick={() => { rangeChosen.current = true; setRange(item); }}
                 className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${range === item ? "bg-[#f7f3ec] text-[#252724]" : "text-[#d2c9bf] hover:text-white"}`}
               >
                 {item}
@@ -3208,13 +3171,13 @@ export function ReportsPage() {
           <div className="border-l border-[#b99a76] pl-4">
             <p className="text-xs text-[#c8bcae]">Gross sales</p>
             <p className="mt-1 font-serif text-3xl">{money(grossSales)}</p>
-            <p className="mt-1 text-xs text-[#acc59f]">{paidOrders.length} settled orders</p>
+            <p className="mt-1 text-xs text-[#acc59f]">{paidCount} settled orders</p>
           </div>
           <div className="border-l border-white/20 pl-4">
             <p className="text-xs text-[#c8bcae]">Orders fulfilled</p>
             <p className="mt-1 font-serif text-3xl">{fulfilled}</p>
             <p className="mt-1 text-xs text-[#acc59f]">
-              {rangeOrders.length} total orders this period
+              {orderCount} total orders this period
             </p>
           </div>
           <div className="border-l border-white/20 pl-4">
@@ -3225,9 +3188,10 @@ export function ReportsPage() {
             </p>
           </div>
         </div>
-        <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 text-xs sm:grid-cols-3"><p><span className="text-[#c8bcae]">Refunded</span><b className="ml-2">{money(refundedValue)}</b></p><p><span className="text-[#c8bcae]">Repeat customers</span><b className="ml-2">{repeatCustomers}</b></p><p><span className="text-[#c8bcae]">Cancellation rate</span><b className="ml-2">{rangeOrders.length?((rangeOrders.filter(order=>order.status==="cancelled").length/rangeOrders.length)*100).toFixed(1):"0.0"}%</b></p></div>
+        <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 text-xs sm:grid-cols-3"><p><span className="text-[#c8bcae]">Refunded</span><b className="ml-2">{money(refundedValue)}</b></p><p><span className="text-[#c8bcae]">Repeat customers · all time</span><b className="ml-2">{repeatCustomers}</b></p><p><span className="text-[#c8bcae]">Cancellation rate</span><b className="ml-2">{orderCount?((summary.data?.cancelledCount ?? 0)/orderCount*100).toFixed(1):"0.0"}%</b></p></div>
+        <p className="mt-4 text-xs leading-5 text-[#d2c9bf]">Historical reports use order-created dates and include recorded test transactions. The forecasting panel uses separate, stricter settlement eligibility and excludes test-mode payments.</p>
       </div>
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1.45fr_.75fr]">
+      <div className={`mt-5 gap-5 xl:grid-cols-[1.45fr_.75fr] ${summary.data ? "grid" : "hidden"}`}>
         <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -3270,9 +3234,9 @@ export function ReportsPage() {
               </p>
             </div>
             <div>
-              <p className="text-xs font-semibold">Strongest channel</p>
+              <p className="text-xs font-semibold">Reporting basis</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Direct storefront · {money(grossSales)}
+                Recorded orders · Philippine calendar days
               </p>
             </div>
           </div>
@@ -3285,7 +3249,7 @@ export function ReportsPage() {
             {leadingCategory} currently leads recorded demand.
           </h3>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            {adminProducts.filter((product) => (product.stockQuantity ?? 0) <= 8).length} products are at or below the reorder point, across {customerProfiles.length} registered customers.
+            {adminProducts.filter((product) => product.status === "active" && (product.stockQuantity ?? 0) <= lowStockThreshold).length} active products are at or below the stock alert threshold, across {summary.data?.customerCount ?? 0} registered customers.
           </p>
           <button
             onClick={exportActionReport}
@@ -3307,11 +3271,7 @@ export function ReportsPage() {
               </h3>
             </div>
             <button
-              onClick={() => {
-                void Promise.all([refreshOrders(), refreshCustomers()]).then(() =>
-                  setNotice("Report library refreshed from Supabase."),
-                );
-              }}
+              onClick={summary.reload}
               className="text-xs font-semibold underline underline-offset-4"
             >
               Refresh
@@ -3329,9 +3289,10 @@ export function ReportsPage() {
                 </div>
                 <button
                   onClick={() => exportReport(report.name)}
+                  disabled={exporting || !summary.data}
                   className="rounded-lg border border-border px-3 py-2 text-xs font-semibold"
                 >
-                  Download
+                  {exporting ? "Preparing…" : "Download"}
                 </button>
               </div>
             ))}
@@ -3357,6 +3318,7 @@ export function ReportsPage() {
             onClick={() =>
               exportReport()
             }
+            disabled={exporting || !summary.data}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-3 text-xs font-semibold text-background"
           >
             <Download size={15} />

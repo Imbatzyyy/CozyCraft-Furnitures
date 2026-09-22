@@ -333,6 +333,7 @@ export type Address = {
 export type Store = {
   storeSettings: PublicStoreSettings;
   products: Product[];
+  catalogReady?: boolean;
   adminProducts: Product[];
   cart: CartLine[];
   saved: string[];

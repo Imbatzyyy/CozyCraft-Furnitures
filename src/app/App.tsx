@@ -227,6 +227,7 @@ function App() {
     () => readSessionItem(splashSessionKey) !== "1",
   );
   const [products, setProducts] = useState<Product[]>(() => !adminPortal && isOffline() ? readOfflineCatalog() : fallbackProducts);
+  const [catalogReady, setCatalogReady] = useState(false);
   const [storeSettings, setStoreSettings] = useState<PublicStoreSettings>(
     defaultStoreSettings,
   );
@@ -418,6 +419,7 @@ function App() {
               )),
         );
       setProducts(publicProducts);
+      setCatalogReady(true);
       if (!requestScope.startsWith("admin:") && !categoryResult.error && !settingResult.error) saveOfflineCatalog(publicProducts);
       setCatalogStale(false);
       return null;
@@ -538,9 +540,8 @@ function App() {
   }, []);
 
   const refreshCustomers = useCallback(() => {
-    // The paged directory owns customer loading. Only the report export needs
-    // the legacy collection; realtime elsewhere must not download this graph.
-    if (adminPortal && window.location.pathname !== "/admin/reports") {
+    // Directory and reports own their bounded read models and export requests.
+    if (adminPortal) {
       notifyAdminDataChanged();
       return Promise.resolve(null);
     }
@@ -2304,6 +2305,7 @@ function App() {
   const store: Store = {
     storeSettings,
     products,
+    catalogReady,
     adminProducts,
     cart,
     saved,
@@ -2583,6 +2585,7 @@ const router = createBrowserRouter([
   { path: "/dining-room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/new-arrivals", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/compare", lazy: () => storefrontCatalogRoute("ComparePage") },
+  { path: "/find-my-furniture", lazy: () => import("@/features/storefront/discovery/FurnitureFinder") },
   { path: "/products/:productId", lazy: () => storefrontCatalogRoute("ProductPage") },
   { path: "/cart", lazy: () => storefrontCommerceRoute("Cart") },
   {

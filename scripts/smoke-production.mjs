@@ -4,6 +4,7 @@ const routes = [
   "/living-room",
   "/bedroom",
   "/dining-room",
+  "/find-my-furniture",
   "/about",
   "/terms",
   "/privacy",
@@ -17,6 +18,7 @@ const routes = [
   "/admin",
   "/admin/login",
   "/admin/member-tiers",
+  "/admin/reports",
 ];
 const requiredSecurityHeaders = {
   "content-security-policy": "default-src",

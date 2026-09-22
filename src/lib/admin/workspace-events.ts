@@ -5,5 +5,5 @@ export function notifyAdminDataChanged() {
   window.dispatchEvent(new Event(ADMIN_DATA_CHANGED));
 }
 export function usesPagedAdminOrders(pathname: string) {
-  return pathname === "/admin" || pathname === "/admin/" || pathname === "/admin/login" || pathname === "/admin/orders";
+  return pathname === "/admin" || pathname === "/admin/" || pathname === "/admin/login" || pathname === "/admin/orders" || pathname === "/admin/reports";
 }
