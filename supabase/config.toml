@@ -83,3 +83,7 @@ verify_jwt = false
 
 [functions.verify-mobile-payment]
 verify_jwt = false
+
+[functions.furniture-discovery]
+# Public interpretation is budget-limited; photo indexing verifies staff or service auth inside.
+verify_jwt = false

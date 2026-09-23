@@ -129,59 +129,8 @@ import {
 
 import { AdminShell } from "@/features/admin/shell/AdminShell";
 
-export const catalogTaxonomy: Record<string, string[]> = {
-  "Living room": [
-    "2-Seater Fabric Sofa",
-    "3-Seater Fabric Sofa",
-    "Sectional Sofa",
-    "Recliner Sofa",
-    "Sofa Bed",
-    "Wooden Coffee Table",
-    "Glass Coffee Table",
-    "Round Coffee Table",
-    "Storage Coffee Table",
-    "Marble Coffee Table",
-    "Wooden TV Stand",
-    "Floating TV Stand",
-    "Corner TV Stand",
-    "TV Cart",
-    "Modern TV Stand",
-  ],
-  Bedroom: [
-    "Single Size Bed",
-    "Double Size Bed",
-    "Queen Size Bed",
-    "King Size Bed",
-    "Bunk Bed",
-    "2-Door Wardrobe",
-    "3-Door Wardrobe",
-    "Sliding Door Wardrobe",
-    "Walk-in Wardrobe",
-    "Corner Wardrobe",
-    "Wooden Nightstand",
-    "Modern Nightstand",
-    "Floating Nightstand",
-    "Nightstand with Drawer",
-    "Metal Nightstand",
-  ],
-  "Dining room": [
-    "Extendable Dining Table",
-    "Marble Top Dining Table",
-    "Glass Dining Table",
-    "Wooden Ornate Dining Table",
-    "Metal Industrial Dining Table",
-    "Wooden Ornate Dining Chairs",
-    "Modern Plastic Dining Chairs",
-    "Metal Industrial Dining Chairs",
-    "Molded Resin Dining Chairs",
-    "Luxury Velvet Dining Chairs",
-    "Dining Hutch Cabinet",
-    "Buffet Cabinet",
-    "Pantry Cabinets",
-    "Wine Storage Cabinet",
-    "Serving Trolleys",
-  ],
-};
+import { catalogTaxonomy } from "../../../../supabase/functions/_shared/catalog-taxonomy";
+export { catalogTaxonomy };
 
 export const taxonomyGroups: Record<string, string[]> = {
   "Living room": ["Sofas", "Coffee Tables", "TV Stands"],
@@ -258,7 +207,7 @@ const isManagedProductDraft = (value: unknown): value is ManagedProduct => {
 export function ProductManager() {
   const location = useLocation();
   const { adminProducts, saveProduct, deleteProduct, uploadProductImages, storeSettings } = useStore();
-  const toManaged = (p: Product): ManagedProduct => ({ updatedAt:p.updatedAt, id:p.id, name:p.name, description:p.description, category:p.category, subcategory:p.subcategory ?? subcategoryFor(p.id), price:p.price, quantity:p.stockQuantity ?? 0, status:p.status === "draft" ? "Draft" : p.status === "inactive" ? "Inactive" : "Active", images:[...p.images], main:p.mainImageIndex ?? 0, material:p.material ?? materialFor(p.id), dimensions:p.dimensions });
+  const toManaged = (p: Product): ManagedProduct => ({ color:p.color, updatedAt:p.updatedAt, id:p.id, name:p.name, description:p.description, category:p.category, subcategory:p.subcategory ?? subcategoryFor(p.id), price:p.price, quantity:p.stockQuantity ?? 0, status:p.status === "draft" ? "Draft" : p.status === "inactive" ? "Inactive" : "Active", images:[...p.images], main:p.mainImageIndex ?? 0, material:p.material ?? materialFor(p.id), dimensions:p.dimensions });
   const [items, setItems] = useState<ManagedProduct[]>(adminProducts.map(toManaged));
   useEffect(() => setItems(adminProducts.map(toManaged)), [adminProducts]);
   const [view, setView] = useState<"grid" | "list">("list");
@@ -270,6 +219,14 @@ export function ProductManager() {
   );
   const [menu, setMenu] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [photoIndex, setPhotoIndex] = useState<{id:string;name:string;status:"loading"|"error"|"done"}|null>(null);
+  const indexPhotos = async (id:string,name:string) => {
+    setPhotoIndex({id,name,status:"loading"});
+    try {
+      const {data,error}=await supabase.functions.invoke("furniture-discovery",{body:{action:"index",productId:id}});
+      setPhotoIndex(current=>current?.id === id ? {...current,status:error || data?.error ? "error" : "done"} : current);
+    } catch { setPhotoIndex(current=>current?.id === id ? {...current,status:"error"} : current); }
+  };
   const [error, setError] = useState("");
   const [duplicateWarning, setDuplicateWarning] =
     useState<ManagedProduct | null>(null);
@@ -330,6 +287,7 @@ export function ProductManager() {
     setItems((current) => current.some(i=>i.id===result.id) ? current.map(i=>i.id===result.id?result:i) : [result,...current]);
     clearAdminDraft(productEditorDraftKey);
     setEditing(null); setNotice(result.name + (editing.id ? " updated." : " created."));
+    void indexPhotos(result.id,result.name);
   };
   const upload = async (files: FileList | null) => {
     if (!files || !editing) return;
@@ -361,6 +319,11 @@ export function ProductManager() {
   };
   return (
     <AdminShell title="Products">
+      {photoIndex && <div role="status" className="mb-5 rounded-xl border border-border bg-card p-4 text-sm leading-6">
+        {photoIndex.status === "loading" ? `Product saved. Updating photo matching for ${photoIndex.name}…` : photoIndex.status === "done" ? `Photo matching is up to date for ${photoIndex.name}.` : `Product saved, but photo matching for ${photoIndex.name} could not be updated. Old observations will not be used for changed photos.`}
+        {photoIndex.status === "error" && <button type="button" className="ml-3 min-h-11 font-semibold underline" onClick={()=>void indexPhotos(photoIndex.id,photoIndex.name)}>Retry photo matching</button>}
+        {photoIndex.status !== "loading" && <button type="button" className="ml-3 min-h-11 underline" onClick={()=>setPhotoIndex(null)}>Dismiss</button>}
+      </div>}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
@@ -864,6 +827,11 @@ export function ProductEditor({
                 New products default to Active and appear in the selected room
                 collection immediately.
               </span>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
+              Confirmed product colour
+              <input value={product.color ?? ""} maxLength={100} onChange={event => setProduct({ ...product, color: event.target.value })} placeholder="e.g. Dark grey, beige, or white / natural wood" className="h-11 rounded-xl border border-border px-3 font-normal" />
+              <span className="text-xs font-normal text-muted-foreground">Use the colour of the actual sold variant, not the room or accessories. This takes priority over AI photo observations in Find My Furniture.</span>
             </label>
             <fieldset className="grid gap-3 text-sm font-semibold sm:col-span-2">
               <div className="flex items-center justify-between">

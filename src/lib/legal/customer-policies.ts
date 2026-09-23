@@ -59,6 +59,10 @@ export const CUSTOMER_TERMS_SECTIONS: CustomerPolicySection[] = [
 
 export const CUSTOMER_PRIVACY_SECTIONS: CustomerPolicySection[] = [
   {
+    title: "Optional furniture discovery — updated September 23, 2026",
+    body: "Find My Furniture can use Groq to interpret the furniture description you choose to submit, together with any selected size and budget limits. Do not enter names, contact details, account credentials, or payment information in that field. You can use the structured filters without submitting a description to the AI provider. Existing public catalog photos are analysed separately and cached for colour and visible-feature matching; this feature does not accept customer photo uploads. CozyCraft does not save discovery descriptions to customer profiles. Short-lived request caches and limited pseudonymous request counters support performance and abuse prevention. AI photo observations are separate from verified materials and measurements and may be inaccurate.",
+  },
+  {
     title: "Who is responsible for your information",
     body:
       `CozyCraft Furnitures is the personal information controller for customer information processed through this service. Privacy questions, requests, and objections may be sent to ${COZYCRAFT_PRIVACY_EMAIL} from the email associated with your account.`,

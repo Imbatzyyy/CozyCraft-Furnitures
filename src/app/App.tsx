@@ -1947,6 +1947,7 @@ function App() {
       main_image_index: canonicalImages.mainImageIndex,
       material: product.material,
       dimensions: product.dimensions,
+      ...(typeof product.color === "string" ? { color: product.color.trim().slice(0, 100) } : {}),
     };
     const result = options.create
       ? await adminSupabase.from("products").insert({ ...payload, stock_quantity: product.quantity }).select("id")

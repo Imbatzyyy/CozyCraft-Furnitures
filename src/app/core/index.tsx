@@ -1695,6 +1695,7 @@ export function Status({ children, text }: { children?: ReactNode; text?: string
 }
 
 export type ManagedProduct = {
+  color?: string;
   updatedAt?: string;
   id: string;
   name: string;
