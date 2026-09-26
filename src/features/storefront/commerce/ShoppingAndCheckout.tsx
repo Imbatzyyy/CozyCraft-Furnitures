@@ -731,6 +731,13 @@ export function CustomerOrders() {
   const requested = new URLSearchParams(location.search).get('order');
   useEffect(() => { if (authReady && user) void refreshOrders(); }, [authReady,user,refreshOrders,requested]);
   useEffect(() => { if (pagination && pagination.status !== 'all') pagination.setStatus('all'); }, [pagination?.status]);
+  // Give the initially displayed order a stable URL too. Browsing the picker
+  // must not switch the tracking detail until the customer chooses an order.
+  useEffect(() => {
+    if (authReady && user && !requested && orders[0]) {
+      navigate('/orders?order='+encodeURIComponent(orders[0].id), {replace:true});
+    }
+  }, [authReady,user,requested,orders,navigate]);
   if (!authReady) return <Layout><main className="full-tracking" role="status">Loading your account…</main></Layout>;
   if (!user) return <Account mode="login" />;
   const order = requested ? orders.find(item=>item.id===requested) : orders[0];
