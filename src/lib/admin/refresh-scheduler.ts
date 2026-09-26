@@ -1,5 +1,5 @@
 // One request at a time, bounded debounce, and one queued follow-up.
-export function createRefreshScheduler(run: () => Promise<void>, delay = 500, maxWait = 2000) {
+export function createRefreshScheduler(run: () => Promise<void>, delay = 500, maxWait = 2000, onError?: (error: unknown) => void) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let first = 0;
   let busy = false;
@@ -12,6 +12,7 @@ export function createRefreshScheduler(run: () => Promise<void>, delay = 500, ma
     first = 0;
     busy = true;
     try { await run(); }
+    catch (error) { onError?.(error); }
     finally {
       busy = false;
       if (dirty && !disposed) timer = setTimeout(flush, delay);

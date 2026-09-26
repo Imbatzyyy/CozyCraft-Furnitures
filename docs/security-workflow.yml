@@ -1,22 +1,41 @@
-# Activation: place in .github/workflows/security.yml using a credential with workflow permission.
-name: Security and application checks
+# Activation: copy to .github/workflows/security.yml using an owner-authorized credential with workflow permission.
+name: Application and architecture checks
 on:
   push:
     branches: [main]
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      # Non-secret fixture values: tests must never talk to production.
+      VITE_SUPABASE_URL: https://example.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: public-test-fixture-key
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
       - run: npm ci
       - run: npm run verify
       - run: npm run audit:prod
+      - name: Isolated database read-model regression tests
+        run: |
+          docker run -d --name cozy-architecture-qa -e POSTGRES_HOST_AUTH_METHOD=trust postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+          for attempt in $(seq 1 30); do
+            if docker exec cozy-architecture-qa pg_isready -U postgres; then break; fi
+            sleep 1
+          done
+          node scripts/test-architecture-read-models.mjs
       - name: Scan committed history without exposing findings
         run: docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f git /repo --redact --no-banner

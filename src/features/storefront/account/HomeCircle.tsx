@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VoucherExchange } from "./VoucherExchange";
 import { VoucherWallet } from "./VoucherWallet";
 import { Link } from "react-router-dom";
@@ -6,6 +6,8 @@ import { ArrowUpRight, RefreshCw, Sparkles } from "lucide-react";
 import { getLoyaltyTierProgress, loyaltyTierMinimums, loyaltyTierOrder } from "@/lib/loyalty/member-tiers";
 import { loadHomeCircle, type CircleSnapshot } from "@/services/content/home-circle.service";
 import "./profile-refresh.css";
+import { useAccountInvalidation } from "@/services/content/use-account-invalidation";
+import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
 
 export const circleNames = { member: "Cozy Nest", plus: "Cozy Plus", premium: "Cozy Premium", elite: "Cozy Elite" };
 const rates = { member: "1 point per ₱100", plus: "1 point per ₱100", premium: "1.5× order points", elite: "2× order points" };
@@ -13,29 +15,31 @@ const money = (n: number) => `₱${Number(n).toLocaleString("en-PH", { maximumFr
 const date = (s: string) => new Date(s).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" });
 
 export function HomeCircle({ userId, active }: { userId: string; active: boolean }) {
-  const [snapshot, setSnapshot] = useState<CircleSnapshot | null>(null);
+  const [loaded, setLoaded] = useState<{owner:string;data:CircleSnapshot} | null>(null);
+  const snapshot = loaded?.owner === userId ? loaded.data : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [revision, setRevision] = useState(0);
   const updatedAt = useRef(0);
-  const loadedRevision = useRef(0);
+  const refreshRequest = useRef<() => void>(()=>{});
+  const refresh = useCallback(()=>refreshRequest.current(),[]);
+  useAccountInvalidation(userId, active, ["mobile_loyalty_accounts", "mobile_loyalty_transactions", "mobile_loyalty_redemptions"], refresh);
   useEffect(() => {
-    if (!active || (revision === loadedRevision.current && Date.now() - updatedAt.current < 60_000)) {
-      setBusy(false);
-      return;
-    }
-    const controller = new AbortController();
+    if (!active) {setBusy(false);return;}
+    let controller: AbortController | undefined;
     let live = true;
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    setBusy(true); setError("");
-    loadHomeCircle(userId, controller.signal).then(data => {
-      if (live) { setSnapshot(data); updatedAt.current = Date.now(); loadedRevision.current = revision; }
-    }).catch(() => {
-      if (live) setError("We couldn’t refresh Home Circle. Your points are safe. Please try again.");
-    }).finally(() => { clearTimeout(timeout); if (live) setBusy(false); });
-    return () => { live = false; clearTimeout(timeout); controller.abort(); };
-  }, [userId, active, revision]);
-  return active ? <HomeCircleView userId={userId} snapshot={snapshot} busy={busy} error={error} refresh={() => setRevision(n => n + 1)} /> : null;
+    const scheduler=createRefreshScheduler(async()=>{
+      controller=new AbortController();
+      const timeout=setTimeout(()=>controller?.abort(),12000);
+      setBusy(true);setError("");
+      try {const data=await loadHomeCircle(userId,controller.signal);if(live){setLoaded({owner:userId,data});updatedAt.current=Date.now();}}
+      catch {if(live)setError("We couldn’t refresh Home Circle. Your points are safe. Please try again.");}
+      finally {clearTimeout(timeout);if(live)setBusy(false);}
+    },150,1500);
+    refreshRequest.current=scheduler.request;
+    if(loaded?.owner !== userId || Date.now()-updatedAt.current>=60000)scheduler.request();
+    return()=>{live=false;refreshRequest.current=()=>{};scheduler.dispose();controller?.abort();};
+  }, [userId, active]);
+  return active ? <HomeCircleView userId={userId} snapshot={snapshot} busy={busy} error={error} refresh={refresh} /> : null;
 }
 
 export function HomeCircleView({ snapshot, busy, error, refresh, userId = "" }: { snapshot: CircleSnapshot | null; busy: boolean; error: string; refresh: () => void; userId?: string }) {

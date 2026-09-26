@@ -14,6 +14,10 @@ import {
   Users,
 } from "lucide-react";
 import { AdminShell } from "@/features/admin/shell/AdminShell";
+import { useAdminSession } from "@/app/core";
+import { useAdminQuery } from "@/services/admin/use-admin-query";
+import { useAdminTableInvalidation } from "@/services/admin/use-table-invalidation";
+import { DataPagination } from "@/components/DataPagination";
 import {
   getLoyaltyTierProgress,
   loyaltyTierOrder,
@@ -140,71 +144,41 @@ export function MemberTierMonitoringPage() {
   const [query, setQuery] = useState("");
   const [tierFilter, setTierFilter] = useState<"all" | LoyaltyTier>("all");
   const [sort, setSort] = useState<"points" | "spend" | "recent">("points");
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [realtimeStatus, setRealtimeStatus] = useState("CONNECTING");
-  const refreshTimer = useRef<number | null>(null);
 
-  const loadMembers = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setError("");
-    const [profilesResult, accountsResult] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id,full_name,username,email,avatar_url,created_at")
-        .eq("role", "customer")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("mobile_loyalty_accounts")
-        .select(
-          "user_id,points_balance,lifetime_eligible_spend,tier,tier_valid_until,last_activity_at,updated_at",
-        ),
-    ]);
 
-    if (profilesResult.error || accountsResult.error) {
-      setError(
-        profilesResult.error?.message ||
-          accountsResult.error?.message ||
-          "Member tier data could not be loaded.",
-      );
-      setLoading(false);
-      return;
-    }
-
-    const accounts = new Map(
-      ((accountsResult.data ?? []) as LoyaltyAccount[]).map((account) => [account.user_id, account]),
-    );
-    const now = new Date().toISOString();
-    const profiles = (profilesResult.data ?? []) as CustomerProfile[];
-    const signedAvatars = await privateAvatarUrls(
-      profiles.map((profile) => profile.avatar_url),
-      supabase,
-    );
-    const nextMembers = profiles.map((profile, index) => {
-        const account = accounts.get(profile.id);
-        return {
-          ...profile,
-          avatar_url: signedAvatars[index],
-          user_id: profile.id,
-          points_balance: Number(account?.points_balance ?? 0),
-          lifetime_eligible_spend: Number(account?.lifetime_eligible_spend ?? 0),
-          tier: account?.tier ?? "member",
-          tier_valid_until: account?.tier_valid_until ?? null,
-          last_activity_at: account?.last_activity_at ?? null,
-          updated_at: account?.updated_at ?? now,
-        } satisfies LoyaltyMember;
-      });
-    setMembers(nextMembers);
-    setSelectedId((current) =>
-      current && nextMembers.some((member) => member.id === current)
-        ? current
-        : nextMembers[0]?.id ?? "",
-    );
-    setLoading(false);
-  }, []);
+  const { userId, workspaceReady } = useAdminSession();
+  const result = useAdminQuery<{rows:LoyaltyMember[];total:number;members:number;points:number;spend:number;elite:number;tiers:Record<string,number>}>(
+    "admin_member_page", {p_query:query.slice(0,200),p_tier:tierFilter,p_sort:sort,p_page:page}, workspaceReady, userId,
+  );
+  const loading = result.loading;
+  const total = result.data?.total ?? 0;
+  const loadMembers = result.reload;
+  const selectedRef = useRef(selectedId); selectedRef.current = selectedId;
+  const detailGeneration = useRef(0);
+  useEffect(() => setPage(1), [query,tierFilter,sort]);
+  useEffect(() => {
+    if (result.error) setError(result.error);
+    if (result.data && !result.loading) setPage(p => Math.min(p,Math.max(1,Math.ceil(result.data!.total/20))));
+  }, [result.data,result.loading,result.error]);
+  useEffect(() => {
+    let live = true;
+    setMembers([]);
+    if (!result.data) return;
+    const rows = result.data.rows;
+    void privateAvatarUrls(rows.map(row => row.avatar_url),supabase).then(avatars => {
+      if (!live) return;
+      setError("");
+      setMembers(rows.map((row,index) => ({...row,avatar_url:avatars[index]})));
+      setSelectedId(current => rows.some(row => row.id===current) ? current : rows[0]?.id ?? "");
+    }).catch(() => { if (live) setError("Member avatars could not be refreshed. Please try again."); });
+    return () => { live = false; };
+  }, [result.data]);
 
   const loadMemberDetails = useCallback(async (userId: string, silent = false) => {
+    const generation = ++detailGeneration.current;
     if (!userId) {
       setTransactions([]);
       setRedemptions([]);
@@ -225,6 +199,7 @@ export function MemberTierMonitoringPage() {
         .order("created_at", { ascending: false })
         .limit(8),
     ]);
+    if (selectedRef.current !== userId || detailGeneration.current !== generation) return;
     if (transactionResult.error || redemptionResult.error) {
       setError(
         transactionResult.error?.message ||
@@ -238,79 +213,16 @@ export function MemberTierMonitoringPage() {
     setDetailsLoading(false);
   }, []);
 
-  useEffect(() => {
-    void loadMembers();
-  }, [loadMembers]);
-
-  useEffect(() => {
-    void loadMemberDetails(selectedId);
-  }, [loadMemberDetails, selectedId]);
-
-  useEffect(() => {
-    const scheduleRefresh = (includeDetails = false) => {
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
-      refreshTimer.current = window.setTimeout(() => {
-        void loadMembers(true);
-        if (includeDetails && selectedId) void loadMemberDetails(selectedId, true);
-      }, 250);
-    };
-    const channel = supabase
-      .channel("admin-member-tier-monitor")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mobile_loyalty_accounts" },
-        () => scheduleRefresh(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        () => scheduleRefresh(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mobile_loyalty_transactions" },
-        () => scheduleRefresh(true),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mobile_loyalty_redemptions" },
-        () => scheduleRefresh(true),
-      )
-      .subscribe((status) => setRealtimeStatus(status));
-
-    return () => {
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
-      void supabase.removeChannel(channel);
-    };
-  }, [loadMemberDetails, loadMembers, selectedId]);
-
-  const filteredMembers = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase();
-    return members
-      .filter((member) => tierFilter === "all" || member.tier === tierFilter)
-      .filter((member) =>
-        !term
-          ? true
-          : [member.full_name, member.username, member.email, member.tier].some((value) =>
-              String(value ?? "").toLocaleLowerCase().includes(term),
-            ),
-      )
-      .sort((left, right) => {
-        if (sort === "spend") return right.lifetime_eligible_spend - left.lifetime_eligible_spend;
-        if (sort === "recent") {
-          return (
-            new Date(right.last_activity_at ?? right.created_at).getTime() -
-            new Date(left.last_activity_at ?? left.created_at).getTime()
-          );
-        }
-        return right.points_balance - left.points_balance;
-      });
-  }, [members, query, sort, tierFilter]);
-
+  useEffect(() => { void loadMemberDetails(selectedId); }, [loadMemberDetails,selectedId]);
+  useAdminTableInvalidation(["profiles","mobile_loyalty_accounts","mobile_loyalty_transactions","mobile_loyalty_redemptions"], async () => {
+    loadMembers();
+    if (selectedId) await loadMemberDetails(selectedId,true);
+  },workspaceReady);
+  const filteredMembers = members;
   const selectedMember = members.find((member) => member.id === selectedId) ?? null;
-  const totalPoints = members.reduce((sum, member) => sum + member.points_balance, 0);
-  const totalSpend = members.reduce((sum, member) => sum + member.lifetime_eligible_spend, 0);
-  const topTierMembers = members.filter((member) => member.tier === "elite").length;
+  const totalPoints = result.data?.points ?? 0;
+  const totalSpend = result.data?.spend ?? 0;
+  const topTierMembers = result.data?.elite ?? 0;
   const progress = selectedMember
     ? getLoyaltyTierProgress(selectedMember.tier, selectedMember.lifetime_eligible_spend)
     : null;
@@ -328,8 +240,8 @@ export function MemberTierMonitoringPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-2 text-[11px] font-semibold">
-              <span className={`h-2 w-2 rounded-full ${realtimeStatus === "SUBSCRIBED" ? "bg-[#9fc595]" : "bg-[#d7b876]"}`} />
-              {realtimeStatus === "SUBSCRIBED" ? "Live Supabase updates" : "Connecting live updates"}
+              <span className={`h-2 w-2 rounded-full ${!result.error ? "bg-[#9fc595]" : "bg-[#d7b876]"}`} />
+              {!result.error ? "Automatic updates enabled" : "Refresh needed"}
             </span>
             <button
               type="button"
@@ -357,7 +269,7 @@ export function MemberTierMonitoringPage() {
 
       <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Enrolled members", value: compact(members.length), note: "Customer loyalty accounts", Icon: Users },
+          { label: "Enrolled members", value: compact(result.data?.members ?? 0), note: "Customer loyalty accounts", Icon: Users },
           { label: "Available points", value: compact(totalPoints), note: "Across all members", Icon: Sparkles },
           { label: "Eligible spend", value: compact(totalSpend), note: "Delivered and paid orders", Icon: CircleDollarSign },
           { label: "Elite members", value: compact(topTierMembers), note: "₱120,000+ eligible spend", Icon: Award },
@@ -375,12 +287,13 @@ export function MemberTierMonitoringPage() {
         ))}
       </section>
 
+      <DataPagination page={page} total={total} size={20} onChange={setPage} busy={loading} label="Member directory pages"/>
       <section className="mt-4 overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-sm">
         <header className="border-b border-border p-4 sm:p-5">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">MEMBER DIRECTORY</p>
-              <h3 className="mt-1 text-xl font-semibold">{filteredMembers.length} matching member{filteredMembers.length === 1 ? "" : "s"}</h3>
+              <h3 className="mt-1 text-xl font-semibold">{total} matching member{total === 1 ? "" : "s"}</h3>
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto]">
               <label className="flex h-11 items-center gap-2 rounded-xl border border-border bg-background px-3">
@@ -421,7 +334,7 @@ export function MemberTierMonitoringPage() {
                 onClick={() => setTierFilter((current) => current === tier ? "all" : tier)}
                 className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold capitalize ${tierFilter === tier ? tierStyles[tier] : "border-border bg-background text-muted-foreground"}`}
               >
-                {tier} · {members.filter((member) => member.tier === tier).length}
+                {tier} · {result.data?.tiers[tier] ?? 0}
               </button>
             ))}
           </div>

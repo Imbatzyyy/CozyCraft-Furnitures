@@ -29,4 +29,11 @@ describe('bounded realtime refresh', () => {
     scheduler.request(); scheduler.dispose();
     await vi.advanceTimersByTimeAsync(5000); expect(run).not.toHaveBeenCalled();
   });
+  it('reports a rejected read and continues with a queued invalidation',async()=>{
+    vi.useFakeTimers();let reject!:(error:Error)=>void;
+    const run=vi.fn().mockImplementationOnce(()=>new Promise((_,fail)=>{reject=fail;})).mockResolvedValue(undefined);
+    const onError=vi.fn();const scheduler=createRefreshScheduler(run,100,500,onError);
+    scheduler.request();await vi.advanceTimersByTimeAsync(100);scheduler.request();reject(new Error('offline'));
+    await vi.advanceTimersByTimeAsync(100);expect(onError).toHaveBeenCalledOnce();expect(run).toHaveBeenCalledTimes(2);scheduler.dispose();
+  });
 });

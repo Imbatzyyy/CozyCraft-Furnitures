@@ -10,6 +10,8 @@ import {
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { useAdminTableInvalidation } from "@/services/admin/use-table-invalidation";
+import { DataPagination } from "@/components/DataPagination";
 import {
   createBrowserRouter,
   Link,
@@ -396,69 +398,26 @@ export function RecentOrders({ items }: { items?: DbOrder[] } = {}) {
 }
 
 export function SystemHealthPage() {
-  const {
-    orders,
-    adminProducts,
-    supportTickets,
-    ordersRealtimeConnected,
-    refreshOrders,
-    refreshTickets,
-  } = useStore();
-  const [clientErrors, setClientErrors] = useState<ClientErrorSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null);
-
-  const loadClientErrors = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabase
-      .from("client_error_events")
-      .select("id,message,path,created_at")
-      .gte("created_at", since)
-      .order("created_at", { ascending: false })
-      .limit(30);
-    if (error) {
-      setLoadError(error.message);
-    } else {
-      setClientErrors((data ?? []) as ClientErrorSummary[]);
-      setLastCheckedAt(new Date());
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    void loadClientErrors();
-  }, [loadClientErrors]);
-  useEffect(() => {
-    void refreshOrders();
-    void refreshTickets();
-  }, [refreshOrders, refreshTickets]);
-
-  const refreshHealth = async () => {
-    setLoading(true);
-    const [orderIssue] = await Promise.all([
-      refreshOrders(),
-      refreshTickets(),
-      loadClientErrors(),
-    ]);
-    if (orderIssue) setLoadError(orderIssue);
-    setLastCheckedAt(new Date());
-    setLoading(false);
+  const { ordersRealtimeConnected } = useStore();
+  const { userId, workspaceReady } = useAdminSession();
+  type HealthData = {failedPayments:number;failedRefunds:number;overdueFulfillment:number;priorityTickets:number;outOfStockProducts:number;recentClientErrors:number;errors:ClientErrorSummary[];generatedAt:string};
+  const health = useAdminQuery<HealthData>("admin_operations_snapshot",{},workspaceReady,userId);
+  const jobs = useAdminQuery<{photoQueued:number;photoExhausted:number;voucherQueued:number;voucherFailed:number;voucherOverdue:number;generatedAt:string}>("admin_job_health",{},workspaceReady,userId);
+  useAdminTableInvalidation(["client_error_events"],health.reload,workspaceReady);
+  const loading = health.loading;
+  const loadError = health.error;
+  const lastCheckedAt = health.data ? new Date(health.data.generatedAt) : null;
+  const clientErrors = health.data?.errors ?? [];
+  const refreshHealth = () => {health.reload();jobs.reload();};
+  const data = health.data;
+  const snapshot = {
+    failedPayments:data?.failedPayments ?? 0, failedRefunds:data?.failedRefunds ?? 0,
+    overdueFulfillment:data?.overdueFulfillment ?? 0,priorityTickets:data?.priorityTickets ?? 0,
+    outOfStockProducts:data?.outOfStockProducts ?? 0,recentClientErrors:data?.recentClientErrors ?? 0,
+    liveOrdersConnected:ordersRealtimeConnected,
+    overall:!data || health.error || jobs.error || !jobs.data || jobs.data.photoExhausted+jobs.data.voucherFailed+jobs.data.voucherOverdue>0 ? "attention" : !ordersRealtimeConnected || data.failedRefunds>0 ? "degraded" :
+      data.failedPayments+data.overdueFulfillment+data.priorityTickets+data.outOfStockProducts+data.recentClientErrors>0 ? "attention" : "healthy",
   };
-
-  const snapshot = useMemo(
-    () =>
-      buildOperationsHealthSnapshot({
-        orders,
-        products: adminProducts,
-        tickets: supportTickets,
-        clientErrors,
-        liveOrdersConnected: ordersRealtimeConnected,
-      }),
-    [adminProducts, clientErrors, orders, ordersRealtimeConnected, supportTickets],
-  );
   const errorGroups = useMemo(() => {
     const groups = new Map<
       string,
@@ -480,9 +439,9 @@ export function SystemHealthPage() {
         : "bg-[#f2e8d7] text-[#765d3c]";
   const cards = [
     {
-      label: "Live order sync",
+      label: "Realtime connection",
       value: snapshot.liveOrdersConnected ? "Connected" : "Reconnecting",
-      note: "Storefront changes flowing into fulfillment.",
+      note: "Connection status only. Use Refresh to verify the latest workspace data.",
       route: "/admin/orders",
       attention: !snapshot.liveOrdersConnected,
       icon: snapshot.liveOrdersConnected ? Wifi : WifiOff,
@@ -522,7 +481,7 @@ export function SystemHealthPage() {
     {
       label: "Browser errors · 24h",
       value: String(snapshot.recentClientErrors),
-      note: "A bounded sample of the latest customer and admin UI errors.",
+      note: "Total exceptions in the last 24 hours; the latest 30 are shown below.",
       route: "/admin/activity-logs",
       attention: snapshot.recentClientErrors > 0,
       icon: AlertTriangle,
@@ -545,7 +504,7 @@ export function SystemHealthPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-3 py-2 text-xs font-semibold capitalize ${statusTone}`}>
-              {snapshot.overall === "healthy" ? "All systems healthy" : `${snapshot.overall} required`}
+              {loading ? "Checking monitored services" : loadError ? "Check unavailable" : snapshot.overall === "healthy" ? "No monitored exceptions" : `${snapshot.overall} required`}
             </span>
             <button
               type="button"
@@ -574,6 +533,16 @@ export function SystemHealthPage() {
           </Link>
         ))}
       </div>
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6" aria-label="Background delivery and AI jobs">
+        <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">BACKGROUND JOBS</p>
+        <h3 className="mt-1 text-lg font-semibold">Delivery and photo-analysis queues</h3>
+        <p className="mt-2 text-xs text-muted-foreground">Counts only—no recipient details or provider secrets. Refresh after investigating a failed or delayed job.</p>
+        {jobs.error && <p role="alert" className="mt-3 text-sm">Queue health could not be checked: {jobs.error}</p>}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[["Photo analysis waiting",jobs.data?.photoQueued],["Photo analysis needs attention",jobs.data?.photoExhausted],["Voucher emails waiting",jobs.data?.voucherQueued],["Voucher emails failed",jobs.data?.voucherFailed],["Voucher emails over 15 minutes",jobs.data?.voucherOverdue]].map(([label,value])=><article key={String(label)} className="rounded-xl border border-border p-4"><p className="text-xs text-muted-foreground">{label}</p><strong className="mt-2 block text-2xl">{value ?? "—"}</strong></article>)}
+        </div>
+        {jobs.data && <time className="mt-3 block text-xs text-muted-foreground" dateTime={jobs.data.generatedAt}>Checked {new Date(jobs.data.generatedAt).toLocaleTimeString("en-PH")}</time>}
+      </section>
       <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-2 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -2091,14 +2060,17 @@ export function OrdersWorkspacePage() {
 }
 
 export function PaymentsPage() {
-  const { orders, refreshOrders } = useStore();
-  const [notice, setNotice] = useState("");
-  useEffect(() => {
-    void refreshOrders();
-  }, [refreshOrders]);
-  const collected = orders
-    .filter((order) => order.payment_status === "paid")
-    .reduce((sum, order) => sum + Number(order.total), 0);
+  const { userId, workspaceReady } = useAdminSession();
+  const [page,setPage] = useState(1);
+  const [notice,setNotice] = useState("");
+  const [exporting,setExporting] = useState(false);
+  const result = useAdminQuery<{rows:DbOrder[];total:number;collected:number;paidCount:number;asOf:string}>("admin_payment_page",{p_page:page},workspaceReady,userId);
+  const orders = result.data?.rows ?? [];
+  const collected = Number(result.data?.collected ?? 0);
+  const refreshOrders = result.reload;
+  const exportOwner = useRef(userId); exportOwner.current = userId;
+  const exportController = useRef<AbortController | null>(null);
+  useEffect(() => () => exportController.current?.abort(), [userId]);
   const markReceived = async (id: string) => {
     const { error } = await supabase
       .from("orders")
@@ -2107,30 +2079,30 @@ export function PaymentsPage() {
     setNotice(error?.message ?? "Payment marked as received.");
     if (!error) await refreshOrders();
   };
-  const exportPayments = () => {
-    const rows = [
-      ["Order", "Customer", "Method", "Status", "Total", "Created"],
-      ...orders.map((order) => [
-        order.order_number,
-        order.shipping_address.name || "Customer",
-        order.payment_method.toUpperCase(),
-        order.payment_status,
-        String(order.total),
-        order.created_at,
-      ]),
-    ];
-    const csv = rows
-      .map((row) =>
-        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
-      )
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `cozycraft-payments-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setNotice("Payment report downloaded.");
+  const exportPayments = async () => {
+    if (exportController.current || !userId) return;
+    const owner = userId;
+    const controller = new AbortController(); exportController.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(),30000);
+    setExporting(true);
+    try {
+      const rows: Array<Array<string | number>> = [["Order","Customer","Method","Status","Total","Created"]];
+      let asOf: string | null = null;
+      for(let index=1;index<=200;index++) {
+        const {data,error} = await supabase.rpc("admin_payment_page",{p_page:index,p_size:250,p_before:asOf}).abortSignal(controller.signal);
+        if(error || !data) throw new Error("The complete settlement report could not be loaded. Please retry.");
+        if (exportOwner.current !== owner || controller.signal.aborted) return;
+        asOf = data.asOf;
+        for (const order of data.rows as DbOrder[]) rows.push([order.order_number,order.shipping_address.name || "Customer",order.payment_method.toUpperCase(),order.payment_status,Number(order.total),order.created_at]);
+        if(data.rows.length<250) break;
+        if(index===200) throw new Error("Use a date-filtered report for exports over 50,000 transactions.");
+      }
+      const url=URL.createObjectURL(new Blob([reportCsv(rows)],{type:"text/csv;charset=utf-8"}));
+      const link=document.createElement("a");link.href=url;link.download="cozycraft-payments-"+new Date().toISOString().slice(0,10)+".csv";link.click();
+      window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+      setNotice("Complete payment report downloaded.");
+    } catch(issue) { if(exportOwner.current===owner) setNotice(issue instanceof Error ? issue.message : "Report export failed."); }
+    finally { window.clearTimeout(timeout); if(exportController.current===controller) { exportController.current=null;setExporting(false); } }
   };
   return (
     <AdminShell title="Payments">
@@ -2140,19 +2112,22 @@ export function PaymentsPage() {
         </p>
         <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h2 className="break-words font-[Playfair_Display] text-4xl sm:text-5xl">{money(collected)}</h2>
+            <h2 className="break-words font-[Playfair_Display] text-4xl sm:text-5xl">{result.data ? money(collected) : "—"}</h2>
             <p className="mt-2 text-sm text-[#735c48]">
-              Collected across {orders.filter((order) => order.payment_status === "paid").length} recorded transactions.
+              Collected across {result.data?.paidCount ?? "—"} recorded transactions.
             </p>
           </div>
           <button
-            onClick={exportPayments}
+            onClick={() => void exportPayments()}
+            disabled={exporting || result.loading}
             className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
           >
-            Generate settlement report
+            {exporting ? "Preparing complete report…" : "Generate settlement report"}
           </button>
         </div>
       </div>
+      <DataPagination page={page} total={result.data?.total ?? 0} size={20} onChange={setPage} busy={result.loading} label="Payment pages"/>
+      {result.error && <p role="alert" className="mt-3 text-sm">{result.error}</p>}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
         <div className="grid grid-cols-[1fr_auto] border-b border-border px-5 py-4 text-xs font-semibold">
           <span>Recorded transactions</span>
@@ -2171,7 +2146,7 @@ export function PaymentsPage() {
             </div>
             {order.payment_status === "paid" ? (
               <Status>{order.payment_status}</Status>
-            ) : order.payment_method === "cod" ? (
+            ) : order.payment_method === "cod" && order.status !== "cancelled" && order.payment_status !== "refunded" ? (
               <button
                 onClick={() => void markReceived(order.id)}
                 className="rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
@@ -2460,12 +2435,23 @@ export function ReviewsPage() {
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState<"all" | "visible" | "hidden" | "photos">("all");
   const [gallery, setGallery] = useState<{ reviewId: string; index: number } | null>(null);
-  const loadReviews = useCallback(async () => {
-    const { data, error } = await supabase.from("reviews").select(
-      "id,rating,title,body,approved,image_urls,image_paths,created_at,profiles!reviews_user_id_fkey(full_name,email,avatar_url),products!reviews_product_id_fkey(name)",
-    ).order("created_at", { ascending: false });
-    if (error) setNotice(error.message);
-    else {
+  const [page, setPage] = useState(1);
+  const { userId, workspaceReady } = useAdminSession();
+  const result = useAdminQuery<{rows: ReviewRow[];total:number;allCount:number;visible:number;hidden:number;photos:number;average:number}>(
+    "admin_review_page", {p_filter:filter,p_page:page}, workspaceReady, userId,
+  );
+  useAdminTableInvalidation(["reviews"], result.reload, workspaceReady);
+  const loadReviews = result.reload;
+  useEffect(() => { setPage(1); setGallery(null); }, [filter]);
+  useEffect(() => {
+    if (result.data && !result.loading) setPage(p => Math.min(p, Math.max(1, Math.ceil(result.data!.total/10))));
+  }, [result.data, result.loading]);
+  useEffect(() => {
+    let live = true;
+    setReviews([]);
+    if (!result.data) return;
+    const data = result.data.rows;
+    void (async () => {
       const normalizedReviews = (data ?? []).map((row) => ({
         ...row,
         image_urls: Array.isArray(row.image_paths) ? row.image_paths.filter(Boolean) : [],
@@ -2485,7 +2471,7 @@ export function ReviewsPage() {
         ? await supabase.storage.from("review-images").createSignedUrls(photoPaths, 300)
         : { data: [] };
       const photoMap = new Map((photos.data ?? []).map(photo => [photo.path, photo.signedUrl]));
-      setReviews(normalizedReviews.map((review, index) => ({
+      if (live) setReviews(normalizedReviews.map((review, index) => ({
         ...review,
         image_urls: review.image_urls.map(value => {
           const marker = "/storage/v1/object/public/review-images/";
@@ -2496,27 +2482,18 @@ export function ReviewsPage() {
           ? { ...review.profiles, avatar_url: signedAvatars[index] }
           : null,
       })));
-    }
-  }, []);
-  useEffect(() => {
-    void loadReviews();
-    const channel = supabase.channel("admin-reviews").on(
-      "postgres_changes", { event: "*", schema: "public", table: "reviews" }, () => void loadReviews(),
-    ).subscribe();
-    const refreshOnFocus = () => void loadReviews();
-    window.addEventListener("focus", refreshOnFocus);
-    return () => { window.removeEventListener("focus", refreshOnFocus); void supabase.removeChannel(channel); };
-  }, [loadReviews]);
+    })().catch(() => { if (live) setNotice("Review images could not be refreshed. Try again."); });
+    return () => { live = false; };
+  }, [result.data]);
   const setReviewVisibility = async (id: string, visible: boolean) => {
     const { error } = await supabase.from("reviews").update({ approved: visible }).eq("id", id);
     setNotice(error?.message ?? (visible ? "Review restored to the customer storefront." : "Review hidden from the customer storefront."));
     if (!error) await loadReviews();
   };
-  const publicReviews = reviews.filter((review) => review.approved);
-  const average = publicReviews.length ? publicReviews.reduce((sum, review) => sum + review.rating, 0) / publicReviews.length : 0;
-  const hiddenCount = reviews.length - publicReviews.length;
-  const photoCount = reviews.filter((review) => review.image_urls.length > 0).length;
-  const visibleReviews = reviews.filter((review) => filter === "all" || (filter === "visible" && review.approved) || (filter === "hidden" && !review.approved) || (filter === "photos" && review.image_urls.length > 0));
+  const average = Number(result.data?.average ?? 0);
+  const hiddenCount = result.data?.hidden ?? 0;
+  const photoCount = result.data?.photos ?? 0;
+  const visibleReviews = reviews;
   const galleryReview = gallery ? reviews.find((review) => review.id === gallery.reviewId) ?? null : null;
   useEffect(() => {
     if (!gallery) return;
@@ -2539,10 +2516,12 @@ export function ReviewsPage() {
         <div className="self-start rounded-xl bg-secondary px-3 py-2 text-xs sm:self-auto">Average rating <b className="ml-2">{average.toFixed(1)} / 5</b></div>
       </div>
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[["All reviews", reviews.length, "all"], ["Visible", publicReviews.length, "visible"], ["Hidden", hiddenCount, "hidden"], ["With customer photos", photoCount, "photos"]].map(([label, value, key]) => (
+        {[["All reviews", result.data?.allCount ?? 0, "all"], ["Visible", result.data?.visible ?? 0, "visible"], ["Hidden", hiddenCount, "hidden"], ["With customer photos", photoCount, "photos"]].map(([label, value, key]) => (
           <button key={String(key)} onClick={() => setFilter(key as typeof filter)} className={`rounded-2xl border p-4 text-left transition ${filter === key ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-secondary"}`}><span className={`text-[10px] font-bold uppercase tracking-[.14em] ${filter === key ? "text-background/65" : "text-muted-foreground"}`}>{label}</span><strong className="mt-2 block text-2xl">{value}</strong></button>
         ))}
       </div>
+      {result.error && <p role="alert" className="mt-4 text-sm">{result.error}</p>}
+      <DataPagination page={page} total={result.data?.total ?? 0} size={10} onChange={setPage} busy={result.loading} label="Review pages"/>
       <div className="mt-7 grid gap-4">
         {visibleReviews.map((review) => (
           <article key={review.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_12px_30px_rgba(45,39,32,.04)]">
@@ -2598,12 +2577,14 @@ export function SupportPage() {
   const { userId: staffId } = useAdminSession();
   const {
     supportTickets,
+    ticketPagination,
     refreshTickets,
     replyToTicket,
     updateTicketStatus,
   } = useStore();
   const [activeId, setActiveId] = useState("");
-  const [reply, setReply] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string,string>>({});
+  useEffect(() => { setReplyDrafts({}); setActiveId(""); }, [staffId]);
   const [ticketStatus, setTicketStatus] =
     useState<DbSupportTicket["status"]>("open");
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -2619,6 +2600,12 @@ export function SupportPage() {
   }, [activeId, supportTickets]);
   const active =
     supportTickets.find((item) => item.id === activeId) ?? supportTickets[0];
+  // Realtime inserts and page navigation can change the visible ticket. Keep
+  // drafts keyed by ticket so a reply can never migrate to another customer.
+  const reply = active ? replyDrafts[active.id] ?? "" : "";
+  const setReply = (value: string) => {
+    if (active) setReplyDrafts(current => ({ ...current, [active.id]: value }));
+  };
   useEffect(() => {
     if (active) setTicketStatus(active.status);
     if (active) {setAssignedTo(active.assigned_to??"");setTicketPriority(active.priority??"normal");}
@@ -2662,6 +2649,7 @@ export function SupportPage() {
         </p>
         <h2 className="mt-2 text-3xl font-semibold">Support inbox</h2>
       </div>
+      {ticketPagination && <><DataPagination page={ticketPagination.page} total={ticketPagination.total} size={10} onChange={ticketPagination.setPage} busy={ticketPagination.busy} label="Support inbox pages"/>{ticketPagination.error && <p role="alert" className="mt-3 text-sm">{ticketPagination.error}</p>}</>}
       {!active ? (
         <div className="mt-7 rounded-2xl border border-dashed border-border bg-card p-12 text-center text-sm text-muted-foreground">
           No customer support tickets yet.
@@ -2673,7 +2661,6 @@ export function SupportPage() {
             <button
               onClick={() => {
                 setActiveId(item.id);
-                setReply("");
               }}
               className={`w-full border-b border-border p-4 text-left ${active.id === item.id ? "bg-secondary" : "hover:bg-secondary"}`}
               key={item.id}
@@ -2783,9 +2770,6 @@ export function ActivityLogsPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   type ActivityRow = {
     id: number | string;
     action: string;
@@ -2797,57 +2781,17 @@ export function ActivityLogsPage() {
     actor_role: string | null;
     profiles: { full_name: string | null; email: string | null; role: string | null } | null;
   };
-  const [rows, setRows] = useState<ActivityRow[]>([]);
-  const loadActivity = useCallback(async () => {
-    setError("");
-    const since = new Date();
-    since.setDate(since.getDate() - 7);
-    const [activityResult, errorResult] = await Promise.all([
-      supabase.from("activity_logs").select("id,action,entity_type,entity_id,details,created_at,platform,actor_role,profiles!activity_logs_actor_id_fkey(full_name,email,role)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(1000),
-      supabase.from("client_error_events").select("id,message,stack,path,context,user_agent,created_at,profiles!client_error_events_user_id_fkey(full_name,email,role)").gte("created_at", since.toISOString()).order("created_at", { ascending: false }).limit(300),
-    ]);
-    if (activityResult.error || errorResult.error) {
-      setError(activityResult.error?.message ?? errorResult.error?.message ?? "Unable to load activity.");
-      setLoading(false);
-      return;
-    }
-    const clientErrors: ActivityRow[] = (errorResult.data ?? []).map((event:any)=>({
-      id:`error-${event.id}`,
-      action:"client_error",
-      entity_type:"errors",
-      entity_id:null,
-      details:{message:event.message,path:event.path,context:event.context,stack:event.stack},
-      created_at:event.created_at,
-      platform:/(android|iphone|ipad|mobile|capacitor|cordova)/i.test(String(event.user_agent??""))?"mobile":"web",
-      actor_role:event.profiles?.role??null,
-      profiles:event.profiles,
-    }));
-    const activityRows: ActivityRow[] = (activityResult.data ?? []).map((event) => ({
-      ...event,
-      profiles: Array.isArray(event.profiles) ? event.profiles[0] ?? null : event.profiles,
-    })) as ActivityRow[];
-    setRows([...activityRows,...clientErrors].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()));
-    setLastUpdated(new Date());
-    setLoading(false);
-  }, []);
-  useEffect(() => {
-    void loadActivity();
-    const channel = supabase
-      .channel("admin-activity")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "activity_logs" },
-        () => void loadActivity(),
-      )
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "client_error_events" }, () => void loadActivity())
-      .subscribe();
-    const refreshOnFocus = () => void loadActivity();
-    window.addEventListener("focus", refreshOnFocus);
-    return () => {
-      window.removeEventListener("focus", refreshOnFocus);
-      void supabase.removeChannel(channel);
-    };
-  }, [loadActivity]);
+  const { userId, workspaceReady } = useAdminSession();
+  const activity = useAdminQuery<{ rows: ActivityRow[]; total: number; generatedAt: string }>(
+    "admin_activity_page", { p_scope: scope, p_query: query.slice(0, 200), p_page: page, p_size: pageSize }, workspaceReady, userId,
+  );
+  useAdminTableInvalidation(["activity_logs", "client_error_events"], activity.reload, workspaceReady);
+  const loadActivity = activity.reload;
+  const loading = activity.loading;
+  const error = activity.error;
+  const rows = activity.data?.rows ?? [];
+  const total = activity.data?.total ?? 0;
+  const lastUpdated = activity.data ? new Date(activity.data.generatedAt) : null;
   const scopes = [
     ["all", "All actions"],
     ["products", "Products"],
@@ -2863,40 +2807,11 @@ export function ActivityLogsPage() {
     ["authentication", "Authentication"],
     ["errors", "Application errors"],
   ] as const;
-  const belongsToScope = (row: ActivityRow) => {
-    const entity = row.entity_type.toLowerCase();
-    const action = row.action.toLowerCase();
-    if (scope === "all") return true;
-    if (scope === "orders") return ["order", "orders"].includes(entity);
-    if (scope === "customers")
-      return entity === "profiles" || action.startsWith("team_member_");
-    if (scope === "support") return ["support_ticket", "support_tickets"].includes(entity);
-    if (scope === "cart") return ["cart_item", "cart_items"].includes(entity);
-    if (scope === "wishlist") return ["wishlist_item", "wishlist_items"].includes(entity);
-    if (scope === "addresses") return ["address", "addresses"].includes(entity);
-    return entity === scope || entity === scope.replace(/s$/, "");
-  };
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredRows = rows.filter((row) => {
-    if (!belongsToScope(row)) return false;
-    if (!normalizedQuery) return true;
-    return [
-      row.action,
-      row.entity_type,
-      row.entity_id,
-      row.profiles?.full_name,
-      row.profiles?.email,
-      row.profiles?.role,
-      row.actor_role,
-      row.platform,
-      JSON.stringify(row.details),
-    ].some((value) => String(value ?? "").toLowerCase().includes(normalizedQuery));
-  });
   useEffect(() => setPage(1), [scope, query, pageSize]);
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  useEffect(() => setPage((current) => Math.min(current, totalPages)), [totalPages]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  useEffect(() => { if (activity.data && !loading) setPage(current => Math.min(current, totalPages)); }, [activity.data, loading, totalPages]);
   const pageStart = (page - 1) * pageSize;
-  const paginatedRows = filteredRows.slice(pageStart, pageStart + pageSize);
+  const paginatedRows = rows;
   const humanizeAction = (action: string) =>
     ({
       customer_account_created: "created a customer account",
@@ -2971,7 +2886,7 @@ export function ActivityLogsPage() {
       <section className="mt-7 rounded-2xl border border-border bg-card p-6">
         <div className="border-l-2 border-[#b8a58d] pl-4">
           <p className="text-xs text-muted-foreground">
-            Showing {scopeLabel.toLowerCase()} · {filteredRows.length} events · Last 7 days
+            Showing {scopeLabel.toLowerCase()} · {total} events · Last 7 days
           </p>
         </div>
         {error && (
@@ -3013,16 +2928,16 @@ export function ActivityLogsPage() {
               </div>
             </div>
           ))}
-          {!loading && !filteredRows.length && (
+          {!loading && !total && (
             <p className="text-center text-sm text-muted-foreground">
               No recorded activity for this filter yet.
             </p>
           )}
         </div>
-        {!loading && filteredRows.length > 0 && (
+        {!loading && total > 0 && (
           <div className="mt-7 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              Showing {pageStart + 1}–{Math.min(pageStart + pageSize, filteredRows.length)} of {filteredRows.length}
+              Showing {pageStart + 1}–{Math.min(pageStart + pageSize, total)} of {total}
             </p>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex h-9 items-center gap-1 rounded-xl border border-border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft size={14} /> Previous</button>

@@ -5,5 +5,7 @@ export function notifyAdminDataChanged() {
   window.dispatchEvent(new Event(ADMIN_DATA_CHANGED));
 }
 export function usesPagedAdminOrders(pathname: string) {
-  return pathname === "/admin" || pathname === "/admin/" || pathname === "/admin/login" || pathname === "/admin/orders" || pathname === "/admin/reports";
+  // Every admin route now owns a bounded read model. Do not bootstrap the
+  // entire order graph simply because a different workspace tab was opened.
+  return pathname === "/admin" || pathname.startsWith("/admin/");
 }

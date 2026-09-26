@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { loadCircleRewards, type CircleReward } from "@/services/content/home-circle.service";
 import { voucherEligible } from "@/lib/loyalty/vouchers";
 import "./profile-refresh.css";
+import { useAccountInvalidation } from "@/services/content/use-account-invalidation";
 const money=(n:number)=>`₱${Number(n).toLocaleString('en-PH')}`;
 export function VoucherWallet({userId,initial,subtotal,onSelect,selectedId,disabled=false,revision=0}: {
   userId:string; initial?:{rows:CircleReward[];hasMore:boolean};subtotal?:number;onSelect?:(v:CircleReward|null)=>void;selectedId?:string;disabled?:boolean;revision?:number;
@@ -13,9 +14,12 @@ export function VoucherWallet({userId,initial,subtotal,onSelect,selectedId,disab
   const [error,setError]=useState('');
   const [retry,setRetry]=useState(0);
   const [now,setNow]=useState(Date.now);
+  // Home Circle owns invalidation when it supplies an initial snapshot. The
+  // checkout wallet has its own scoped subscription, never a polling loop.
+  useAccountInvalidation(userId, !initial, ["mobile_loyalty_redemptions"], () => setRetry(n => n + 1));
   useEffect(()=>{const id=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(id)},[]);
   useEffect(()=>{
-    if(page===0 && initial && !retry) {setData(initial);setBusy(false);return;}
+    if(page===0 && initial && !retry && !revision) {setData(initial);setBusy(false);return;}
     const controller=new AbortController();let live=true;
     const timer=setTimeout(()=>controller.abort(),12000);setBusy(true);setError('');
     loadCircleRewards(userId,page,controller.signal).then(value=>{if(live)setData(value)}).catch(()=>{if(live)setError('Your vouchers could not be loaded. Please refresh.')}).finally(()=>{clearTimeout(timer);if(live)setBusy(false)});

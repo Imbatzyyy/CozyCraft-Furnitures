@@ -5,6 +5,11 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# Only this public catalog bucket can be transformed. Never allow signed
+# avatars, review photos, support attachments or arbitrary remote URLs here.
+[images]
+  remote_images = ['^https://gwjsivqksyimuabbdyqq\.supabase\.co/storage/v1/object/public/product-images/[^?]+$']
+
 # Serve the Vite app for every client-side React Router path.
 [[redirects]]
   from = "/*"
@@ -48,6 +53,11 @@
     X-Robots-Tag = "noindex, nofollow, noarchive"
 
 # Vite filenames include a content hash, so these files can be cached forever.
+[[headers]]
+  for = "/.netlify/images"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
 [[headers]]
   for = "/assets/*"
   [headers.values]

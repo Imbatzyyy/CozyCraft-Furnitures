@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from "react";
+import { productImageSources } from "@/lib/catalog/responsive-image";
 
 const ERROR_IMAGE_SOURCE =
   "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODgiIGhlaWdodD0iODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgc3Ryb2tlPSIjMDAwIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBvcGFjaXR5PSIuMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIzLjciPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9IjU2IiBoZWlnaHQ9IjU2IiByeD0iNiIvPjxwYXRoIGQ9Im0xNiA1OCAxNi0xOCAzMiAzMiIvPjxjaXJjbGUgY3g9IjUzIiBjeT0iMzUiIHI9IjciLz48L3N2Zz4KCg==";
 
 export function ResilientImage(
-  props: React.ImgHTMLAttributes<HTMLImageElement>,
+  props: React.ImgHTMLAttributes<HTMLImageElement> & { optimize?: boolean },
 ) {
   const [didError, setDidError] = useState(false);
+  const [originalFallback, setOriginalFallback] = useState(false);
 
   useEffect(() => {
     setDidError(false);
+    setOriginalFallback(false);
   }, [props.src]);
 
   const {
@@ -19,8 +22,14 @@ export function ResilientImage(
     className,
     loading = "lazy",
     decoding = "async",
+    srcSet,
+    sizes,
+    onError,
+    optimize = true,
     ...rest
   } = props;
+  const responsive = productImageSources(src, optimize && import.meta.env.PROD && !originalFallback && !srcSet &&
+    typeof window !== "undefined" && !["localhost", "127.0.0.1"].includes(window.location.hostname));
 
   if (didError) {
     return (
@@ -43,14 +52,19 @@ export function ResilientImage(
 
   return (
     <img
-      src={src}
+      src={responsive?.src ?? src}
+      srcSet={responsive?.srcSet ?? (originalFallback ? undefined : srcSet)}
+      sizes={sizes ?? (responsive ? "(max-width: 768px) 100vw, 60vw" : undefined)}
       alt={alt}
       className={className}
       style={style}
       loading={loading}
       decoding={decoding}
       {...rest}
-      onError={() => setDidError(true)}
+      onError={(event) => {
+        if (responsive) setOriginalFallback(true);
+        else { setDidError(true); onError?.(event); }
+      }}
     />
   );
 }

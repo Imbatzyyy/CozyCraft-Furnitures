@@ -24,7 +24,8 @@ export async function claimCircleReward(points: number, requestKey: string, sign
 }
 
 // Component-owned cache: discarded when the signed-in profile unmounts. No local
-// storage of account data, no realtime channel and no recurring database polling.
+// storage of account data or recurring polling. Visible panels own scoped
+// realtime invalidation and reconnect recovery.
 export async function loadHomeCircle(userId: string, signal: AbortSignal): Promise<CircleSnapshot> {
   const accountResult = await supabase.from("mobile_loyalty_accounts")
     .select("points_balance,lifetime_eligible_spend,tier,tier_valid_until")

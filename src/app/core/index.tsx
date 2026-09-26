@@ -1,4 +1,6 @@
 import { localStore } from "@/lib/shared/browser-storage";
+import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
+import { watchVisibleRecovery } from "@/lib/shared/visible-recovery";
 import { CareChatPanel } from "@/features/storefront/assistant/CareChatPanel";
 import {
   createContext,
@@ -353,6 +355,11 @@ export type Store = {
   avatar: string | null;
   addresses: Address[];
   orders: DbOrder[];
+  customerOrderPagination?: {
+    page: number; status: string; ids: string[]; total: number; counts: Record<string, number>;
+    busy: boolean; error: string; setPage: (page: number) => void; setStatus: (status: string) => void;
+  };
+  ticketPagination?: { page: number; total: number; busy: boolean; error: string; setPage: (page: number) => void };
   ordersRealtimeConnected: boolean;
   customerProfiles: DbCustomerProfile[];
   supportTickets: DbSupportTicket[];
@@ -545,7 +552,7 @@ export function Logo({
 }
 
 export function Header({ immersive = false }: { immersive?: boolean }) {
-  const { cart, saved, userId, user, avatar, products, profileUsername, storeSettings, orders } = useStore();
+  const { cart, saved, userId, user, avatar, products, profileUsername, storeSettings, orders, customerOrderPagination } = useStore();
   const nav = useNavigate();
   const location = useLocation();
   const [menu, setMenu] = useState(false);
@@ -557,6 +564,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const menuCloseButtonRef = useRef<HTMLButtonElement>(null);
   const searchPanelRef = useRef<HTMLDivElement>(null);
   const [customerNotifications, setCustomerNotifications] = useState<DbCustomerNotification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [paymentClock, setPaymentClock] = useState(() => Date.now());
   const cartQty = cart.reduce((n, x) => n + x.quantity, 0);
@@ -717,28 +725,37 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   useEffect(() => {
     if (!userId) {
       setCustomerNotifications([]);
+      setUnreadNotifications(0);
       return;
     }
+    let active = true;
     const refresh = async () => {
-      const { data, error } = await supabase
+      const [{ data, error }, unread] = await Promise.all([supabase
         .from("customer_notifications")
         .select("id,user_id,kind,title,message,entity_type,entity_id,read_at,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(20), supabase.from("customer_notifications").select("id",{count:"exact",head:true}).eq("user_id",userId).is("read_at",null)]);
+      if (!active) return;
       if (!error) setCustomerNotifications((data ?? []) as DbCustomerNotification[]);
+      if (!unread.error) setUnreadNotifications(unread.count ?? 0);
     };
-    void refresh();
-    const channel = supabase.channel(`storefront-notifications-${userId}`).on("postgres_changes", { event: "*", schema: "public", table: "customer_notifications", filter: `user_id=eq.${userId}` }, refresh).subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    const scheduler = createRefreshScheduler(refresh,200,1500);
+    const recovery = watchVisibleRecovery(scheduler.request);
+    scheduler.request();
+    const channel = supabase.channel(`storefront-notifications-${userId}`).on("postgres_changes", { event: "*", schema: "public", table: "customer_notifications", filter: `user_id=eq.${userId}` }, recovery.invalidate)
+      .subscribe(status=>{if(status==="SUBSCRIBED") recovery.invalidate();});
+    return () => { active=false;recovery.dispose();scheduler.dispose();void supabase.removeChannel(channel); };
   }, [userId]);
-  const unreadNotifications = customerNotifications.filter((item) => !item.read_at).length;
   const openNotification = async (notification: DbCustomerNotification) => {
     if (!notification.read_at) {
-      await supabase.from("customer_notifications").update({ read_at: new Date().toISOString() }).eq("id", notification.id);
-      setCustomerNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
+      const {error} = await supabase.from("customer_notifications").update({ read_at: new Date().toISOString() }).eq("id", notification.id);
+      if (!error) {
+        setCustomerNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
+        setUnreadNotifications(count=>Math.max(0,count-1));
+      }
     }
-    if (notification.entity_type === "orders") nav("/profile?tab=orders");
+    if (notification.entity_type === "orders") nav(`/profile?tab=orders${notification.entity_id ? `&order=${encodeURIComponent(notification.entity_id)}` : ""}`);
     if (notification.entity_type === "support_tickets") nav("/profile?tab=support");
     setNotificationOpen(false);
   };
@@ -1006,7 +1023,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                           My profile <ArrowRight size={14} className="text-muted-foreground" />
                         </Link>
                         <Link to="/profile?tab=orders" className="flex min-h-11 items-center justify-between py-2 text-sm font-medium">
-                          My orders <span className="text-xs text-muted-foreground">{orders.length || ""}</span>
+                          My orders <span className="text-xs text-muted-foreground">{customerOrderPagination?.counts.all ?? (orders.length || "")}</span>
                         </Link>
                         <Link to="/wishlist" className="flex min-h-11 items-center justify-between py-2 text-sm font-medium">
                           Wishlist <span className="text-xs text-muted-foreground">{saved.length || ""}</span>
@@ -1494,11 +1511,11 @@ export function ProductCard({ product }: { product: Product }) {
       return;
     }
     if (product.images.length < 2) return;
-    const timer = window.setInterval(
-      () => setImageIndex((current) => (current + 1) % product.images.length),
-      1100,
-    );
-    return () => window.clearInterval(timer);
+    // One deliberate alternate preview, not a loop downloading the gallery.
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    if (connection?.saveData || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setTimeout(() => setImageIndex((mainImageIndex + 1) % product.images.length), 500);
+    return () => window.clearTimeout(timer);
   }, [hovered, mainImageIndex, product.images.length]);
   return (
     <article

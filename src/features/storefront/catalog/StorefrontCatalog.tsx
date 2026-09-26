@@ -1,4 +1,8 @@
 import { localStore } from "@/lib/shared/browser-storage";
+import { DataPagination } from "@/components/DataPagination";
+import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
+import { watchVisibleRecovery } from "@/lib/shared/visible-recovery";
+import { withReadDeadline } from "@/lib/shared/read-deadline";
 import {
   createContext,
   useCallback,
@@ -2161,6 +2165,10 @@ function ProductPageContent({
   const [quantity, setQuantity] = useState(1);
   const [reviewFilter, setReviewFilter] = useState("All");
   const [reviews, setReviews] = useState<ProductReview[]>([]);
+  const [reviewPage,setReviewPage] = useState(1);
+  const [reviewTotal,setReviewTotal] = useState(0);
+  const [reviewRevision,setReviewRevision] = useState(0);
+  const [hasPurchased,setHasPurchased] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewTitle, setReviewTitle] = useState("");
   const [reviewBody, setReviewBody] = useState("");
@@ -2275,77 +2283,37 @@ function ProductPageContent({
   const recentProducts=recentProductIds.map((id)=>products.find((item)=>item.id===id)).filter((item):item is Product=>Boolean(item));
   useEffect(() => {
     let active = true;
-    const loadReviews = () => {
-      void supabase
-        .from("reviews")
-        .select(
-          "id,rating,title,body,reviewer_display_name,image_urls,created_at",
-        )
-        .eq("product_id", product.id)
-        .eq("approved", true)
-        .order("created_at", { ascending: false })
-        .then(({ data }) => {
-          if (active) setReviews(normalizeProductReviews((data ?? []) as ProductReview[]));
-        });
-    };
-    loadReviews();
-    const channel = supabase
-      .channel(`product-reviews-${product.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "reviews",
-          filter: `product_id=eq.${product.id}`,
-        },
-        loadReviews,
-      )
-      .subscribe();
-    window.addEventListener("focus", loadReviews);
-    return () => {
-      active = false;
-      window.removeEventListener("focus", loadReviews);
-      void supabase.removeChannel(channel);
-    };
-  }, [product.id]);
+    const scheduler = createRefreshScheduler(async () => {
+      let query = supabase.from("reviews").select("id,rating,title,body,reviewer_display_name,image_urls,created_at",{count:"exact"})
+        .eq("product_id",product.id).eq("approved",true);
+      if(reviewFilter!=="All") query=query.eq("rating",Number(reviewFilter));
+      const {data,error,count} = await query.order("created_at",{ascending:false}).order("id",{ascending:false}).range((reviewPage-1)*5,reviewPage*5-1);
+      if(!active) return;
+      if(error) { setReviewNotice("Reviews could not be refreshed. Please try again."); return; }
+      setReviewTotal(count ?? 0); setReviews(normalizeProductReviews((data ?? []) as ProductReview[]));
+      if(reviewPage>Math.max(1,Math.ceil((count ?? 0)/5))) setReviewPage(Math.max(1,Math.ceil((count ?? 0)/5)));
+    },200,1500);
+    scheduler.request();
+    const recovery=watchVisibleRecovery(scheduler.request);
+    const channel=supabase.channel('product-reviews-'+product.id).on('postgres_changes',{event:'*',schema:'public',table:'reviews',filter:'product_id=eq.'+product.id},recovery.invalidate)
+      .subscribe(status=>{if(status==='SUBSCRIBED') recovery.invalidate();});
+    return()=>{active=false;scheduler.dispose();recovery.dispose();void supabase.removeChannel(channel);};
+  },[product.id,reviewPage,reviewFilter,reviewRevision]);
+  useEffect(() => {setReviewPage(1);setReviewGallery(null);},[product.id,reviewFilter]);
   useEffect(() => {
-    if (!userId) {
-      setExistingReview(false);
-      return;
-    }
-    let active = true;
-    void supabase
-      .from("reviews")
-      .select("rating,title,body")
-      .eq("user_id", userId)
-      .eq("product_id", product.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active || !data) return;
-        setExistingReview(true);
-        setReviewRating(data.rating);
-        setReviewTitle(data.title ?? "");
-        setReviewBody(data.body ?? "");
-      });
-    return () => {
-      active = false;
-    };
-  }, [product.id, userId]);
-  const visibleReviews =
-    reviewFilter === "All"
-      ? reviews
-      : reviews.filter((review) => review.rating === Number(reviewFilter));
-  const hasPurchased = orders.some(
-    (order) =>
-      order.status === "delivered" &&
-      order.order_items.some(
-        (item) =>
-          item.product_id === product.id ||
-          item.product_name.trim().toLowerCase() ===
-            product.name.trim().toLowerCase(),
-      ),
-  );
+    let active=true;
+    setHasPurchased(false);
+    setExistingReview(false);
+    if(!userId){setExistingReview(false);return;}
+    void withReadDeadline(signal=>supabase.rpc("current_product_review_context",{p_product_id:product.id}).abortSignal(signal)).then(({data,error})=>{
+      if(!active || error || !data) return;
+      setHasPurchased(Boolean(data.purchased));
+      setExistingReview(Boolean(data.review));
+      if(data.review) {setReviewRating(data.review.rating);setReviewTitle(data.review.title ?? "");setReviewBody(data.review.body ?? "");}
+    }).catch(()=>{if(active)setHasPurchased(false);});
+    return()=>{active=false;};
+  },[product.id,userId]);
+  const visibleReviews=reviews;
   const mayReview = !storeSettings.review_settings.verified_purchases_only || hasPurchased;
   const submitReview = async (event: FormEvent) => {
     event.preventDefault();
@@ -2375,22 +2343,10 @@ function ProductPageContent({
     );
     if (!error) {
       setExistingReview(true);
-      const { data: refreshedReviews } = await supabase
-        .from("reviews")
-        .select(
-          "id,rating,title,body,reviewer_display_name,image_urls,created_at",
-        )
-        .eq("product_id", product.id)
-        .eq("approved", true)
-        .order("created_at", { ascending: false });
-      if (refreshedReviews) {
-        setReviews(normalizeProductReviews(refreshedReviews as ProductReview[]));
-      }
+      setReviewPage(1);setReviewRevision(n=>n+1);
     }
   };
-  const reviewAverage = reviews.length
-    ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
-    : 0;
+  const reviewAverage=Number(product.rating || 0);
   const galleryReview = reviewGallery
     ? reviews.find((review) => review.id === reviewGallery.reviewId) ?? null
     : null;
@@ -2724,8 +2680,8 @@ function ProductPageContent({
                 Loved in real homes.
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                {reviews.length
-                  ? `${reviewAverage.toFixed(1)} average from ${reviews.length} verified review${reviews.length === 1 ? "" : "s"}`
+                {product.reviews
+                  ? `${reviewAverage.toFixed(1)} average from ${product.reviews} verified review${product.reviews === 1 ? "" : "s"}`
                   : "No reviews yet. Delivered-order customers can be the first to share their experience."}
               </p>
             </div>
@@ -2747,6 +2703,7 @@ function ProductPageContent({
               ))}
             </div>
           </div>
+          <DataPagination page={reviewPage} total={reviewTotal} size={5} onChange={setReviewPage} label="Product review pages"/>
           {userId && mayReview ? (
             <form
               onSubmit={submitReview}
@@ -2875,7 +2832,7 @@ function ProductPageContent({
                   setPhoto((current) => distance > 0 ? (current - 1 + product.images.length) % product.images.length : (current + 1) % product.images.length);
                 }}
               >
-                <ResilientImage src={product.images[photo]} alt={`${product.name}, fullscreen view ${photo + 1}`} loading="eager" className="max-h-full w-auto max-w-full select-none object-contain" draggable={false}/>
+                <ResilientImage optimize={false} src={product.images[photo]} alt={`${product.name}, fullscreen view ${photo + 1}`} loading="eager" className="max-h-full w-auto max-w-full select-none object-contain" draggable={false}/>
                 {product.images.length > 1 && (
                   <>
                     <button type="button" onClick={() => setPhoto((current) => (current - 1 + product.images.length) % product.images.length)} className="absolute left-3 grid h-11 w-11 place-items-center rounded-full bg-black/70 shadow-lg transition hover:bg-black sm:left-5" aria-label="Previous product image"><ChevronLeft size={22}/></button>

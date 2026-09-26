@@ -1,6 +1,10 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
 import { readOfflineCatalog, saveOfflineCatalog, setCatalogStale } from "@/lib/catalog/offline-catalog";
 import { isOffline, OFFLINE_MESSAGE } from "@/lib/shared/network";
+import { createReadCoordinator, createSerialReadQueue } from "@/lib/shared/read-coordinator";
+import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
+import { watchVisibleRecovery } from "@/lib/shared/visible-recovery";
+import { withReadDeadline } from "@/lib/shared/read-deadline";
 import { CookieConsent } from '@/features/storefront/CookieConsent';
 import { PaymentEmailDialog } from '@/features/storefront/commerce/PaymentEmailDialog';
 import { requestPaymentEmailVerification, type PaymentEmailChallenge, type PaymentEmailAuthorization } from '@/features/storefront/commerce/payment-email-verification';
@@ -171,37 +175,7 @@ const removeSessionItem = (key: string) => {
     // database-backed order remains the payment source of truth.
   }
 };
-const orderGraphSelect = [
-  "id",
-  "order_number",
-  "user_id",
-  "status",
-  "payment_method",
-  "payment_status",
-  "payment_expires_at",
-  "cancellation_reason",
-  "cancellation_requested_at",
-  "cancellation_status",
-  "cancellation_reviewed_at",
-  "cancellation_reviewed_by",
-  "cancellation_decision_note",
-  "refund_status",
-  "provider_refund_id",
-  "refunded_at",
-  "refund_email_sent_at",
-  "refund_email_id",
-  "refund_email_error",
-  "subtotal",
-  "delivery_fee",
-  "reward_discount",
-  "total",
-  "shipping_address",
-  "created_at",
-  "order_items(id,product_id,product_name,unit_price,quantity,image_url)",
-  "order_status_history(id,order_id,status,changed_at,changed_by)",
-  "payment_transactions(id,order_id,provider,provider_session_id,provider_payment_id,status,amount,currency,livemode,failure_reason,paid_at,expires_at,created_at,updated_at)",
-  "profiles!orders_user_id_fkey(full_name,email,phone)",
-].join(",");
+const productSelect = "id,name,category,subcategory,price,stock_quantity,status,color,material,dimensions,description,images,main_image_index,rating,review_count,created_at,updated_at";
 
 type CustomerAccountLoadResult =
   | "loaded"
@@ -237,6 +211,8 @@ function App() {
     document.title = storeSettings.store_name || "CozyCraft Furnitures";
   }, [storeSettings.store_name]);
   const [adminProducts, setAdminProducts] = useState<Product[]>(fallbackProducts);
+  const catalogRef = useRef(adminProducts);
+  catalogRef.current = adminProducts;
   const [cart, setCart] = useState<CartLine[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
@@ -268,6 +244,20 @@ function App() {
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [orders, setOrders] = useState<DbOrder[]>([]);
+  const [customerOrderPage, setCustomerOrderPage] = useState(1);
+  const [customerOrderStatus, setCustomerOrderStatus] = useState("all");
+  const [customerOrderSummary, setCustomerOrderSummary] = useState<{ids:string[];total:number;counts:Record<string,number>}>({ids:[],total:0,counts:{}});
+  const [customerOrdersBusy, setCustomerOrdersBusy] = useState(false);
+  const [customerOrdersError, setCustomerOrdersError] = useState("");
+  const customerOrderView = `${customerOrderPage}:${customerOrderStatus}`;
+  const customerOrderViewRef = useRef(customerOrderView); customerOrderViewRef.current = customerOrderView;
+  const customerOrderParams = useRef({page:customerOrderPage,status:customerOrderStatus});
+  customerOrderParams.current = {page:customerOrderPage,status:customerOrderStatus};
+  const [ticketPage, setTicketPage] = useState(1);
+  const [ticketTotal, setTicketTotal] = useState(0);
+  const [ticketsBusy, setTicketsBusy] = useState(false);
+  const [ticketsError, setTicketsError] = useState("");
+  const ticketPageRef = useRef(ticketPage); ticketPageRef.current = ticketPage;
   const [ordersRealtimeConnected, setOrdersRealtimeConnected] = useState(false);
   const [customerProfiles, setCustomerProfiles] = useState<
     DbCustomerProfile[]
@@ -288,19 +278,10 @@ function App() {
   }, [userId]);
   const lastPointer = useRef({ x: 0, y: 0 });
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
-  const productsRefreshInFlight = useRef<{
-    scope: string;
-    request: Promise<string | null>;
-  } | null>(null);
-  const ordersRefreshInFlight = useRef<{
-    scope: string;
-    request: Promise<string | null>;
-  } | null>(null);
+  const reads = useRef(createReadCoordinator<string | null>());
+  const catalogReadQueue = useRef(createSerialReadQueue());
+  const collectionReads = useRef(createReadCoordinator<void>());
   const customersRefreshInFlight = useRef<{
-    scope: string;
-    request: Promise<string | null>;
-  } | null>(null);
-  const ticketsRefreshInFlight = useRef<{
     scope: string;
     request: Promise<string | null>;
   } | null>(null);
@@ -309,7 +290,7 @@ function App() {
     request: Promise<string | null>;
   } | null>(null);
   const adminWorkspaceScopeRef = useRef<string | null>(null);
-  const singleOrderRefreshes = useRef(new Map<string, Promise<string | null>>());
+  const activeCatalogCategories = useRef(new Set<string>());
   const unavailableProductIds = useRef(new Set<string>());
   const ordersScope = adminPortal
     ? adminDataScope ?? (adminUserId ? "admin:verification-pending" : "admin:guest")
@@ -365,16 +346,21 @@ function App() {
   const refreshProducts = useCallback(() => {
     const requestScope = productsScope;
     if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
-    const existing = productsRefreshInFlight.current;
-    if (existing?.scope === requestScope) return existing.request;
-    const request = (async () => {
+    return reads.current.run(`catalog:${requestScope}`, () => catalogReadQueue.current(async () => {
+      if (productsScopeRef.current !== requestScope) return null;
       const [productResult, categoryResult, settingResult] = await Promise.all([
-        portalSupabase
-          .from("products")
-          .select(
-            "id,name,category,subcategory,price,stock_quantity,status,color,material,dimensions,description,images,main_image_index,rating,review_count,created_at,updated_at",
-          )
-          .order("created_at", { ascending: false }),
+        (async () => {
+          const rows: DbProduct[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const result = await portalSupabase.from("products").select(productSelect)
+              .order("created_at", { ascending: false }).order("id")
+              .range(offset, offset + 499);
+            if (result.error) return { data: null, error: result.error };
+            rows.push(...(result.data ?? []) as DbProduct[]);
+            if ((result.data?.length ?? 0) < 500) return { data: rows, error: null };
+            if (productsScopeRef.current !== requestScope) return { data: null, error: null };
+          }
+        })(),
         portalSupabase.from("categories").select("name,active"),
         portalSupabase
           .from("store_settings")
@@ -402,11 +388,17 @@ function App() {
       const mapped = (productResult.data as DbProduct[]).map((row) =>
         mapProduct(row, threshold),
       );
+      for (const item of mapped) {
+        if (item.status === "active") unavailableProductIds.current.delete(item.id);
+        else unavailableProductIds.current.add(item.id);
+      }
       const activeCategories = new Set(
         (categoryResult.data ?? [])
           .filter((category) => category.active)
           .map((category) => normalizeCatalogValue(category.name)),
       );
+      activeCatalogCategories.current = activeCategories;
+      catalogRef.current = mapped;
       setAdminProducts(mapped);
       if (requestScope.startsWith("admin:")) notifyAdminDataChanged();
       const publicProducts = mapped.filter(
@@ -423,95 +415,86 @@ function App() {
       if (!requestScope.startsWith("admin:") && !categoryResult.error && !settingResult.error) saveOfflineCatalog(publicProducts);
       setCatalogStale(false);
       return null;
-    })();
-    productsRefreshInFlight.current = { scope: requestScope, request };
-    void request.then(
-      () => {
-        if (productsRefreshInFlight.current?.request === request) productsRefreshInFlight.current = null;
-      },
-      () => {
-        if (productsRefreshInFlight.current?.request === request) productsRefreshInFlight.current = null;
-      },
-    );
-    return request;
+    }));
   }, [mapProduct, portalSupabase, productsScope]);
+
+  const refreshProductIds = useCallback((ids: string[]) => catalogReadQueue.current(async () => {
+    const requestScope = productsScope;
+    if (!workspaceScopeCanLoad(requestScope) || !ids.length) return;
+    // Snapshots and targeted patches publish in request order, never overlap.
+    if (productsScopeRef.current !== requestScope) return;
+    const changed = new Set(ids);
+    const rows: DbProduct[] = [];
+    for (let start = 0; start < ids.length; start += 50) {
+      const { data, error } = await portalSupabase.from("products").select(productSelect).in("id", ids.slice(start, start + 50));
+      if (error) { setCatalogStale(true); return; }
+      rows.push(...(data ?? []) as DbProduct[]);
+    }
+    if (productsScopeRef.current !== requestScope) return;
+    const mapped = rows.map(row => mapProduct(row, storeSettingsRef.current.low_stock_threshold));
+    for (const item of mapped) {
+      if (item.status === "active") unavailableProductIds.current.delete(item.id);
+      else unavailableProductIds.current.add(item.id);
+    }
+    const merge = (current: Product[], incoming: Product[]) => [...current.filter(p => !changed.has(p.id)), ...incoming.map(row => {
+      const newer = current.find(item => item.id === row.id && Date.parse(item.updatedAt ?? "") > Date.parse(row.updatedAt ?? ""));
+      return newer ?? row;
+    })]
+      .sort((a, b) => Date.parse(b.createdAt ?? "") - Date.parse(a.createdAt ?? ""));
+    catalogRef.current = merge(catalogRef.current, mapped);
+    setAdminProducts(current => merge(current, mapped));
+    const categories = activeCatalogCategories.current;
+    setProducts(current => {
+      const next = merge(current, mapped.filter(item => item.status === "active" &&
+        (!categories.size || [...categories].some(category => catalogValuesMatch(category, item.category)))));
+      if (!adminPortal) saveOfflineCatalog(next);
+      return next;
+    });
+    setCatalogStale(false);
+  }), [adminPortal, mapProduct, portalSupabase, productsScope]);
 
   useEffect(() => {
     const reconnect = () => { void refreshProducts(); };
-    window.addEventListener("online", reconnect);
     window.addEventListener("cozycraft:refresh-catalog", reconnect);
-    return () => { window.removeEventListener("online", reconnect); window.removeEventListener("cozycraft:refresh-catalog", reconnect); };
+    return () => { window.removeEventListener("cozycraft:refresh-catalog", reconnect); };
   }, [refreshProducts]);
 
   const refreshOrders = useCallback(() => {
     const requestScope = ordersScope;
     if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
-    if (requestScope.startsWith("admin:") && usesPagedAdminOrders(window.location.pathname)) {
+    if (requestScope.startsWith("admin:")) {
       notifyAdminDataChanged();
       return Promise.resolve(null);
     }
-    const existing = ordersRefreshInFlight.current;
-    if (existing?.scope === requestScope) return existing.request;
-    const request = (async () => {
-      const { data, error } = await portalSupabase
-        .from("orders")
-        .select(orderGraphSelect)
-        .order("created_at", { ascending: false });
-      if (error) return error.message;
-      // A request started for customer A (or an administrator) must never
-      // populate the collections after the active identity has changed.
-      if (ordersScopeRef.current !== requestScope) return null;
-      setOrders((data ?? []) as unknown as DbOrder[]);
+    return reads.current.run(`orders:${requestScope}`, async () => {
+      if (!requestScope.startsWith("admin:")) {
+        if (requestScope === "customer:guest") return null;
+        const {page:customerOrderPage,status:customerOrderStatus} = customerOrderParams.current;
+        const view = `${customerOrderPage}:${customerOrderStatus}`;
+        setCustomerOrdersBusy(true); setCustomerOrdersError("");
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get("order");
+        const focus = requested && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requested) ? requested : null;
+        const { data, error } = await withReadDeadline(signal => portalSupabase.rpc("customer_order_page", {p_status:customerOrderStatus,p_page:customerOrderPage,p_focus:focus}).abortSignal(signal))
+          .catch(() => ({data:null,error:{message:"Order history could not be refreshed. Please try again."}}));
+        if (ordersScopeRef.current !== requestScope || customerOrderViewRef.current !== view) return null;
+        setCustomerOrdersBusy(false);
+        if (new URLSearchParams(window.location.search).get("order") !== requested) return null;
+        if (error || !data) {
+          const message = error?.message ?? "Order history could not be loaded.";
+          setCustomerOrdersError(message); return message;
+        }
+        setOrders(data.orders ?? []);
+        setCustomerOrderSummary({ids:data.ids ?? [],total:Number(data.total ?? 0),counts:data.counts ?? {}});
+        const lastPage = Math.max(1,Math.ceil(Number(data.total ?? 0)/5));
+        if (customerOrderPage > lastPage) setCustomerOrderPage(lastPage);
+        return null;
+      }
       return null;
-    })();
-    ordersRefreshInFlight.current = { scope: requestScope, request };
-    void request.then(
-      () => {
-        if (ordersRefreshInFlight.current?.request === request) {
-          ordersRefreshInFlight.current = null;
-        }
-      },
-      () => {
-        if (ordersRefreshInFlight.current?.request === request) {
-          ordersRefreshInFlight.current = null;
-        }
-      },
-    );
-    return request;
+    });
   }, [ordersScope, portalSupabase]);
 
-  const refreshOrder = useCallback((orderId: string) => {
-    const requestScope = ordersScope;
-    if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
-    const requestKey = `${requestScope}:${orderId}`;
-    const existing = singleOrderRefreshes.current.get(requestKey);
-    if (existing) return existing;
-    const request = (async () => {
-      const { data, error } = await portalSupabase
-        .from("orders")
-        .select(orderGraphSelect)
-        .eq("id", orderId)
-        .maybeSingle();
-      if (error) return error.message;
-      if (!data) return null;
-      if (ordersScopeRef.current !== requestScope) return null;
-      const refreshed = data as unknown as DbOrder;
-      setOrders((current) =>
-        [refreshed, ...current.filter((order) => order.id !== refreshed.id)].sort(
-          (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
-        ),
-      );
-      return null;
-    })();
-    singleOrderRefreshes.current.set(requestKey, request);
-    void request.then(
-      () => singleOrderRefreshes.current.delete(requestKey),
-      () => singleOrderRefreshes.current.delete(requestKey),
-    );
-    return request;
-  }, [ordersScope, portalSupabase]);
-
-  const refreshAccountCollections = useCallback(async (id: string) => {
+  const refreshAccountCollections = useCallback((id: string) => collectionReads.current.run(id, async () => {
     const [cartResult, wishlistResult] = await Promise.all([
       supabase
         .from("cart_items")
@@ -537,7 +520,7 @@ function App() {
         (wishlistResult.data ?? []).map((item) => item.product_id),
       );
     }
-  }, []);
+  }), []);
 
   const refreshCustomers = useCallback(() => {
     // Directory and reports own their bounded read models and export requests.
@@ -583,17 +566,21 @@ function App() {
 
   const refreshTickets = useCallback(() => {
     const requestScope = ordersScope;
-    if (!workspaceScopeCanLoad(requestScope)) return Promise.resolve(null);
-    const existing = ticketsRefreshInFlight.current;
-    if (existing?.scope === requestScope) return existing.request;
-    const request = (async () => {
-      const { data, error } = await portalSupabase
+    if (!workspaceScopeCanLoad(requestScope) || requestScope === "customer:guest") return Promise.resolve(null);
+    return reads.current.run(`tickets:${requestScope}`, async () => {
+      const page = ticketPageRef.current;
+      setTicketsBusy(true); setTicketsError("");
+      const { data, error, count } = await portalSupabase
         .from("support_tickets")
         .select(
-          "id,ticket_number,user_id,order_id,subject,message,status,category,priority,assigned_to,attachment_paths,admin_reply,created_at,updated_at,profiles!support_tickets_user_id_fkey(full_name,email)",
+          "id,ticket_number,user_id,order_id,subject,message,status,category,priority,assigned_to,attachment_paths,admin_reply,created_at,updated_at,profiles!support_tickets_user_id_fkey(full_name,email)", {count:"exact"},
         )
-        .order("created_at", { ascending: false });
-      if (error) return error.message;
+        .order("created_at", { ascending: false }).order("id", {ascending:false}).range((page-1)*10,page*10-1);
+      if (ordersScopeRef.current !== requestScope || ticketPageRef.current !== page) return null;
+      setTicketsBusy(false);
+      if (error) { setTicketsError(error.message); return error.message; }
+      setTicketTotal(count ?? 0);
+      if (page > Math.max(1,Math.ceil((count ?? 0)/10))) setTicketPage(Math.max(1,Math.ceil((count ?? 0)/10)));
       const tickets = (data ?? []).map((ticket) => ({
         ...ticket,
         profiles: Array.isArray(ticket.profiles)
@@ -604,15 +591,7 @@ function App() {
       setSupportTickets(tickets as unknown as DbSupportTicket[]);
       if (requestScope.startsWith("admin:")) notifyAdminDataChanged();
       return null;
-    })();
-    ticketsRefreshInFlight.current = { scope: requestScope, request };
-    const clearRequest = () => {
-      if (ticketsRefreshInFlight.current?.request === request) {
-        ticketsRefreshInFlight.current = null;
-      }
-    };
-    void request.then(clearRequest, clearRequest);
-    return request;
+    });
   }, [ordersScope, portalSupabase]);
 
   const refreshAdminWorkspace = useCallback(() => {
@@ -675,9 +654,13 @@ function App() {
     // the isolated customer client correctly resolves as a guest there.
     if (!window.location.pathname.startsWith("/admin")) {
       ordersScopeRef.current = "customer:guest";
-      ordersRefreshInFlight.current = null;
-      singleOrderRefreshes.current.clear();
+      reads.current = createReadCoordinator<string | null>();
+      collectionReads.current = createReadCoordinator<void>();
       setOrders([]);
+      setCustomerOrderSummary({ids:[],total:0,counts:{}});
+      setCustomerOrderPage(1); setCustomerOrderStatus("all");
+      setCustomerOrdersBusy(false); setCustomerOrdersError("");
+      setTicketPage(1); setTicketTotal(0); setTicketsBusy(false); setTicketsError("");
       setCustomerProfiles([]);
       setSupportTickets([]);
     }
@@ -987,10 +970,8 @@ function App() {
     if (clearingAdminPortal) {
       ordersScopeRef.current = "admin:guest";
       productsScopeRef.current = "admin:guest";
-      productsRefreshInFlight.current = null;
-      ordersRefreshInFlight.current = null;
+      reads.current = createReadCoordinator<string | null>();
       customersRefreshInFlight.current = null;
-      ticketsRefreshInFlight.current = null;
       adminWorkspaceRefreshInFlight.current = null;
       adminWorkspaceScopeRef.current = null;
       setOrders([]);
@@ -1148,8 +1129,11 @@ function App() {
 
   useEffect(() => {
     if (adminPortal) return;
-    if (userId) void Promise.all([refreshOrders(), refreshTickets()]);
-  }, [adminPortal, refreshOrders, refreshTickets, userId]);
+    if (userId) void refreshOrders();
+  }, [adminPortal, refreshOrders, userId, customerOrderView]);
+  useEffect(() => {
+    if (workspaceScopeCanLoad(ordersScope) && ordersScope !== "customer:guest") void refreshTickets();
+  }, [ordersScope, refreshTickets, ticketPage]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1244,93 +1228,85 @@ function App() {
 
   useEffect(() => {
     if (!workspaceScopeCanLoad(productsScope)) return;
-    let availabilityCursor = new Date().toISOString();
-    let availabilityRefresh: Promise<void> | null = null;
-
+    let live = true;
+    let needsFullCatalog = false;
+    const changed = new Set<string>();
+    const patches = createRefreshScheduler(async () => {
+      const ids = [...changed]; changed.clear();
+      await refreshProductIds(ids);
+    }, 150, 1000);
+    const full = createRefreshScheduler(async () => { await refreshProducts(); }, 200, 1500);
     const applyAvailability = (value: unknown) => {
       const change = readProductAvailabilityChange(value);
       if (!change) return;
-      if (change.updatedAt && change.updatedAt > availabilityCursor) {
-        availabilityCursor = change.updatedAt;
-      }
       if (change.available) {
         unavailableProductIds.current.delete(change.productId);
-        void refreshProducts();
-        return;
+      } else {
+        unavailableProductIds.current.add(change.productId);
+        setProducts(current => removeUnavailableProduct(current, change));
       }
-      unavailableProductIds.current.add(change.productId);
-      setProducts((current) => removeUnavailableProduct(current, change));
+      changed.add(change.productId);
+      if (document.visibilityState === "hidden") recovery.invalidate();
+      else patches.request();
     };
-
-    const refreshMissedAvailability = () => {
-      if (adminPortal || availabilityRefresh) return availabilityRefresh;
-      const request = (async () => {
-        const { data } = await portalSupabase
-          .from("product_availability")
-          .select("product_id,available,updated_at")
-          .gt("updated_at", availabilityCursor)
-          .order("updated_at", { ascending: true });
-        for (const row of data ?? []) applyAvailability(row);
-      })();
-      availabilityRefresh = request;
-      void request.finally(() => {
-        if (availabilityRefresh === request) availabilityRefresh = null;
-      });
-      return request;
-    };
-
-    const handleProductChange = (payload: {
-      eventType: string;
-      new: Record<string, unknown>;
-      old: Record<string, unknown>;
-    }) => {
-      if (!adminPortal) {
-        const nextStatus = payload.new?.status;
-        const productId = String(payload.new?.id ?? payload.old?.id ?? "");
-        if (
-          productId &&
-          (payload.eventType === "DELETE" ||
-            (typeof nextStatus === "string" && nextStatus !== "active"))
-        ) {
-          const change = {
-            productId,
-            available: false,
-            updatedAt: null,
-          };
-          unavailableProductIds.current.add(productId);
-          setProducts((current) => removeUnavailableProduct(current, change));
-          return;
-        }
+    const reconcile = createRefreshScheduler(async () => {
+      // Compare server versions, not the browser's clock. A disconnected tab
+      // may have missed stock, price, publishing AND deletion events.
+      await reads.current.current(`catalog:${productsScope}`);
+      if (!live) return;
+      const versions = new Map<string, string>();
+      for (let offset = 0; live; offset += 500) {
+        const { data, error } = await portalSupabase.from("products")
+          .select("id,updated_at").order("id").range(offset, offset + 499);
+        if (error) { setCatalogStale(true); return; }
+        for (const row of data ?? []) versions.set(row.id, row.updated_at);
+        if ((data?.length ?? 0) < 500) break;
       }
-      void refreshProducts();
-    };
-
+      if (!live) return;
+      const known = new Map(catalogRef.current.map(item => [item.id, item.updatedAt]));
+      for (const [id, version] of versions) if (known.get(id) !== version) changed.add(id);
+      for (const id of known.keys()) if (!versions.has(id)) changed.add(id);
+      if (changed.size) patches.request();
+      const [categories, settings] = await Promise.all([
+        portalSupabase.from("categories").select("name,active"),
+        portalSupabase.from("store_settings").select("updated_at").eq("id", true).maybeSingle(),
+      ]);
+      if (!live) return;
+      if (categories.error || settings.error) { setCatalogStale(true); return; }
+      const names = (categories.data ?? []).filter(c => c.active).map(c => normalizeCatalogValue(c.name)).sort();
+      if (names.join("\0") !== [...activeCatalogCategories.current].sort().join("\0") ||
+          settings.data?.updated_at !== storeSettingsRef.current.updated_at) full.request();
+    }, 200, 1500);
+    const recovery = watchVisibleRecovery(() => {
+      if (needsFullCatalog) { needsFullCatalog = false; full.request(); }
+      else reconcile.request();
+    });
+    const invalidateFullCatalog = () => { needsFullCatalog = true; recovery.invalidate(); };
     let channel = portalSupabase
       .channel(`cozycraft-live-catalog-${adminPortal ? "admin" : "storefront"}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, handleProductChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, () => void refreshProducts())
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, () => void refreshProducts());
-    if (!adminPortal) {
-      channel = channel.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "product_availability",
-        },
-        (payload) => applyAvailability(payload.new),
-      );
+      .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, invalidateFullCatalog)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "store_settings" }, invalidateFullCatalog);
+    if (adminPortal) {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table: "products" }, payload => {
+        const id = String((payload.new as Record<string, unknown>)?.id ?? (payload.old as Record<string, unknown>)?.id ?? "");
+        if (id) { changed.add(id); if (document.visibilityState === "hidden") recovery.invalidate(); else patches.request(); }
+        else reconcile.request();
+      });
+    } else {
+      // Small public-safe invalidation signals replace full product-row
+      // broadcasts. Detail reads continue to be protected by product RLS.
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table: "product_availability" }, payload => applyAvailability(payload.new));
     }
-    channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") void refreshMissedAvailability();
+    channel.subscribe(status => {
+      if (status === "SUBSCRIBED") recovery.invalidate();
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setCatalogStale(true);
     });
-    const recoverAvailabilityOnFocus = () => void refreshMissedAvailability();
-    window.addEventListener("focus", recoverAvailabilityOnFocus);
     return () => {
-      window.removeEventListener("focus", recoverAvailabilityOnFocus);
+      live = false;
+      recovery.dispose(); reconcile.dispose(); patches.dispose(); full.dispose();
       void portalSupabase.removeChannel(channel);
     };
-  }, [adminPortal, portalSupabase, productsScope, refreshProducts]);
+  }, [adminPortal, portalSupabase, productsScope, refreshProducts, refreshProductIds]);
 
   useEffect(() => {
     const activeUserId = adminPortal ? adminUserId : userId;
@@ -1339,23 +1315,15 @@ function App() {
       return;
     }
 
-    const refreshChangedOrder = (payload: OrderRealtimeChange) => {
-      if (adminPortal) {
-        notifyAdminDataChanged();
-        if (usesPagedAdminOrders(window.location.pathname)) return;
-      }
-      const target = orderRealtimeTarget(payload);
-      if (target.removeOrder && target.orderId) {
-        setOrders((current) =>
-          current.filter((order) => order.id !== target.orderId),
-        );
-        return;
-      }
-      if (!target.orderId) {
-        void refreshOrders();
-        return;
-      }
-      void refreshOrder(target.orderId);
+    const orderRecovery = createRefreshScheduler(async () => { await refreshOrders(); }, 200, 1500);
+    const ticketRecovery = createRefreshScheduler(async () => { await refreshTickets(); }, 200, 1500);
+    const recovery = watchVisibleRecovery(() => {
+      orderRecovery.request(); ticketRecovery.request();
+    });
+    const refreshChangedOrder = () => {
+      if (adminPortal) notifyAdminDataChanged();
+      else if (document.visibilityState === "hidden") recovery.invalidate();
+      else orderRecovery.request();
     };
 
     let channel = portalSupabase.channel(
@@ -1384,7 +1352,8 @@ function App() {
         ...(adminPortal ? {} : { filter: `user_id=eq.${activeUserId}` }),
       },
       (payload) => {
-        void refreshTickets();
+        if (document.visibilityState === "hidden") recovery.invalidate();
+        else ticketRecovery.request();
         const changedTicket = payload.new as Record<string, unknown>;
         if (adminPortal && typeof changedTicket.user_id === "string") void refreshCustomers();
       },
@@ -1397,33 +1366,21 @@ function App() {
     }
     channel.subscribe((status) => {
       setOrdersRealtimeConnected(status === "SUBSCRIBED");
+      if (status === "SUBSCRIBED") recovery.invalidate();
     });
-
-    const syncVisibleOrders = () => {
-      // The paged views own their throttled focus recovery.
-      if (adminPortal && usesPagedAdminOrders(window.location.pathname)) return;
-      if (document.visibilityState === "visible") void refreshOrders();
-    };
-    window.addEventListener("focus", syncVisibleOrders);
-    document.addEventListener("visibilitychange", syncVisibleOrders);
 
     return () => {
       setOrdersRealtimeConnected(false);
-      window.removeEventListener("focus", syncVisibleOrders);
-      document.removeEventListener("visibilitychange", syncVisibleOrders);
+      recovery.dispose(); orderRecovery.dispose(); ticketRecovery.dispose();
       void portalSupabase.removeChannel(channel);
     };
-  }, [adminPortal, adminUserId, ordersScope, portalSupabase, refreshCustomers, refreshOrder, refreshOrders, refreshTickets, userId]);
+  }, [adminPortal, adminUserId, ordersScope, portalSupabase, refreshCustomers, refreshOrders, refreshTickets, userId]);
 
   useEffect(() => {
     if (!userId) return;
-
-    const syncCollections = () => {
-      void refreshAccountCollections(userId);
-    };
-    const syncVisibleCollections = () => {
-      if (document.visibilityState === "visible") syncCollections();
-    };
+    const scheduler = createRefreshScheduler(() => refreshAccountCollections(userId), 150, 1000);
+    const recovery = watchVisibleRecovery(scheduler.request);
+    const syncCollections = recovery.invalidate;
     const channel = supabase
       .channel(`account-commerce-${userId}`)
       .on(
@@ -1446,14 +1403,10 @@ function App() {
         },
         syncCollections,
       )
-      .subscribe();
-
-    window.addEventListener("focus", syncCollections);
-    document.addEventListener("visibilitychange", syncVisibleCollections);
+      .subscribe(status => { if (status === "SUBSCRIBED") recovery.invalidate(); });
 
     return () => {
-      window.removeEventListener("focus", syncCollections);
-      document.removeEventListener("visibilitychange", syncVisibleCollections);
+      recovery.dispose(); scheduler.dispose();
       void supabase.removeChannel(channel);
     };
   }, [refreshAccountCollections, userId]);
@@ -2303,6 +2256,12 @@ function App() {
     return error?.message ?? null;
   };
 
+  const orderPagination = useMemo(() => ({
+    page: customerOrderPage, status: customerOrderStatus, ...customerOrderSummary,
+    busy: customerOrdersBusy, error: customerOrdersError,
+    setPage: (page: number) => setCustomerOrderPage(Math.max(1,page)),
+    setStatus: (status: string) => { setCustomerOrderStatus(status); setCustomerOrderPage(1); },
+  }), [customerOrderPage, customerOrderStatus, customerOrderSummary, customerOrdersBusy, customerOrdersError]);
   const store: Store = {
     storeSettings,
     products,
@@ -2326,6 +2285,8 @@ function App() {
     avatar,
     addresses,
     orders,
+    customerOrderPagination: orderPagination,
+    ticketPagination: {page:ticketPage,total:ticketTotal,busy:ticketsBusy,error:ticketsError,setPage:setTicketPage},
     ordersRealtimeConnected,
     customerProfiles,
     supportTickets,

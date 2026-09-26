@@ -1,4 +1,6 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { DataPagination } from "@/components/DataPagination";
+import { RelatedOrderSelect } from "./RelatedOrderSelect";
 import { usePendingEmail } from "@/lib/auth/pending-email";
 import { AccountPreferences } from "./AccountPreferences";
 import { prepareCustomerPhoto, PHOTO_ACCEPT } from "@/lib/shared/prepare-photo";
@@ -717,6 +719,8 @@ function CustomerProfile() {
     cart,
     orders,
     refreshOrders,
+    customerOrderPagination,
+    ticketPagination,
     products,
     addresses,
     supportTickets,
@@ -796,7 +800,9 @@ function CustomerProfile() {
     );
     return () => window.clearInterval(timer);
   }, [phoneVerificationOpen]);
-  const [orderFilter, setOrderFilter] = useState("all");
+  const [localOrderFilter, setLocalOrderFilter] = useState("all");
+  const orderFilter = customerOrderPagination?.status ?? localOrderFilter;
+  const setOrderFilter = customerOrderPagination?.setStatus ?? setLocalOrderFilter;
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [invoiceDownloadId, setInvoiceDownloadId] = useState<string | null>(null);
   const [paymentClock, setPaymentClock] = useState(() => Date.now());
@@ -1286,10 +1292,9 @@ function CustomerProfile() {
   ] as const;
   const visibleOrders = useMemo(
     () =>
-      orderFilter === "all"
-        ? orders
-        : orders.filter((order) => order.status === orderFilter),
-    [orderFilter, orders],
+      customerOrderPagination ? orders.filter(order => customerOrderPagination.ids.includes(order.id)) :
+        orderFilter === "all" ? orders : orders.filter(order => order.status === orderFilter),
+    [orderFilter, orders, customerOrderPagination],
   );
   const refreshPendingPaymentRecovery = useCallback(async () => {
     if (!authReady || !userId || tab !== "Orders") return;
@@ -1668,6 +1673,7 @@ function CustomerProfile() {
     }
   }, [pendingPaymentRecovery]);
   const selectedOrder =
+    (requestedOrderId ? orders.find(order => order.id === requestedOrderId) : undefined) ??
     visibleOrders.find((order) => order.id === selectedOrderId) ??
     visibleOrders[0] ??
     null;
@@ -2021,7 +2027,7 @@ function CustomerProfile() {
                 className={`flex w-auto shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm transition lg:w-full lg:py-3 ${tab === item ? "bg-foreground font-semibold text-background shadow-sm" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
               >
                 {item}
-                {item === "Orders" && <span className="text-xs">{orders.length}</span>}
+                {item === "Orders" && <span className="text-xs">{customerOrderPagination?.counts.all ?? orders.length}</span>}
                 {item === "Change password" && <ShieldCheck size={14} />}
                 {item === "Support" && <MessageCircle size={14} />}
               </button>
@@ -2259,7 +2265,7 @@ function CustomerProfile() {
                   <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-[#faf8f4] p-4">
                     {[
                       ["Saved pieces", saved.length],
-                      ["Orders", orders.length],
+                      ["Orders", customerOrderPagination?.counts.all ?? orders.length],
                       ["In your bag", cart.length],
                     ].map(([label, value]) => (
                       <div key={label}>
@@ -2582,7 +2588,7 @@ function CustomerProfile() {
                 </div>
                 <div className="mt-6 flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {orderFilters.map(([value, label]) => {
-                    const count = value === "all"
+                    const count = customerOrderPagination ? (customerOrderPagination.counts[value] ?? 0) : value === "all"
                       ? orders.length
                       : orders.filter((order) => order.status === value).length;
                     return (
@@ -2601,6 +2607,7 @@ function CustomerProfile() {
                     );
                   })}
                 </div>
+                {customerOrderPagination && <><DataPagination page={customerOrderPagination.page} total={customerOrderPagination.total} size={5} onChange={customerOrderPagination.setPage} busy={customerOrderPagination.busy} label="Order history pages"/>{customerOrderPagination.error && <p role="alert" className="mt-3 text-sm">{customerOrderPagination.error}</p>}</>}
                 {unloadedPaymentRecovery && (
                   <section className="mt-5 rounded-2xl border border-[#d8c8ad] bg-[#f7f1e7] p-5 shadow-sm">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2651,7 +2658,10 @@ function CustomerProfile() {
                         <button
                           type="button"
                           key={order.id}
-                          onClick={() => setSelectedOrderId(order.id)}
+                          onClick={() => {
+                            setSelectedOrderId(order.id);
+                            if (requestedOrderId) nav(`/profile?tab=orders&order=${encodeURIComponent(order.id)}`, {replace:true});
+                          }}
                           className={`w-full rounded-2xl border p-4 text-left transition ${
                             selectedOrder.id === order.id
                               ? "border-foreground bg-secondary shadow-sm"
@@ -3007,7 +3017,7 @@ function CustomerProfile() {
                   product.
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">Direct support: <a className="font-semibold underline" href={`mailto:${storeSettings.contact_email}`}>{storeSettings.contact_email}</a>{storeSettings.support_phone ? <> · <a className="font-semibold underline" href={`tel:${storeSettings.support_phone.replace(/\s/g, "")}`}>{storeSettings.support_phone}</a></> : null}</p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-3"><label className="grid gap-2 text-xs font-semibold">Concern type<select value={ticketCategory} onChange={(event)=>setTicketCategory(event.target.value as DbSupportTicket["category"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="general">General</option><option value="order">Order</option><option value="delivery">Delivery</option><option value="payment">Payment</option><option value="product">Product</option><option value="return">Return</option><option value="account">Account</option></select></label><label className="grid gap-2 text-xs font-semibold">Priority<select value={ticketPriority} onChange={(event)=>setTicketPriority(event.target.value as DbSupportTicket["priority"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label className="grid gap-2 text-xs font-semibold">Related order<select value={ticketOrderId} onChange={(event)=>setTicketOrderId(event.target.value)} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="">None</option>{orders.map((order)=><option key={order.id} value={order.id}>#{order.order_number}</option>)}</select></label></div>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3"><label className="grid gap-2 text-xs font-semibold">Concern type<select value={ticketCategory} onChange={(event)=>setTicketCategory(event.target.value as DbSupportTicket["category"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="general">General</option><option value="order">Order</option><option value="delivery">Delivery</option><option value="payment">Payment</option><option value="product">Product</option><option value="return">Return</option><option value="account">Account</option></select></label><label className="grid gap-2 text-xs font-semibold">Priority<select value={ticketPriority} onChange={(event)=>setTicketPriority(event.target.value as DbSupportTicket["priority"])} className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-3 font-normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><RelatedOrderSelect userId={userId ?? ""} value={ticketOrderId} onChange={setTicketOrderId}/></div>
                 <textarea
                   value={ticket}
                   onChange={(e) => setTicket(e.target.value)}
@@ -3035,6 +3045,7 @@ function CustomerProfile() {
                 >
                   {ticketSending ? "Sending ticket…" : "Send support ticket"}
                 </button>
+                {ticketPagination && <><DataPagination page={ticketPagination.page} total={ticketPagination.total} size={10} onChange={ticketPagination.setPage} busy={ticketPagination.busy} label="Support history pages"/>{ticketPagination.error && <p role="alert" className="mt-3 text-sm">{ticketPagination.error}</p>}</>}
                 <div className="mt-5 grid gap-3">
                   {supportTickets.map((item) => (
                     <article

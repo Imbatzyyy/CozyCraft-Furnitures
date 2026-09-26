@@ -725,15 +725,18 @@ export function Wishlist() {
 }
 
 export function CustomerOrders() {
-  const { user, orders, authReady } = useStore();
+  const { user, orders, authReady, refreshOrders, customerOrderPagination: pagination } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
   const requested = new URLSearchParams(location.search).get('order');
+  useEffect(() => { if (authReady && user) void refreshOrders(); }, [authReady,user,refreshOrders,requested]);
+  useEffect(() => { if (pagination && pagination.status !== 'all') pagination.setStatus('all'); }, [pagination?.status]);
   if (!authReady) return <Layout><main className="full-tracking" role="status">Loading your account…</main></Layout>;
   if (!user) return <Account mode="login" />;
   const order = requested ? orders.find(item=>item.id===requested) : orders[0];
+  if (!order && pagination?.busy) return <Layout><main className="full-tracking" role="status">Loading your order…</main></Layout>;
   if (!order) return <Layout><main className="full-tracking"><Empty title={requested?"Order tracking is not available yet.":"No orders to track yet."} text={requested?"This order may still be loading or is not available to your account. Return to your orders to try again.":"Your placed orders will appear in your account."} cta="Back to orders" to="/profile?tab=orders"/></main></Layout>;
-  return <Layout><FullTracking order={order} orders={orders} onSelect={id=>navigate('/orders?order='+encodeURIComponent(id))}/></Layout>;
+  return <Layout><FullTracking order={order} orders={pagination ? orders.filter(item=>pagination.ids.includes(item.id)) : orders} onSelect={id=>navigate('/orders?order='+encodeURIComponent(id))} pagination={pagination ? {page:pagination.page,total:pagination.total,onChange:pagination.setPage,busy:pagination.busy,error:pagination.error} : undefined}/></Layout>;
 }
 
 export function Checkout() {

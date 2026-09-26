@@ -14,7 +14,7 @@
 
 ## Explicit remaining work / owner decisions
 
-- `security-workflow.yml` is a ready-to-activate workflow template. The connected GitHub OAuth credential lacks workflow permission, so CI installation is not represented as active.
+- `security-workflow.yml` is a ready-to-activate workflow template, now including isolated architecture read-model checks. The connected GitHub OAuth credential lacks workflow permission (rechecked for this release), so CI installation is not represented as active. See `low-egress-architecture.md` for the rollout and remaining operational boundaries.
 
 - Supabase Free does not provide the available paid leaked-password protection toggle. Upgrade approval and activation must be completed by the owner; no purchase is automated.
 - Configure a real CAPTCHA provider before enabling CAPTCHA on production authentication or newsletter endpoints. Both client token handling and server verification must ship together; enabling only the dashboard switch breaks legitimate login. Current shared limits are not a CAPTCHA substitute.

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { TrackingOrderPicker } from './TrackingOrderPicker';
+import { TrackingOrderPicker, type TrackingPagination } from './TrackingOrderPicker';
 import { safeTrackingOrder } from './tracking-data';
 import { Check, Package, Truck, MapPin, ArrowLeft, MessageCircle } from 'lucide-react';
 import type { DbOrder } from '@/services/supabase/client';
@@ -14,7 +14,7 @@ export function trackingSteps(order:DbOrder){
   order=safeTrackingOrder(order);
   return names.map((status,index)=>{const event=[...(order.order_status_history||[])].filter(e=>e.status===status).sort((a,b)=>Date.parse(b.changed_at)-Date.parse(a.changed_at))[0];const at=event?.changed_at || (status==='pending'?order.created_at:null);return{status,at,complete:!!at || (order.status!=='cancelled' && index<=names.indexOf(order.status)),current:status===order.status};});
 }
-export function FullTracking({order,orders,onSelect}:{order:DbOrder;orders:DbOrder[];onSelect:(id:string)=>void}){
+export function FullTracking({order,orders,onSelect,pagination}:{order:DbOrder;orders:DbOrder[];onSelect:(id:string)=>void;pagination?:TrackingPagination}){
   order=safeTrackingOrder(order);
   orders=orders.filter(Boolean).map(safeTrackingOrder);
   const events=[...(order.order_status_history||[])].sort((a,b)=>Date.parse(b.changed_at)-Date.parse(a.changed_at));
@@ -23,7 +23,7 @@ export function FullTracking({order,orders,onSelect}:{order:DbOrder;orders:DbOrd
   const label=labels[order.status] || order.status;
   const transaction=order.payment_transactions?.find(p=>p.status==='paid') || order.payment_transactions?.[0];
   return <main className="full-tracking">
-    <nav className="tracking-top"><Link to="/profile?tab=orders"><ArrowLeft size={15}/> Back to orders</Link><TrackingOrderPicker orders={orders} selected={order} onSelect={onSelect}/></nav>
+    <nav className="tracking-top"><Link to="/profile?tab=orders"><ArrowLeft size={15}/> Back to orders</Link><TrackingOrderPicker orders={orders} selected={order} onSelect={onSelect} pagination={pagination}/></nav>
     <header className="tracking-hero"><div><p className="tracking-eyebrow">THE JOURNEY TO YOUR HOME</p><h1>{label}</h1><p>{details[order.status]}</p><div className="tracking-ref"><span>#{order.order_number}</span><span>Placed {trackingDate(order.created_at)}</span></div></div><div className="tracking-hero-icon"><Truck size={42} strokeWidth={1}/></div></header>
     <div className="tracking-grid"><div className="tracking-main">
       <section className="tracking-card"><div className="tracking-heading"><div><p className="tracking-eyebrow">DELIVERY PROGRESS</p><h2>Every step, in view.</h2></div><Package size={23}/></div><p className="tracking-muted">Dates and times are shown in Philippine time (PHT).</p>
