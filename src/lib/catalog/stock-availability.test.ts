@@ -16,3 +16,18 @@ describe("exactStockAvailability", () => {
     expect(exactStockAvailability(undefined, "In stock")).toBe("In stock");
   });
 });
+
+describe("customer stock messaging", () => {
+  it("keeps plentiful stock quiet and highlights scarcity", async () => {
+    const { stockBadge, friendlyAvailability } = await import("./stock-availability");
+    expect(stockBadge(545, "In stock")).toBeNull();
+    expect(stockBadge(2, "Low stock")).toEqual({ label: "Only 2 left", tone: "warning" });
+    expect(stockBadge(1)).toEqual({ label: "Last piece", tone: "warning" });
+    expect(stockBadge(0)).toEqual({ label: "Sold out", tone: "muted" });
+    expect(stockBadge(undefined, "Out of stock")).toEqual({ label: "Sold out", tone: "muted" });
+    expect(friendlyAvailability(545)).toBe("In stock, ready to deliver");
+    expect(friendlyAvailability(3)).toBe("Only 3 left in stock");
+    expect(friendlyAvailability(0)).toBe("Sold out");
+    expect(friendlyAvailability(undefined)).toBe("Availability confirmed at checkout");
+  });
+});

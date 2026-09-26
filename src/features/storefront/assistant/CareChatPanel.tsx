@@ -23,6 +23,7 @@ export function CareChatPanel({ ownerId, currentPath, raisedForComparison = fals
   const [cooldown, setCooldown] = useState(0), [clearConfirm, setClearConfirm] = useState(false);
   const [editing, setEditing] = useState(false);
   const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
+  const [tucked, setTucked] = useState(false);
   const busy = useRef(false), alive = useRef(true), generation = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const retry = useRef<AssistantRequest | null>(null);
@@ -33,6 +34,18 @@ export function CareChatPanel({ ownerId, currentPath, raisedForComparison = fals
     return () => { alive.current = false; generation.current++; controller.current?.abort(); };
   }, []);
   useEffect(() => { persistConversation(key, messages); }, [messages, key]);
+  useEffect(() => {
+    // On phones the launcher steps aside while reading and returns on scroll up.
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - last) < 12) return;
+      setTucked(y > last && y > 240);
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   useEffect(() => {
     const online = () => setOffline(navigator.onLine === false);
     const focus = () => { const active = document.activeElement; setEditing(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement || active instanceof HTMLElement && active.isContentEditable); };
@@ -87,7 +100,7 @@ export function CareChatPanel({ ownerId, currentPath, raisedForComparison = fals
     else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel.current)) { event.preventDefault(); first?.focus(); }
   };
   return <>
-    <button ref={opener} type="button" className={`care-launch ${raisedForComparison ? "care-launch-raised" : ""}`} hidden={open || editing} onClick={() => setOpen(true)} aria-label="Open CozyCraft chat" aria-haspopup="dialog"><MessageCircle size={23} /></button>
+    <button ref={opener} type="button" className={`care-launch ${raisedForComparison ? "care-launch-raised" : ""} ${tucked ? "care-launch-tucked" : ""}`} hidden={open || editing} onClick={() => setOpen(true)} aria-label="Open CozyCraft chat" aria-haspopup="dialog"><MessageCircle size={23} /></button>
     {open && createPortal(<div className="care-chat-layer" style={viewport ? { top: viewport.top, height: viewport.height } as CSSProperties : undefined}>
       <div className="care-chat-backdrop" onClick={close} aria-hidden="true" />
       <section ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="care-chat-title" data-cozy-focus-managed className="care-panel" onKeyDown={keyboard}>
@@ -96,7 +109,7 @@ export function CareChatPanel({ ownerId, currentPath, raisedForComparison = fals
         {clearConfirm && <div className="care-clear" role="group" aria-label="Start a new conversation"><p>Clear this conversation from this tab?</p><button type="button" onClick={() => { setMessages(greeting()); setDraft(""); setError(""); retry.current = null; setClearConfirm(false); }}>Start new</button><button type="button" onClick={() => setClearConfirm(false)}>Keep conversation</button></div>}
         <div className="care-transcript" ref={transcript} role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions">
           {messages.map((message, index) => <article key={index} className={`care-message care-message-${message.from}`} aria-label={message.from === "you" ? "You" : "Cozy"}>{message.from === "you" ? <p>{message.text}</p> : <CareReply message={message} onNavigate={close} />}</article>)}
-          {sending && <p className="care-thinking" role="status">Checking the relevant details…</p>}
+          {sending && <p className="care-thinking" role="status"><span className="cc-typing" aria-hidden="true"><span /><span /><span /></span><span className="sr-only">Checking the relevant details…</span></p>}
           {messages.length === 1 && <div className="care-suggestions"><p>A few things I can help with</p>{suggestions.map(item => <button key={item} type="button" onClick={() => void send(item)} disabled={sending || offline}>{item}</button>)}</div>}
         </div>
         {error && <div className="care-error" role="alert"><p>{error}</p>{retry.current && <button type="button" disabled={sending || offline || !!cooldown} onClick={() => void send("", true)}>Retry message</button>}<Link to="/faq" onClick={close}>Open Help</Link></div>}

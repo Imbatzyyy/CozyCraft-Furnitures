@@ -183,7 +183,7 @@ function CustomerPolicyDialog({
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#d8c5a8] text-[#24231f]">
                   {isPrivacy ? <ShieldCheck size={18} /> : <FileText size={18} />}
                 </span>
-                <p className="text-[10px] font-bold uppercase tracking-[.24em] text-white/55">
+                <p className="text-[11px] font-bold uppercase tracking-[.24em] text-white/55">
                   CozyCraft customer agreement
                 </p>
               </div>
@@ -457,7 +457,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                 }}
                 className="mt-10"
               >
-                <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                   PASSWORD RESET
                 </p>
                 <h1 className="mt-4 font-serif text-4xl sm:text-5xl">
@@ -487,7 +487,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                 <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
                   <Check size={20} />
                 </span>
-                <p className="mt-6 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                <p className="mt-6 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                   CONFIRM YOUR EMAIL
                 </p>
                 <h1 className="mt-3 font-serif text-4xl">One last step.</h1>
@@ -556,8 +556,8 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                   Resend confirmation email
                 </button>
                 <p className="mt-4 text-[11px] leading-5 text-muted-foreground">
-                  For your security, account access begins only after Supabase
-                  confirms the email link.
+                  For your security, account access begins only after you
+                  confirm the link in your email.
                 </p>
               </div>
             ) : (
@@ -565,7 +565,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                 <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
                   <Check size={20} />
                 </span>
-                <p className="mt-6 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                <p className="mt-6 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                   CHECK YOUR EMAIL
                 </p>
                 <h1 className="mt-3 font-serif text-4xl">Reset link sent.</h1>
@@ -600,7 +600,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
             <ResilientImage
               src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1300&q=80"
               alt="Warm CozyCraft interior"
-              className="h-full w-full object-cover"
+              className="cc-kenburns h-full w-full object-cover"
             />
           </div>
           <div className="absolute inset-0 bg-[#201e1b]/55" />
@@ -608,13 +608,13 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
             <Logo light />
           </div>
           <div className="relative max-w-xl">
-            <p className="text-[10px] font-bold tracking-[.22em] text-white/60">
+            <p className="cc-rise text-[11px] font-bold tracking-[.22em] text-white/60">
               COZYCRAFT / MEMBERS
             </p>
-            <h1 className="mt-6 font-serif text-[clamp(3.5rem,4vw,5.25rem)] leading-[.96] tracking-[-.035em]">
+            <h1 className="cc-rise mt-6 font-serif text-[clamp(3.5rem,4vw,5.25rem)] leading-[.96] tracking-[-.025em]" style={{ ["--i" as string]: 1 }}>
               A home for the things you love.
             </h1>
-            <p className="mt-7 max-w-sm text-sm leading-7 text-white/75">
+            <p className="cc-rise mt-7 max-w-sm text-sm leading-7 text-white/75" style={{ ["--i" as string]: 2 }}>
               Save the pieces you return to, revisit your selections, and keep
               every order close at hand.
             </p>
@@ -624,12 +624,12 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
           </p>
         </section>
         <section className="flex min-h-0 justify-center overflow-y-auto px-5 py-7 sm:px-9 sm:py-9 lg:px-12 xl:px-10 xl:py-8 2xl:px-16">
-          <form onSubmit={submit} className="auth-fixed-form my-auto w-full max-w-xl">
+          <form onSubmit={submit} className="auth-fixed-form cc-enter-up my-auto w-full max-w-xl">
             <div className="mb-5 xl:hidden">
               <Logo />
             </div>
             <div className="flex items-center justify-between">
-              <p className="rounded-full bg-secondary px-3 py-1.5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              <p className="rounded-full bg-secondary px-3 py-1.5 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                 {checkoutIntent
                   ? mode === "login"
                     ? "SECURE CHECKOUT"
@@ -676,7 +676,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                 />
                 Continue with Google
               </button>
-              <div className="my-3 flex items-center gap-3 text-[10px] font-bold tracking-[.14em] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+              <div className="my-3 flex items-center gap-3 text-[11px] font-bold tracking-[.14em] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
                 OR
               </div>
             </>}
@@ -705,7 +705,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                   </label>
                 </div>
               )}
-              {mode === "signup" && storeSettings.account_settings.username_required && <label className="grid gap-2 text-sm font-semibold">Username<input value={username} onChange={event=>setUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g,"").slice(0,24))} required minLength={3} maxLength={24} autoComplete="username" className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none focus:border-foreground" placeholder="cozyhome"/><span className="text-[10px] font-normal text-muted-foreground">Shown in your account menu. You can change it later.</span></label>}
+              {mode === "signup" && storeSettings.account_settings.username_required && <label className="grid gap-2 text-sm font-semibold">Username<input value={username} onChange={event=>setUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g,"").slice(0,24))} required minLength={3} maxLength={24} autoComplete="username" className="h-11 rounded-xl border border-border bg-[#fcfbf8] px-4 font-normal outline-none focus:border-foreground" placeholder="cozyhome"/><span className="text-[11px] font-normal text-muted-foreground">Shown in your account menu. You can change it later.</span></label>}
               <label className="grid gap-2 text-sm font-semibold">
                 Email address
                 <input
@@ -758,7 +758,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                         />
                       ))}
                     </div>
-                    <span className="text-[10px] font-bold text-muted-foreground">
+                    <span className="text-[11px] font-bold text-muted-foreground">
                       {strength || `Use ${passwordMinimum}+ characters`}
                     </span>
                   </div>
@@ -819,7 +819,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                   <div className="min-w-0">
                     <label
                       htmlFor="customer-policy-acceptance"
-                      className="block cursor-pointer text-[9px] font-bold uppercase tracking-[.16em] text-black/42"
+                      className="block cursor-pointer text-[10px] font-bold uppercase tracking-[.16em] text-black/42"
                     >
                       Required agreement
                     </label>
@@ -1008,7 +1008,7 @@ export function ResetPassword() {
           </Link>
           {status === "checking" && (
             <div className="mt-10 rounded-3xl bg-[#eee8df] p-7">
-              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                 VERIFYING RESET LINK
               </p>
               <h1 className="mt-3 font-serif text-4xl">Just a moment.</h1>
@@ -1022,7 +1022,7 @@ export function ResetPassword() {
               <span className="grid h-11 w-11 place-items-center rounded-full bg-[#f3e5d4] text-[#8b5c46]">
                 <LockKeyhole size={20} />
               </span>
-              <p className="mt-6 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              <p className="mt-6 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                 RESET LINK UNAVAILABLE
               </p>
               <h1 className="mt-3 font-serif text-4xl">
@@ -1045,7 +1045,7 @@ export function ResetPassword() {
               <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
                 <Check size={20} />
               </span>
-              <p className="mt-6 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              <p className="mt-6 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                 {setupMode ? "PASSWORD ADDED" : "PASSWORD UPDATED"}
               </p>
               <h1 className="mt-3 font-serif text-4xl">
@@ -1065,7 +1065,7 @@ export function ResetPassword() {
           )}
           {status === "ready" && (
             <form onSubmit={savePassword} className="mt-10">
-              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                 {setupMode ? "SET UP PASSWORD" : "CREATE NEW PASSWORD"}
               </p>
               <h1 className="mt-4 font-serif text-4xl sm:text-5xl">
@@ -1113,7 +1113,7 @@ export function ResetPassword() {
                       />
                     ))}
                   </div>
-                  <span className="text-[10px] font-bold text-muted-foreground">
+                  <span className="text-[11px] font-bold text-muted-foreground">
                     {strength || `Use ${passwordMinimum}+ characters`}
                   </span>
                 </div>

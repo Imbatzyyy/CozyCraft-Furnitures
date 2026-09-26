@@ -14,6 +14,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,7 +24,9 @@ import {
 import {
   createBrowserRouter,
   Link,
+  Outlet,
   RouterProvider,
+  ScrollRestoration,
   useRouteError,
   useLocation,
   useNavigate,
@@ -78,6 +81,8 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
+import { prefersReducedMotion } from "@/components/storefront/motion";
+import { titleForPath } from "@/components/storefront/page-meta";
 import {
   orderRealtimeTarget,
   type OrderRealtimeChange,
@@ -202,14 +207,12 @@ function App() {
   );
   const [products, setProducts] = useState<Product[]>(() => !adminPortal && isOffline() ? readOfflineCatalog() : fallbackProducts);
   const [catalogReady, setCatalogReady] = useState(false);
+  const [catalogFailed, setCatalogFailed] = useState(false);
   const [storeSettings, setStoreSettings] = useState<PublicStoreSettings>(
     defaultStoreSettings,
   );
   const storeSettingsRef = useRef(storeSettings);
   storeSettingsRef.current = storeSettings;
-  useEffect(() => {
-    document.title = storeSettings.store_name || "CozyCraft Furnitures";
-  }, [storeSettings.store_name]);
   const [adminProducts, setAdminProducts] = useState<Product[]>(fallbackProducts);
   const catalogRef = useRef(adminProducts);
   catalogRef.current = adminProducts;
@@ -265,6 +268,7 @@ function App() {
   const [supportTickets, setSupportTickets] = useState<DbSupportTicket[]>([]);
   const [shopPrompt, setShopPrompt] = useState(false);
   const [fly, setFly] = useState<FlyState | null>(null);
+  const [miniCart, setMiniCart] = useState<{ open: boolean; highlight: string | null }>({ open: false, highlight: null });
 
   useEffect(() => {
     customerUserIdRef.current = userId;
@@ -277,6 +281,7 @@ function App() {
     if (userId) setShopPrompt(false);
   }, [userId]);
   const lastPointer = useRef({ x: 0, y: 0 });
+  const lastPointerTarget = useRef<EventTarget | null>(null);
   const pendingAccountWrites = useRef(new Set<Promise<unknown>>());
   const reads = useRef(createReadCoordinator<string | null>());
   const catalogReadQueue = useRef(createSerialReadQueue());
@@ -313,13 +318,18 @@ function App() {
   useEffect(() => {
     const rememberPointer = (event: PointerEvent) => {
       lastPointer.current = { x: event.clientX, y: event.clientY };
+      lastPointerTarget.current = event.target;
     };
     window.addEventListener("pointerdown", rememberPointer, true);
     return () => window.removeEventListener("pointerdown", rememberPointer, true);
   }, []);
 
   const triggerFly = (kind: FlyState["kind"]) => {
-    setFly({ kind, ...lastPointer.current, id: Date.now() });
+    // Carry the product photo from the card or page the shopper tapped.
+    const target = lastPointerTarget.current;
+    const source = target instanceof Element ? target.closest("[data-fly-source]") : null;
+    const image = source?.querySelector("img")?.currentSrc || undefined;
+    setFly({ kind, ...lastPointer.current, id: Date.now(), image });
   };
 
   const mapProduct = useCallback((row: DbProduct, lowStockThreshold = 8): Product => ({
@@ -375,6 +385,7 @@ function App() {
           const cached = readOfflineCatalog();
           if (cached.length) setProducts(current => current.length ? current : cached);
           setCatalogStale(true);
+          setCatalogFailed(true);
         }
         return productResult.error?.message ?? "Products could not be loaded.";
       }
@@ -1523,7 +1534,7 @@ function App() {
     if (stockLimit === 0 || (stockLimit !== null && current >= stockLimit)) {
       return;
     }
-    triggerFly("cart");
+    setMiniCart({ open: true, highlight: id });
     setCart((items) => {
       const currentLine = items.find((item) => item.id === id);
       const currentQuantity = currentLine?.quantity ?? 0;
@@ -2266,6 +2277,11 @@ function App() {
     storeSettings,
     products,
     catalogReady,
+    catalogPending: !catalogReady && !catalogFailed && products === fallbackProducts,
+    miniCartOpen: miniCart.open,
+    miniCartHighlight: miniCart.highlight,
+    openMiniCart: (highlight = null) => setMiniCart({ open: true, highlight }),
+    closeMiniCart: () => setMiniCart((current) => current.open ? { ...current, open: false } : current),
     adminProducts,
     cart,
     saved,
@@ -2378,53 +2394,66 @@ type FlyState = {
   x: number;
   y: number;
   id: number;
+  image?: string;
 };
 
+/** Visible navigation target for the fly animation (header on desktop, tab bar on phones). */
+const visibleFlyTarget = (kind: FlyState["kind"]) =>
+  Array.from(document.querySelectorAll<HTMLElement>(`[data-fly-target="${kind}"]`)).find((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight &&
+      getComputedStyle(element).visibility !== "hidden";
+  });
+
 function FlyToNav({ fly, done }: { fly: FlyState; done: () => void }) {
-  const [travel, setTravel] = useState(false);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const token = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    setTravel(false);
-    const target = document.getElementById(
-      fly.kind === "cart" ? "cart-nav-target" : "wishlist-nav-target",
-    );
-    const origin = {
-      x: fly.x || window.innerWidth / 2,
-      y: fly.y || window.innerHeight / 2,
-    };
-    if (target) {
-      const rect = target.getBoundingClientRect();
-      setOffset({
-        x: rect.left + rect.width / 2 - origin.x,
-        y: rect.top + rect.height / 2 - origin.y,
+    const node = token.current;
+    const target = visibleFlyTarget(fly.kind);
+    const arrive = () => window.dispatchEvent(new CustomEvent("cozycraft:fly-arrived", { detail: fly.kind }));
+    if (!node || !target || prefersReducedMotion() || typeof node.animate !== "function") {
+      arrive();
+      done();
+      return;
+    }
+    const origin = { x: fly.x || window.innerWidth / 2, y: fly.y || window.innerHeight / 2 };
+    const rect = target.getBoundingClientRect();
+    const dx = rect.left + rect.width / 2 - origin.x;
+    const dy = rect.top + rect.height / 2 - origin.y;
+    // A quadratic curve that lifts first, then settles into the icon.
+    const control = { x: dx * 0.3, y: Math.min(0, dy) - Math.min(180, Math.abs(dx) * 0.35 + 90) };
+    const frames: Keyframe[] = [];
+    for (let step = 0; step <= 14; step += 1) {
+      const t = step / 14;
+      const x = 2 * (1 - t) * t * control.x + t * t * dx;
+      const y = 2 * (1 - t) * t * control.y + t * t * dy;
+      frames.push({
+        transform: `translate(${x}px, ${y}px) scale(${1 - 0.72 * t})`,
+        opacity: t > 0.82 ? 1 - ((t - 0.82) / 0.18) * 0.75 : 1,
       });
     }
-    const frame = window.requestAnimationFrame(() => setTravel(true));
-    const timer = window.setTimeout(done, 720);
+    const animation = node.animate(frames, { duration: 780, easing: "cubic-bezier(.5,0,.2,1)", fill: "forwards" });
+    let finished = false;
+    animation.finished.then(() => { finished = true; arrive(); done(); }, () => undefined);
     return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
+      if (!finished) animation.cancel();
     };
   }, [done, fly]);
 
   return (
     <span
+      ref={token}
       aria-hidden="true"
-      className="pointer-events-none fixed z-[120] grid h-10 w-10 place-items-center rounded-full bg-foreground text-background shadow-xl transition-[transform,opacity] duration-700 ease-in-out"
-      style={{
-        left: fly.x - 20,
-        top: fly.y - 20,
-        transform: travel
-          ? `translate(${offset.x}px,${offset.y}px) scale(.35)`
-          : "translate(0,0) scale(1)",
-        opacity: travel ? 0.35 : 1,
-      }}
+      className="pointer-events-none fixed z-[160] grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-foreground text-background shadow-[0_18px_40px_rgba(28,27,25,.35)] ring-[3px] ring-white"
+      style={{ left: (fly.x || window.innerWidth / 2) - 28, top: (fly.y || window.innerHeight / 2) - 28 }}
     >
-      {fly.kind === "cart" ? (
-        <ShoppingBag size={18} />
+      {fly.image ? (
+        <img src={fly.image} alt="" className="h-full w-full object-cover" />
+      ) : fly.kind === "cart" ? (
+        <ShoppingBag size={20} />
       ) : (
-        <Heart size={18} fill="currentColor" />
+        <Heart size={20} fill="currentColor" />
       )}
     </span>
   );
@@ -2531,7 +2560,28 @@ function RouteErrorBoundary() {
   );
 }
 
-const router = createBrowserRouter([
+/**
+ * Root layout for every route: resets scroll on new pages (and restores it on
+ * Back/Forward), keeps page titles meaningful, and scopes storefront styling.
+ */
+function RouteShell() {
+  const location = useLocation();
+  const { storeSettings } = useStore();
+  const storeName = storeSettings.store_name || "CozyCraft Furnitures";
+  useLayoutEffect(() => {
+    const admin = location.pathname.startsWith("/admin");
+    document.documentElement.dataset.surface = admin ? "admin" : "store";
+    document.title = admin ? storeName : titleForPath(location.pathname, storeName);
+  }, [location.pathname, storeName]);
+  return (
+    <>
+      <Outlet />
+      <ScrollRestoration />
+    </>
+  );
+}
+
+const routes = [
   { path: "/", lazy: () => storefrontCatalogRoute("Home") },
   { path: "/home", lazy: () => storefrontCatalogRoute("Home") },
   { path: "/about", lazy: () => storefrontCatalogRoute("About") },
@@ -2546,6 +2596,8 @@ const router = createBrowserRouter([
   { path: "/bedroom", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/dining-room", lazy: () => storefrontCatalogRoute("CollectionPage") },
   { path: "/new-arrivals", lazy: () => storefrontCatalogRoute("CollectionPage") },
+  { path: "/shop", lazy: () => storefrontCatalogRoute("CollectionPage") },
+  { path: "/journal/:slug", lazy: () => storefrontCatalogRoute("JournalPage") },
   { path: "/compare", lazy: () => storefrontCatalogRoute("ComparePage") },
   { path: "/find-my-furniture", lazy: () => import("@/features/storefront/discovery/FurnitureFinder") },
   { path: "/products/:productId", lazy: () => storefrontCatalogRoute("ProductPage") },
@@ -2636,13 +2688,22 @@ const router = createBrowserRouter([
   { path: "/admin/activity-logs", lazy: () => adminOperationsRoute("ActivityLogsPage") },
   { path: "/admin/support", lazy: () => adminOperationsRoute("SupportPage") },
   { path: "/admin/settings", lazy: () => adminTeamRoute("StoreSettingsPage") },
-  { path: "*", lazy: () => storefrontCatalogRoute("Home") },
+  { path: "*", lazy: () => storefrontCatalogRoute("NotFound") },
 ].map((route) => ({
   ...route,
   hydrateFallbackElement: <Splash />,
   ...(route.path === "/checkout"
     ? {}
     : { errorElement: <RouteErrorBoundary /> }),
-})));
+}));
+
+const router = createBrowserRouter([
+  {
+    Component: RouteShell,
+    hydrateFallbackElement: <Splash />,
+    errorElement: <RouteErrorBoundary />,
+    children: routes,
+  },
+]);
 
 export default App;

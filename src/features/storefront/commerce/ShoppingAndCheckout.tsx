@@ -29,6 +29,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Archive,
+  Banknote,
+  Wallet,
   Bell,
   Boxes,
   ChartNoAxesCombined,
@@ -73,6 +75,7 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
+import { collapseElement, useCountUp, useInView } from "@/components/storefront/motion";
 import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -128,6 +131,7 @@ import {
   Header,
   Layout,
   ProductCard,
+  ProductGrid,
   Empty,
   ConfirmSignOut,
   Status,
@@ -279,6 +283,7 @@ export function Cart() {
     cart,
     remove,
     qty,
+    add,
     products,
     addresses,
     setCartSelection,
@@ -287,10 +292,15 @@ export function Cart() {
     userId,
     orders,
     refreshOrders,
+    closeMiniCart,
+    catalogPending,
   } = useStore();
   const [deliveryAreas, setDeliveryAreas] = useState<DeliveryServiceArea[]>(
     DEFAULT_DELIVERY_SERVICE_AREAS,
   );
+  const [undo, setUndo] = useState<{ id: string; name: string; quantity: number; selected: boolean } | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLElement>());
   useEffect(() => {
     let active = true;
     void getDeliveryServiceAreas()
@@ -327,6 +337,10 @@ export function Cart() {
     ? deliveryFeeFor(deliveryArea, subtotal)
     : null;
   const total = subtotal + (deliveryFee ?? 0);
+  const animatedSubtotal = useCountUp(subtotal);
+  const animatedTotal = useCountUp(total);
+  const freeMinimum = deliveryArea?.free_delivery_minimum ?? null;
+  const freeProgress = freeMinimum ? Math.min(100, (subtotal / freeMinimum) * 100) : 0;
   const allSelected =
     lines.length > 0 && selectedLines.length === lines.length;
   const cartCatalogHydrating = cart.length > 0 && lines.length === 0;
@@ -340,33 +354,57 @@ export function Cart() {
     orders,
     refreshOrders,
   });
-  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
+  const pairings = useMemo(() => {
+    const inBag = new Set(cart.map((line) => line.id));
+    const rooms = new Set(lines.map((line) => line.item.category));
+    return [...products]
+      .filter((product) => !inBag.has(product.id) && (rooms.size === 0 || rooms.has(product.category)) && product.stockQuantity !== 0)
+      .sort((a, b) => b.reviews - a.reviews || Number(b.rating) - Number(a.rating))
+      .slice(0, 4);
+  }, [cart, lines, products]);
   const toggleSelected = (id: string) => {
     const line = cart.find((item) => item.id === id);
     if (line) setCartSelection(id, !line.selectedForCheckout);
   };
+  const removeLine = async (id: string, name: string, quantity: number, isSelected: boolean) => {
+    if (removing) return;
+    setRemoving(id);
+    await collapseElement(rowRefs.current.get(id) ?? null);
+    remove(id);
+    setRemoving(null);
+    setUndo({ id, name, quantity, selected: isSelected });
+  };
+  const restoreLine = () => {
+    if (!undo) return;
+    add(undo.id, undo.quantity);
+    if (!undo.selected) setCartSelection(undo.id, false);
+    // Restoring is not a new add; batching keeps the bag drawer closed.
+    closeMiniCart?.();
+    setUndo(null);
+  };
+  const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0);
   return (
     <Layout>
-      <main className="mx-auto max-w-[1160px] px-5 py-10 lg:py-16">
+      <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-5 lg:py-14">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
-              YOUR BAG
+            <p className="text-[11px] font-bold tracking-[.2em] text-muted-foreground">
+              YOUR BAG{itemCount ? ` · ${itemCount} ${itemCount === 1 ? "PIECE" : "PIECES"}` : ""}
             </p>
-            <h1 className="mt-3 font-serif text-4xl sm:text-5xl">A few good things.</h1>
-            <p className="mt-3 text-sm text-muted-foreground">
+            <h1 className="cc-enter-up mt-3 font-serif text-5xl leading-none tracking-[-.02em] sm:text-6xl">A few good things.</h1>
+            <p className="mt-4 text-sm text-muted-foreground">
               Choose the pieces you would like to bring home today.
             </p>
           </div>
           {lines.length > 0 && (
-            <label className="flex cursor-pointer items-center gap-3 rounded-full border border-border bg-card px-4 py-2 text-xs font-semibold">
+            <label className="flex h-11 cursor-pointer items-center gap-3 rounded-full border border-border bg-card px-4 text-xs font-semibold shadow-[var(--shadow-soft)]">
               <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={(event) => setAllCartSelection(event.target.checked)}
                 className="h-4 w-4 accent-[#292622]"
               />
-              {allSelected ? "Unselect all orders" : "Select all orders"}
+              {allSelected ? "Unselect all items" : "Select all items"}
             </label>
           )}
         </div>
@@ -374,24 +412,27 @@ export function Cart() {
           <section
             role="status"
             aria-live="polite"
-            className="mt-8 grid min-h-[340px] place-items-center rounded-3xl border border-dashed border-border bg-card px-6 text-center"
+            className="mt-8 grid gap-6 lg:grid-cols-[1fr_380px]"
           >
-            <div>
-              <span className="mx-auto block h-9 w-9 animate-spin rounded-full border-[3px] border-border border-t-foreground" />
-              <p className="mt-5 text-sm font-semibold">
-                {!authReady
-                  ? "Restoring your CozyCraft account…"
-                  : cartCatalogHydrating
-                    ? "Restoring your saved bag…"
-                    : "Checking for an unfinished payment…"}
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Your saved pieces and reserved orders remain safe.
-              </p>
+            <div className="grid gap-3 rounded-[1.75rem] border border-border bg-card p-5">
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="flex gap-4">
+                  <div className="cc-skeleton h-28 w-24 rounded-2xl" />
+                  <div className="flex-1 space-y-3 pt-2"><div className="cc-skeleton h-4 w-1/2 rounded-full" /><div className="cc-skeleton h-3 w-1/4 rounded-full" /><div className="cc-skeleton mt-6 h-9 w-28 rounded-xl" /></div>
+                </div>
+              ))}
             </div>
+            <div className="cc-skeleton h-72 rounded-[1.75rem]" />
+            <p className="sr-only">
+              {!authReady
+                ? "Restoring your CozyCraft account…"
+                : cartCatalogHydrating
+                  ? "Restoring your saved bag…"
+                  : "Checking for an unfinished payment…"}
+            </p>
           </section>
         ) : !lines.length && paymentRecovery.error ? (
-          <section className="mt-8 grid min-h-[300px] place-items-center rounded-3xl border border-border bg-card px-6 text-center">
+          <section className="mt-8 grid min-h-[300px] place-items-center rounded-[1.75rem] border border-border bg-card px-6 text-center">
             <div className="max-w-md">
               <p className="text-sm font-semibold">Payment check interrupted</p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -400,7 +441,7 @@ export function Cart() {
               <button
                 type="button"
                 onClick={paymentRecovery.retry}
-                className="mt-5 rounded-xl bg-foreground px-5 py-3 text-xs font-semibold text-background"
+                className="cc-press mt-5 rounded-xl bg-foreground px-5 py-3 text-xs font-semibold text-background"
               >
                 Check again
               </button>
@@ -408,19 +449,21 @@ export function Cart() {
           </section>
         ) : !lines.length ? (
           <Empty
+            icon={ShoppingBag}
             title="Your bag is waiting."
-            text="Find a piece that feels like home."
-            cta="Shop collection"
-            to="/home#shop"
+            text="Find a piece that feels like home — it will gather here until you are ready."
+            cta="Shop the collection"
+            to="/shop"
+            secondary={{ label: "View wishlist", to: "/wishlist" }}
           />
         ) : (
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_350px]">
-            <section className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_380px] lg:gap-8">
+            <section className="overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-[var(--shadow-soft)]">
+              <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
                 <p className="text-sm font-semibold">
                   {selectedLines.length} of {lines.length} pieces selected
                 </p>
-                <span className="text-xs text-muted-foreground">
+                <span className="hidden text-xs text-muted-foreground sm:inline">
                   Selection updates your total
                 </span>
               </div>
@@ -435,71 +478,78 @@ export function Cart() {
                   stockLimit !== null && quantity >= stockLimit;
                 return (
                 <article
-                  className={`flex gap-4 p-4 transition sm:p-5 ${
-                    isSelected ? "bg-[#fcfbf8]" : "bg-card opacity-65"
+                  ref={(node) => { if (node) rowRefs.current.set(item.id, node); else rowRefs.current.delete(item.id); }}
+                  className={`flex gap-4 p-4 transition-[background-color,opacity] duration-300 sm:gap-5 sm:p-5 ${
+                    isSelected ? "bg-card" : "bg-[#faf8f5] opacity-70"
                   }`}
                   key={item.id}
                 >
                   <button
                     onClick={() => toggleSelected(item.id)}
-                    aria-label={`${isSelected ? "Remove" : "Add"} ${item.name} from checkout`}
-                    className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition ${
+                    aria-pressed={isSelected}
+                    aria-label={`${isSelected ? "Remove" : "Add"} ${item.name} ${isSelected ? "from" : "to"} checkout`}
+                    className={`cc-press mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border transition-colors ${
                       isSelected
                         ? "border-foreground bg-foreground text-background"
-                        : "border-border bg-card"
+                        : "border-[#bdb4a7] bg-card"
                     }`}
                   >
-                    {isSelected && <Check size={12} />}
+                    {isSelected && <Check size={13} strokeWidth={3} className="cc-enter-pop" />}
                   </button>
-                  <ResilientImage
-                    src={primaryProductImage(item)}
-                    alt={item.name}
-                    className="h-28 w-24 rounded-2xl object-cover"
-                  />
-                  <div className="flex flex-1 flex-col">
-                    <div className="flex justify-between gap-2">
-                      <div>
-                        <p className="font-semibold">{item.name}</p>
+                  <Link to={`/products/${item.id}`} className="cc-media h-32 w-24 shrink-0 overflow-hidden rounded-2xl bg-secondary sm:h-36 sm:w-28">
+                    <ResilientImage
+                      src={primaryProductImage(item)}
+                      alt={item.name}
+                      className="h-full w-full object-cover transition duration-700 hover:scale-105"
+                    />
+                  </Link>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-[.12em] text-muted-foreground">{item.subcategory || item.category}</p>
+                        <Link to={`/products/${item.id}`} className="mt-1 block font-semibold leading-snug underline-offset-4 hover:underline">{item.name}</Link>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {item.color}
                         </p>
                       </div>
-                      <p className="text-sm">{money(item.price * quantity)}</p>
+                      <p className="shrink-0 text-sm font-semibold tabular-nums">{money(item.price * quantity)}</p>
                     </div>
-                    <div className="mt-auto flex items-center justify-between">
-                      <div className="flex h-9 items-center rounded-xl border border-border bg-card">
+                    <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-4">
+                      <div className="flex h-10 items-center rounded-full border border-border bg-background">
                         <button
-                          onClick={() => qty(item.id, quantity - 1)}
-                          className="grid h-full w-8 place-items-center"
+                          onClick={() => quantity <= 1 ? void removeLine(item.id, item.name, quantity, isSelected) : qty(item.id, quantity - 1)}
+                          aria-label={quantity <= 1 ? `Remove ${item.name}` : `Decrease ${item.name} quantity`}
+                          className="grid h-full w-10 place-items-center rounded-full hover:bg-secondary"
                         >
-                          <Minus size={13} />
+                          {quantity <= 1 ? <Trash2 size={14} /> : <Minus size={14} />}
                         </button>
-                        <span className="w-7 text-center text-xs">
+                        <span className="w-7 text-center text-sm font-semibold tabular-nums" aria-live="polite">
                           {quantity}
                         </span>
                         <button
                           onClick={() => qty(item.id, quantity + 1)}
                           disabled={atStockLimit}
-                          className="grid h-full w-8 place-items-center disabled:cursor-not-allowed disabled:opacity-30"
+                          className="grid h-full w-10 place-items-center rounded-full hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-30"
                           aria-label={
                             atStockLimit
                               ? `Maximum available stock is ${stockLimit}`
                               : `Increase ${item.name} quantity`
                           }
                         >
-                          <Plus size={13} />
+                          <Plus size={14} />
                         </button>
                       </div>
                       <button
-                        onClick={() => setRemoveTarget({ id: item.id, name: item.name })}
-                        className="flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-4"
+                        onClick={() => void removeLine(item.id, item.name, quantity, isSelected)}
+                        disabled={removing === item.id}
+                        className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
                       >
                         <Trash2 size={13} />
                         Remove
                       </button>
                     </div>
                     <p
-                      className={`mt-2 text-[10px] ${
+                      className={`mt-2 text-[11px] ${
                         atStockLimit
                           ? "font-semibold text-[#9a6047]"
                           : "text-muted-foreground"
@@ -509,7 +559,9 @@ export function Cart() {
                         ? `Maximum stock reached · ${stockLimit} available`
                         : stockLimit === null
                           ? "Checking live availability"
-                          : `${stockLimit} available`}
+                          : stockLimit <= 8
+                            ? `Only ${stockLimit} left`
+                            : "In stock, ready to deliver"}
                     </p>
                   </div>
                 </article>
@@ -517,28 +569,35 @@ export function Cart() {
               })}
               </div>
             </section>
-            <aside className="h-fit overflow-hidden rounded-3xl border border-border bg-card shadow-sm lg:sticky lg:top-24">
-              <div className="bg-[#292622] p-6 text-[#f5f1e9]">
-                <p className="text-[10px] font-bold tracking-[.16em] text-white/60">
+            <aside className="h-fit overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-[var(--shadow-soft)] lg:sticky lg:top-24">
+              <div className="relative overflow-hidden bg-[#292622] p-6 text-[#f5f1e9]">
+                <div className="absolute inset-y-0 right-0 w-2/3 bg-[radial-gradient(circle_at_80%_30%,rgba(194,162,123,.3),transparent_60%)]" />
+                <p className="relative text-[11px] font-bold tracking-[.18em] text-white/60">
                   ORDER SUMMARY
                 </p>
-                <h2 className="mt-2 font-serif text-3xl">Selected pieces.</h2>
+                <h2 className="relative mt-2 font-serif text-3xl">Selected pieces.</h2>
               </div>
               <div className="p-6">
-              <p className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Selected items</span>
-                <span>{selectedLines.length}</span>
-              </p>
-              <div className="mt-5 space-y-3 border-y border-border py-4 text-sm">
+              {freeMinimum !== null && freeMinimum > 0 && deliveryArea && (
+                <div className="mb-5 rounded-2xl bg-secondary/70 p-4">
+                  <p className="text-xs font-semibold">
+                    {subtotal >= freeMinimum ? <span className="inline-flex items-center gap-1.5 text-[var(--tone-success-fg)]"><Check size={13} strokeWidth={3} /> Free delivery to {deliveryArea.name} unlocked</span> : <>You’re {money(freeMinimum - subtotal)} away from free delivery</>}
+                  </p>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white" role="progressbar" aria-label="Progress to free delivery" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(freeProgress)}>
+                    <span className="block h-full rounded-full bg-[#6c805f] transition-[width] duration-700 ease-[cubic-bezier(.22,1,.36,1)]" style={{ width: `${freeProgress}%` }} />
+                  </div>
+                </div>
+              )}
+              <div className="space-y-3 text-sm">
                 <p className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span>{money(subtotal)}</span>
+                  <span className="text-muted-foreground">Subtotal · {selectedLines.length} {selectedLines.length === 1 ? "piece" : "pieces"}</span>
+                  <span className="tabular-nums">{money(Math.round(animatedSubtotal))}</span>
                 </p>
                 <p className="flex justify-between">
                   <span className="text-muted-foreground">
                     Delivery{deliveryArea ? ` · ${deliveryArea.name}` : ""}
                   </span>
-                  <span>
+                  <span className="tabular-nums">
                     {deliveryFee === null
                       ? "At checkout"
                       : deliveryFee > 0
@@ -546,15 +605,10 @@ export function Cart() {
                         : "Free"}
                   </span>
                 </p>
-                {deliveryArea?.free_delivery_minimum !== null && deliveryArea && deliveryArea.free_delivery_minimum > subtotal && (
-                  <p className="text-[10px] leading-4 text-muted-foreground">
-                    Add {money(deliveryArea.free_delivery_minimum - subtotal)} more for free delivery to {deliveryArea.name}.
-                  </p>
-                )}
               </div>
-              <p className="mt-5 flex justify-between font-semibold">
+              <p className="mt-5 flex items-baseline justify-between border-t border-border pt-5 font-semibold">
                 <span>Total</span>
-                <span>{money(total)}</span>
+                <span className="text-2xl tabular-nums">{money(Math.round(animatedTotal))}</span>
               </p>
               <Link
                 to={
@@ -562,163 +616,191 @@ export function Cart() {
                     ? `/checkout?items=${selected.join(",")}`
                     : "/cart"
                 }
-                className={`mt-6 flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold ${
+                aria-disabled={!selectedLines.length}
+                className={`cc-press mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold ${
                   selectedLines.length
-                    ? "bg-foreground text-background"
+                    ? "bg-foreground text-background shadow-[0_10px_24px_rgba(28,27,25,.18)] hover:bg-[#35322e]"
                     : "pointer-events-none bg-secondary text-muted-foreground"
                 }`}
               >
                 {selectedLines.length
-                  ? "Proceed to checkout"
+                  ? <>Proceed to checkout <ArrowRight size={16} /></>
                   : "Select a piece to continue"}
               </Link>
-              <p className="mt-4 flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
+              <p className="mt-4 flex items-start gap-2 text-[11px] leading-4 text-muted-foreground">
                 <ShieldCheck size={14} className="shrink-0" />
-                Only selected pieces will move to secure checkout.
+                Only selected pieces move to secure checkout. Payment details are never stored by CozyCraft.
               </p>
               </div>
             </aside>
           </div>
         )}
+        {pairings.length > 0 && !(!authReady || cartCatalogHydrating) && (
+          <section className="mt-20 border-t border-border pt-12" aria-labelledby="cart-pairings-title">
+            <div data-reveal className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-bold tracking-[.18em] text-muted-foreground">{lines.length ? "PAIRS WELL WITH YOUR BAG" : "CUSTOMER FAVOURITES"}</p>
+                <h2 id="cart-pairings-title" className="mt-3 font-serif text-4xl">{lines.length ? "Complete the room." : "A place to begin."}</h2>
+              </div>
+              <Link to="/shop" className="cc-underline hidden text-sm font-semibold sm:inline-block">Shop all</Link>
+            </div>
+            <ProductGrid className="mt-9" products={pairings} pending={catalogPending} skeletons={4} />
+          </section>
+        )}
       </main>
-      {removeTarget && <div role="dialog" aria-modal="true" aria-labelledby="remove-cart-title" className="fixed inset-0 z-[110] grid place-items-center bg-black/45 p-4 backdrop-blur-sm"><section className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-2xl"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-secondary"><Trash2 size={18} /></span><p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">REMOVE FROM BAG</p><h2 id="remove-cart-title" className="mt-2 font-serif text-3xl">Remove {removeTarget.name}?</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">This piece will leave your bag. You can add it again from the collection at any time.</p><div className="mt-7 grid grid-cols-2 gap-3"><button onClick={() => setRemoveTarget(null)} className="rounded-xl border border-border px-4 py-3 text-sm font-semibold">Keep item</button><button onClick={() => { remove(removeTarget.id); setRemoveTarget(null); }} className="rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background">Remove</button></div></section></div>}
+      {lines.length > 0 && (
+        <div className="fixed inset-x-0 bottom-[var(--mobile-store-nav-height)] z-30 flex items-center gap-3 border-t border-border bg-[#fbfaf7]/95 px-4 py-3 shadow-[0_-12px_30px_rgba(35,31,27,.12)] backdrop-blur-xl lg:hidden">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] text-muted-foreground">{selectedLines.length} selected · Total</p>
+            <p className="text-base font-bold tabular-nums">{money(Math.round(animatedTotal))}</p>
+          </div>
+          <Link
+            to={selectedLines.length ? `/checkout?items=${selected.join(",")}` : "/cart"}
+            aria-disabled={!selectedLines.length}
+            className={`cc-press inline-flex h-12 items-center gap-2 rounded-xl px-5 text-sm font-semibold ${selectedLines.length ? "bg-foreground text-background" : "pointer-events-none bg-secondary text-muted-foreground"}`}
+          >
+            Checkout <ArrowRight size={15} />
+          </Link>
+        </div>
+      )}
+      {undo && (
+        <Toast
+          message={`${undo.name} was removed from your bag.`}
+          tone="info"
+          action={{ label: "Undo", onClick: restoreLine }}
+          close={() => setUndo(null)}
+        />
+      )}
     </Layout>
   );
 }
 
 export function Wishlist() {
-  const { saved, toggle, add, products } = useStore();
-  const [notice, setNotice] = useState("");
+  const { saved, toggle, add, products, catalogPending } = useStore();
+  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
+  const cardRefs = useRef(new Map<string, HTMLElement>());
   const savedItems = products.filter((p) => saved.includes(p.id));
+  const savedValue = savedItems.reduce((sum, product) => sum + product.price, 0);
+  const removeSaved = async (id: string, name: string) => {
+    const card = cardRefs.current.get(id);
+    if (card && typeof card.animate === "function" && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      await card.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.94)" }], { duration: 260, easing: "cubic-bezier(.65,0,.35,1)", fill: "forwards" }).finished.catch(() => undefined);
+    }
+    toggle(id);
+    setUndo({ id, name });
+  };
   return (
     <Layout>
-      <main className="mx-auto max-w-[1440px] px-5 py-8 lg:px-10 lg:py-12">
-        <section className="relative overflow-hidden rounded-[2rem] bg-[#292a26] px-7 py-10 text-[#f7f3eb] sm:px-10 lg:py-14">
-          <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_72%_50%,rgba(194,162,123,.35),transparent_48%)]" />
+      <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-5 lg:px-10 lg:py-10">
+        <section className="relative overflow-hidden rounded-[2rem] bg-[#292a26] px-7 py-10 text-[#f7f3eb] sm:px-10 lg:py-16">
+          <div className="absolute inset-y-0 right-0 w-2/3 bg-[radial-gradient(circle_at_72%_50%,rgba(194,162,123,.38),transparent_52%)]" />
           <div className="relative flex flex-wrap items-end justify-between gap-6">
             <div>
-              <p className="text-[10px] font-bold tracking-[.2em] text-[#cfc3b4]">
+              <p className="cc-rise text-[11px] font-bold tracking-[.22em] text-[#cfc3b4]">
                 YOUR PERSONAL EDIT
               </p>
-              <h1 className="mt-4 font-serif text-5xl leading-none sm:text-6xl">
+              <h1 className="cc-rise mt-4 font-serif text-5xl leading-none sm:text-7xl" style={{ ["--i" as string]: 1 }}>
                 Keep close.
               </h1>
-              <p className="mt-4 max-w-md text-sm leading-6 text-[#d5cdc2]">
-                A considered collection of pieces you are returning to—ready
+              <p className="cc-rise mt-5 max-w-md text-sm leading-6 text-[#d5cdc2]" style={{ ["--i" as string]: 2 }}>
+                A considered collection of pieces you are returning to — ready
                 whenever the room feels right.
               </p>
             </div>
-            <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4">
-              <p className="font-serif text-3xl">{savedItems.length}</p>
-              <p className="mt-1 text-[10px] font-bold tracking-[.14em] text-[#cfc3b4]">
-                SAVED PIECES
-              </p>
+            <div className="cc-rise flex gap-3" style={{ ["--i" as string]: 3 }}>
+              <div className="rounded-2xl border border-white/15 bg-white/5 px-5 py-4 backdrop-blur-sm">
+                <p className="font-serif text-4xl tabular-nums">{savedItems.length}</p>
+                <p className="mt-1 text-[11px] font-bold tracking-[.14em] text-[#cfc3b4]">SAVED PIECES</p>
+              </div>
+              {savedItems.length > 0 && (
+                <div className="hidden rounded-2xl border border-white/15 bg-white/5 px-5 py-4 backdrop-blur-sm sm:block">
+                  <p className="font-serif text-4xl tabular-nums">{money(savedValue)}</p>
+                  <p className="mt-1 text-[11px] font-bold tracking-[.14em] text-[#cfc3b4]">TOTAL VALUE</p>
+                </div>
+              )}
             </div>
           </div>
         </section>
-        {!savedItems.length ? (
-          <section className="mt-6 grid min-h-[390px] place-items-center rounded-[2rem] border border-border bg-[#f2ede5] p-8 text-center">
-            <div>
-              <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-card text-[#9a765a]">
-                <Heart size={22} />
-              </span>
-              <p className="mt-6 text-[10px] font-bold tracking-[.18em] text-muted-foreground">
-                YOUR EDIT IS OPEN
-              </p>
-              <h2 className="mt-3 font-serif text-4xl">
-                Nothing saved just yet.
-              </h2>
-              <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-muted-foreground">
-                Save the furniture that feels like home, then return to your
-                collection whenever inspiration strikes.
-              </p>
-              <Link
-                to="/home#shop"
-                className="mt-7 inline-flex rounded-full bg-foreground px-5 py-3 text-sm font-semibold text-background"
-              >
-                Explore collection
-              </Link>
-            </div>
-          </section>
+        {catalogPending ? (
+          <ProductGrid className="mt-10" products={[]} pending skeletons={4} />
+        ) : !savedItems.length ? (
+          <Empty
+            icon={Heart}
+            title="Nothing saved just yet."
+            text="Tap the heart on any piece to keep it here, then return whenever inspiration strikes."
+            cta="Explore the collection"
+            to="/shop"
+            secondary={{ label: "New arrivals", to: "/new-arrivals" }}
+          />
         ) : (
           <>
-            <div className="mt-10 flex items-end justify-between">
+            <div className="mt-12 flex items-end justify-between gap-4">
               <div>
-                <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                <p className="text-[11px] font-bold tracking-[.18em] text-muted-foreground">
                   SAVED COLLECTION
                 </p>
-                <h2 className="mt-2 font-serif text-3xl">
+                <h2 className="mt-2 font-serif text-4xl">
                   Pieces with promise.
                 </h2>
               </div>
-              <p className="hidden text-xs text-muted-foreground sm:block">
+              <p className="hidden text-sm text-muted-foreground sm:block">
                 Move a piece to your bag when the time is right.
               </p>
             </div>
-            <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] items-stretch gap-5">
-              {savedItems.map((p) => (
+            <div className="cc-reveal-grid mt-8 grid grid-cols-1 gap-5 min-[520px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {savedItems.map((p) => {
+                const soldOut = p.stockQuantity === 0;
+                return (
                 <article
                   key={p.id}
-                  className="group flex h-full min-w-0 flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_10px_28px_rgba(35,31,27,.05)]"
+                  ref={(node) => { if (node) cardRefs.current.set(p.id, node); else cardRefs.current.delete(p.id); }}
+                  data-reveal
+                  data-fly-source
+                  className="group flex h-full min-w-0 flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-[var(--shadow-soft)] transition-shadow duration-500 hover:shadow-[var(--shadow-raised)]"
                 >
-                <Link
-                  to={`/products/${p.id}`}
-                    className="relative block aspect-[4/3] overflow-hidden bg-secondary sm:aspect-[5/4]"
-                >
-                  <ResilientImage
-                    src={primaryProductImage(p)}
-                    alt={p.name}
-                      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                  />
-                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/35 to-transparent" />
-                    <span className="absolute left-4 top-4 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold tracking-[.1em] text-foreground">
-                      SAVED
-                    </span>
-                </Link>
-                  <div
-                    className="flex flex-1 flex-col p-5"
+                  <Link
+                    to={`/products/${p.id}`}
+                    className="cc-media relative block aspect-[4/5] overflow-hidden bg-secondary"
                   >
-                  <div>
-                      <p className="text-[10px] font-bold tracking-[.13em] text-muted-foreground">
-                        {p.category.toUpperCase()}
-                      </p>
-                      <h3 className="mt-2 text-lg font-semibold">{p.name}</h3>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {p.color}
-                      </p>
-                      <p className="mt-4 font-serif text-xl">
-                        {money(p.price)}
-                      </p>
-                  </div>
+                    <ResilientImage
+                      src={primaryProductImage(p)}
+                      alt={p.name}
+                      className="h-full w-full object-cover transition duration-[1100ms] ease-[cubic-bezier(.22,1,.36,1)] group-hover:scale-105"
+                    />
+                    {soldOut && <span className="absolute left-4 top-4 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">Sold out</span>}
+                  </Link>
+                  <div className="flex flex-1 flex-col p-5">
+                    <p className="text-[11px] font-bold tracking-[.13em] text-muted-foreground">
+                      {p.category.toUpperCase()}
+                    </p>
+                    <h3 className="mt-2 text-lg font-semibold leading-snug"><Link to={`/products/${p.id}`} className="underline-offset-4 hover:underline">{p.name}</Link></h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{p.color}</p>
+                    <p className="mt-3 font-serif text-2xl tabular-nums">{money(p.price)}</p>
                     <div className="mt-auto flex gap-2 pt-5">
-                    <button
-                        onClick={() => {
-                          add(p.id);
-                          setNotice(`${p.name} added to your bag.`);
-                        }}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-foreground px-3 py-3 text-xs font-semibold text-background"
+                      <button
+                        onClick={() => add(p.id)}
+                        disabled={soldOut}
+                        className="cc-press flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-foreground px-3 text-sm font-semibold text-background hover:bg-[#35322e] disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <ShoppingBag size={15} />
-                        Add to bag
-                    </button>
-                    <button
-                        onClick={() => {
-                          toggle(p.id);
-                          setNotice(`${p.name} removed from your wishlist.`);
-                        }}
+                        {soldOut ? "Sold out" : "Add to bag"}
+                      </button>
+                      <button
+                        onClick={() => void removeSaved(p.id, p.name)}
                         aria-label={`Remove ${p.name} from wishlist`}
-                        className="grid h-10 w-10 place-items-center rounded-xl border border-border transition hover:bg-secondary"
-                    >
-                        <Heart size={16} fill="currentColor" />
-                    </button>
+                        className="cc-press grid h-12 w-12 place-items-center rounded-xl border border-border text-[#9a4f46] hover:bg-secondary"
+                      >
+                        <Heart size={17} fill="currentColor" />
+                      </button>
+                    </div>
                   </div>
-                </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
-        {notice && <Toast message={notice} close={() => setNotice("")} />}
+        {undo && <Toast message={`${undo.name} was removed from your wishlist.`} tone="info" action={{ label: "Undo", onClick: () => toggle(undo.id) }} close={() => setUndo(null)} />}
       </main>
     </Layout>
   );
@@ -852,21 +934,21 @@ export function Checkout() {
       detail: storeSettings.checkout_settings.cod_maximum_order > 0
         ? `Available up to ${money(storeSettings.checkout_settings.cod_maximum_order)}`
         : "Pay when your delivery arrives",
-      icon: "COD",
+      icon: <Banknote size={18} />,
       available: isPaymentMethodAvailable("cod", subtotal, storeSettings.checkout_settings),
     },
     {
       id: "card",
       name: "Debit or credit card",
       detail: "Secure PayMongo checkout",
-      icon: "••••",
+      icon: <CreditCard size={18} />,
       available: isPaymentMethodAvailable("card", subtotal, storeSettings.checkout_settings),
     },
     {
       id: "gcash",
       name: "GCash",
       detail: "Secure PayMongo checkout",
-      icon: "G",
+      icon: <Wallet size={18} />,
       available: isPaymentMethodAvailable("gcash", subtotal, storeSettings.checkout_settings),
     },
   ];
@@ -874,6 +956,9 @@ export function Checkout() {
     if (methods.some((method) => method.id === payment && method.available)) return;
     setPayment(methods.find((method) => method.available)?.id ?? "");
   }, [payment, subtotal, storeSettings.checkout_settings.card_enabled, storeSettings.checkout_settings.cod_enabled, storeSettings.checkout_settings.cod_maximum_order, storeSettings.checkout_settings.gcash_enabled]);
+  const checkoutSteps = ["Bag", "Delivery", "Payment", "Review"];
+  const currentStep = !chosen ? 1 : !payment ? 2 : 3;
+  const [summaryRef, summaryInView] = useInView<HTMLElement>({ threshold: 0.15 }, false);
   const eta = new Date(Date.now() + (deliveryArea?.lead_time_max_days ?? storeSettings.fulfillment_settings.estimated_delivery_days_max) * 86_400_000).toLocaleDateString(
     "en-PH",
     { month: "long", day: "numeric", year: "numeric" },
@@ -913,7 +998,7 @@ export function Checkout() {
         <section className="w-full max-w-[520px] overflow-hidden rounded-[2rem] border border-[#ded7cc] bg-white text-center shadow-[0_28px_80px_rgba(41,38,34,.14)]">
           <div className="bg-[#292622] px-7 py-9 text-[#f7f3eb]">
             <span className="mx-auto block h-12 w-12 animate-spin rounded-full border-[3px] border-white/25 border-t-white" />
-            <p className="mt-6 text-[10px] font-bold tracking-[.2em] text-white/60">
+            <p className="mt-6 text-[11px] font-bold tracking-[.2em] text-white/60">
               CASH ON DELIVERY
             </p>
             <h1 className="mt-3 font-serif text-3xl sm:text-4xl">
@@ -949,7 +1034,7 @@ export function Checkout() {
             <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-white/15 bg-white/10">
               <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-white/25 border-t-white" />
             </div>
-            <p className="mt-6 text-[10px] font-bold tracking-[.2em] text-white/60">
+            <p className="mt-6 text-[11px] font-bold tracking-[.2em] text-white/60">
               SECURE PAYMENT HANDOFF
             </p>
             <h1 className="mt-3 font-serif text-3xl sm:text-4xl">
@@ -967,7 +1052,7 @@ export function Checkout() {
               {["Validate", "Reserve", "Redirect"].map((label, index) => (
                 <div key={label} className="min-w-0">
                   <span
-                    className={`mx-auto grid h-7 w-7 place-items-center rounded-full text-[10px] font-bold ${
+                    className={`mx-auto grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold ${
                       paymentHandoff === "redirecting" || index < 2
                         ? "bg-[#292622] text-white"
                         : "bg-[#ece7df] text-[#777169]"
@@ -979,7 +1064,7 @@ export function Checkout() {
                       index + 1
                     )}
                   </span>
-                  <span className="mt-2 block truncate text-[9px] font-bold tracking-[.08em] text-muted-foreground">
+                  <span className="mt-2 block truncate text-[10px] font-bold tracking-[.08em] text-muted-foreground">
                     {label.toUpperCase()}
                   </span>
                 </div>
@@ -1000,10 +1085,10 @@ export function Checkout() {
         <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-[760px] items-center px-5 py-14">
           <section className="w-full overflow-hidden rounded-[2rem] border border-border bg-card text-center shadow-[0_18px_55px_rgba(35,31,27,.08)]">
             <div className="bg-[#292622] px-7 py-9 text-[#f5f1e9]">
-              <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
-                <Check size={27} />
+              <span className="cc-ring relative mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path className="cc-draw" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
               </span>
-              <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-white/60">
+              <p className="mt-5 text-[11px] font-bold tracking-[.18em] text-white/60">
                 ORDER RECEIVED
               </p>
               <h1 className="mt-2 font-serif text-4xl">
@@ -1020,7 +1105,7 @@ export function Checkout() {
               </p>
               <div className="mt-6 grid gap-3 rounded-2xl bg-secondary p-4 text-left sm:grid-cols-2">
                 <div>
-                  <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                  <p className="text-[11px] font-bold tracking-[.14em] text-muted-foreground">
                     ORDER STATUS
                   </p>
                   <p className="mt-2 text-sm font-semibold">
@@ -1028,7 +1113,7 @@ export function Checkout() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                  <p className="text-[11px] font-bold tracking-[.14em] text-muted-foreground">
                     ESTIMATED DELIVERY
                   </p>
                   <p className="mt-2 text-sm font-semibold">
@@ -1036,7 +1121,7 @@ export function Checkout() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                  <p className="text-[11px] font-bold tracking-[.14em] text-muted-foreground">
                     ORDER REFERENCE
                   </p>
                   <p className="mt-2 text-sm font-semibold">
@@ -1044,7 +1129,7 @@ export function Checkout() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+                  <p className="text-[11px] font-bold tracking-[.14em] text-muted-foreground">
                     ORDER TOTAL
                   </p>
                   <p className="mt-2 text-sm font-semibold">
@@ -1081,7 +1166,7 @@ export function Checkout() {
         <main className="mx-auto grid min-h-[calc(100vh-160px)] max-w-[760px] place-items-center px-5 py-14">
           <section className="w-full rounded-[2rem] border border-border bg-card p-8 text-center shadow-sm" role="status" aria-live="polite">
             <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-[3px] border-border border-t-foreground" />
-            <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">RESTORING CHECKOUT</p>
+            <p className="mt-5 text-[11px] font-bold tracking-[.18em] text-muted-foreground">RESTORING CHECKOUT</p>
             <h1 className="mt-2 font-serif text-4xl">Finding your reserved order.</h1>
             <p className="mt-3 text-sm text-muted-foreground">You will be taken to the remaining payment time automatically.</p>
           </section>
@@ -1126,14 +1211,31 @@ export function Checkout() {
   return (
     <Layout>
       <main className="mx-auto max-w-[1240px] px-4 py-7 sm:px-5 sm:py-10">
-        <nav aria-label="Checkout progress" className="mb-8 rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <ol className="grid grid-cols-4 gap-2">
-            {["Bag", "Delivery", "Payment", "Review"].map((step, index) => <li className="min-w-0" key={step}><div className="flex items-center gap-2"><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-bold ${index === 0 ? "bg-[#e3ecdf] text-[#56714f]" : index < 3 ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>{index === 0 ? <Check size={13} /> : index + 1}</span><span className="hidden truncate text-[10px] font-bold tracking-[.08em] text-muted-foreground sm:block">{step.toUpperCase()}</span></div><span className={`mt-2 block h-1 rounded-full ${index < 3 ? "bg-foreground" : "bg-secondary"}`} /></li>)}
+        <nav aria-label="Checkout progress" className="mb-8 rounded-[1.5rem] border border-border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5">
+          <ol className="grid grid-cols-4 gap-2 sm:gap-3">
+            {checkoutSteps.map((step, index) => {
+              const done = index < currentStep;
+              const current = index === currentStep;
+              return (
+                <li className="min-w-0" key={step} aria-current={current ? "step" : undefined}>
+                  <div className="flex items-center gap-2">
+                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors duration-500 ${done ? "bg-[var(--tone-success-bg)] text-[var(--tone-success-fg)]" : current ? "bg-foreground text-background" : "bg-secondary text-muted-foreground"}`}>
+                      {done ? <Check size={14} strokeWidth={3} className="cc-enter-pop" /> : index + 1}
+                    </span>
+                    <span className={`hidden truncate text-[11px] font-bold tracking-[.08em] sm:block ${current ? "text-foreground" : "text-muted-foreground"}`}>{step.toUpperCase()}</span>
+                  </div>
+                  <span className="mt-2.5 block h-1 overflow-hidden rounded-full bg-secondary">
+                    <span className={`block h-full rounded-full bg-foreground transition-[width] duration-700 ease-[cubic-bezier(.22,1,.36,1)] ${done ? "w-full" : current ? "w-1/2" : "w-0"}`} />
+                  </span>
+                </li>
+              );
+            })}
           </ol>
+          <p className="sr-only" aria-live="polite">Step {currentStep + 1} of 4: {checkoutSteps[currentStep]}</p>
         </nav>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
+            <p className="text-[11px] font-bold tracking-[.18em] text-muted-foreground">
               SECURE CHECKOUT
             </p>
             <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Bring it home.</h1>
@@ -1142,8 +1244,8 @@ export function Checkout() {
             </p>
             <p className="mt-3 text-sm"><Link to="/refunds" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">Read returns & refund policy (opens a new tab)</Link></p>
           </div>
-          <span className="rounded-full bg-[#e3ecdf] px-3 py-2 text-xs font-semibold text-[#56714f]">
-            Supabase-secured checkout
+          <span className="inline-flex items-center gap-2 rounded-full bg-[#e3ecdf] px-3.5 py-2 text-xs font-semibold text-[#56714f]">
+            <LockKeyhole size={13} /> Secure checkout
           </span>
         </div>
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
@@ -1151,7 +1253,7 @@ export function Checkout() {
             <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:rounded-3xl sm:p-6">
               <div className="flex justify-between">
                 <div>
-                  <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                  <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                     01 · SAVED ADDRESS
                   </p>
                   <h2 className="mt-2 text-xl font-semibold">
@@ -1171,7 +1273,8 @@ export function Checkout() {
                     <button
                       key={item.id}
                       onClick={() => setAddress(item.id)}
-                      className={`relative rounded-2xl border p-4 text-left ${address === item.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border"}`}
+                      aria-pressed={address === item.id}
+                      className={`cc-press relative rounded-2xl border p-4 pr-12 text-left transition-colors duration-300 ${address === item.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border hover:border-foreground/40 hover:bg-secondary/40"}`}
                     >
                       <span
                         className={`absolute right-4 top-4 grid h-5 w-5 place-items-center rounded-full border ${address === item.id ? "bg-foreground text-background" : ""}`}
@@ -1181,7 +1284,7 @@ export function Checkout() {
                       <div className="flex gap-2">
                         <b className="text-sm">{item.label}</b>
                         {item.primary && (
-                          <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[9px] font-bold text-[#56714f]">
+                          <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[10px] font-bold text-[#56714f]">
                             DEFAULT
                           </span>
                         )}
@@ -1198,9 +1301,8 @@ export function Checkout() {
                 ) : (
                   <div className="rounded-2xl border border-dashed border-border bg-secondary/40 p-5">
                     <p className="mb-5 text-sm leading-6 text-muted-foreground">
-                      Add a delivery address to continue. It will be stored
-                      securely in your Supabase profile and available for
-                      future orders.
+                      Add a delivery address to continue. It is saved securely
+                      to your CozyCraft account and ready for future orders.
                     </p>
                     <AddressManager
                       notify={(message) => {
@@ -1212,7 +1314,7 @@ export function Checkout() {
               </div>
             </section>
             <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:rounded-3xl sm:p-6">
-              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                 02 · RECIPIENT DETAILS
               </p>
               <h2 className="mt-2 text-xl font-semibold">
@@ -1221,7 +1323,7 @@ export function Checkout() {
               {chosen ? (
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl bg-secondary p-4">
-                    <p className="text-[10px] font-bold tracking-[.1em] text-muted-foreground">
+                    <p className="text-[11px] font-bold tracking-[.1em] text-muted-foreground">
                       MOBILE
                     </p>
                     <p className="mt-2 text-sm font-semibold">
@@ -1229,7 +1331,7 @@ export function Checkout() {
                     </p>
                   </div>
                   <div className="rounded-xl bg-secondary p-4">
-                    <p className="text-[10px] font-bold tracking-[.1em] text-muted-foreground">
+                    <p className="text-[11px] font-bold tracking-[.1em] text-muted-foreground">
                       EMAIL RECEIPT
                     </p>
                     <p className="mt-2 text-sm font-semibold">
@@ -1238,7 +1340,7 @@ export function Checkout() {
                   </div>
                   {deliveryArea && (
                     <div className="rounded-xl bg-[#e3ecdf] p-4 sm:col-span-2">
-                      <p className="text-[10px] font-bold tracking-[.1em] text-[#56714f]">
+                      <p className="text-[11px] font-bold tracking-[.1em] text-[#56714f]">
                         DELIVERY PROMISE · {deliveryArea.name.toUpperCase()}
                       </p>
                       <p className="mt-2 text-sm font-semibold">
@@ -1258,7 +1360,7 @@ export function Checkout() {
               )}
             </section>
             <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:rounded-3xl sm:p-6">
-              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+              <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                 03 · PAYMENT METHOD
               </p>
               <h2 className="mt-2 text-xl font-semibold">Choose how to pay.</h2>
@@ -1268,10 +1370,11 @@ export function Checkout() {
                     key={method.id}
                     disabled={!method.available}
                     onClick={() => {if(method.available){paymentChosenByCustomer.current=true;setPayment(method.id);}}}
-                    className={`flex items-center gap-3 rounded-2xl border p-4 text-left disabled:cursor-not-allowed disabled:opacity-45 ${payment === method.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border"}`}
+                    aria-pressed={payment === method.id}
+                    className={`cc-press flex items-center gap-3 rounded-2xl border p-4 text-left transition-colors duration-300 disabled:cursor-not-allowed disabled:opacity-45 ${payment === method.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border hover:border-foreground/40 hover:bg-secondary/40"}`}
                   >
                     <span
-                      className={`grid h-10 w-10 place-items-center rounded-xl text-xs font-bold ${payment === method.id ? "bg-foreground text-background" : "bg-secondary"}`}
+                      className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl transition-colors duration-300 ${payment === method.id ? "bg-foreground text-background" : "bg-secondary"}`}
                     >
                       {method.icon}
                     </span>
@@ -1292,9 +1395,9 @@ export function Checkout() {
             </section>
             {userId && <div className="rounded-2xl border border-border bg-card p-4 sm:rounded-3xl sm:p-6"><CheckoutVouchers key={userId} userId={userId} requestedId={searchParams.get("voucher")} subtotal={subtotal} selected={selectedVoucher} onSelect={setSelectedVoucher} disabled={placing} revision={voucherRevision}/></div>}
           </div>
-          <aside className="h-fit overflow-hidden rounded-3xl border border-border bg-card shadow-sm xl:sticky xl:top-24">
+          <aside ref={summaryRef} id="checkout-summary" className="h-fit scroll-mt-24 overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-[var(--shadow-soft)] xl:sticky xl:top-24">
             <div className="bg-[#292622] p-6 text-[#f5f1e9]">
-              <p className="text-[10px] font-bold tracking-[.16em] text-white/60">
+              <p className="text-[11px] font-bold tracking-[.16em] text-white/60">
                 ORDER SUMMARY
               </p>
               <h2 className="mt-2 font-serif text-3xl">Your selection.</h2>
@@ -1330,7 +1433,7 @@ export function Checkout() {
                   <span>{deliveryFee > 0 ? money(deliveryFee) : "Free"}</span>
                 </p>
                 {deliveryArea?.free_delivery_minimum !== null && deliveryArea && deliveryArea.free_delivery_minimum > subtotal && (
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     Add {money(deliveryArea.free_delivery_minimum - subtotal)} more for free delivery to {deliveryArea.name}.
                   </p>
                 )}
@@ -1443,8 +1546,9 @@ export function Checkout() {
                   setPlacingPaymentMethod("");
                   setPlacing(false);
                 }}
-                className="mt-6 h-12 w-full rounded-xl bg-foreground text-sm font-semibold text-background disabled:opacity-60"
+                className="cc-press mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-sm font-semibold text-background shadow-[0_10px_24px_rgba(28,27,25,.18)] hover:bg-[#35322e] disabled:opacity-60 disabled:shadow-none"
               >
+                {placing && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" aria-hidden="true" />}
                 {placing
                   ? payment === "cod" ? "Placing COD order…" : "Verifying your checkout…"
                   : !chosen
@@ -1463,15 +1567,33 @@ export function Checkout() {
                 </div>
               )}
               {!notice && checkoutError && <div className="mt-4 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">{checkoutError}</div>}
-              <p className="mt-4 flex gap-2 text-[10px] leading-4 text-muted-foreground">
+              <p className="mt-4 flex gap-2 text-[11px] leading-4 text-muted-foreground">
                 <ShieldCheck size={14} />
-                Your order is securely recorded in Supabase. Online payments
-                are completed on PayMongo and synchronized to the admin workspace.
+                Your order is recorded securely in your CozyCraft account.
+                Online payments are completed on PayMongo; CozyCraft never sees
+                or stores your card details.
               </p>
             </div>
           </aside>
         </div>
       </main>
+      <div
+        aria-hidden={summaryInView || undefined}
+        className={`fixed inset-x-0 bottom-[var(--mobile-store-nav-height)] z-30 flex items-center gap-3 border-t border-border bg-[#fbfaf7]/95 px-4 py-3 shadow-[0_-12px_30px_rgba(35,31,27,.12)] backdrop-blur-xl transition duration-500 ease-[cubic-bezier(.22,1,.36,1)] xl:hidden ${summaryInView ? "pointer-events-none translate-y-[calc(100%+var(--mobile-store-nav-height))] opacity-0" : "translate-y-0 opacity-100"}`}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] text-muted-foreground">{lines.length} {lines.length === 1 ? "piece" : "pieces"} · Total</p>
+          <p className="text-base font-bold tabular-nums">{money(total)}</p>
+        </div>
+        <button
+          type="button"
+          tabIndex={summaryInView ? -1 : undefined}
+          onClick={() => document.getElementById("checkout-summary")?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" })}
+          className="cc-press inline-flex h-12 items-center gap-2 rounded-xl bg-foreground px-5 text-sm font-semibold text-background"
+        >
+          Review & pay <ArrowRight size={15} />
+        </button>
+      </div>
     </Layout>
   );
 }
@@ -1495,7 +1617,7 @@ export function CheckoutErrorBoundary() {
           <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary">
             <ShoppingBag size={21} />
           </span>
-          <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">
+          <p className="mt-5 text-[11px] font-bold tracking-[.18em] text-muted-foreground">
             CHECKOUT PAUSED
           </p>
           <h1 className="mt-2 font-serif text-4xl">

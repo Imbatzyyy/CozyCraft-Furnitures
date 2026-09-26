@@ -36,8 +36,15 @@ alone.
 
 ## Typography
 
-- Body text uses the project sans-serif stack loaded from `src/styles/fonts.css`.
-- Editorial product and campaign headings may use the project serif family.
+- Customer pages use self-hosted variable fonts from `@fontsource-variable`
+  (imported in `src/main.tsx`): **Inter** for body and interface text and
+  **Fraunces** (with optical sizing) for editorial headings. Both are scoped to
+  the storefront through `:root[data-surface="store"]` in
+  `src/styles/storefront.css`; the admin workspace keeps the system stack.
+- Use `font-serif` for display headings. Do not reference font families that
+  are not loaded (for example `font-[Playfair_Display]`).
+- Customer-facing text should not go below 11 px; eyebrow labels use 11 px,
+  bold, uppercase, and generous letter-spacing.
 - Base browser font size is 16 px; do not reduce form controls below 16 px on
   mobile because it can trigger unwanted browser zoom.
 - Eyebrow labels are short, uppercase, and letter-spaced. They introduce a
@@ -58,17 +65,60 @@ alone.
 - Long admin tables require filtering, pagination, or bounded scrolling rather
   than making the entire page excessively long.
 
+## Motion
+
+Motion lives in `src/styles/storefront.css` and
+`src/components/storefront/motion.tsx`. Use the shared tokens instead of
+one-off timings:
+
+| Token | Use |
+| --- | --- |
+| `--ease-out` | Entrances, drawers, reveals |
+| `--ease-in-out` | Exits and collapses |
+| `--dur-1` … `--dur-4` | 160 ms press feedback to 720 ms page-level reveals |
+
+- Overlays (dialogs, drawers, bottom sheets, popovers) mount through
+  `usePresence` and set `data-state` so the `cc-backdrop`, `cc-dialog`,
+  `cc-drawer`, `cc-sheet` and `cc-popover` classes can play both enter and exit.
+  `cc-sheet` is a bottom sheet on phones and a side drawer from tablet up.
+- Sections reveal on scroll with `data-reveal` (optionally `="fade"` or
+  `="scale"`); `RevealObserver` in the storefront layout handles observation.
+- Images fade in once decoded (`ResilientImage` sets `data-loaded`); wrap image
+  frames in `cc-media` for a shimmer while they load, and use `cc-skeleton`
+  blocks instead of spinners while content loads.
+- Product-card images morph into the product page through React Router view
+  transitions (`viewTransition` links and the `cc-product-media` name).
+- Everything respects `prefers-reduced-motion`; never animate layout-critical
+  properties on elements that contain `position: fixed` children.
+
+## Storefront patterns
+
+- **Product cards** show a wishlist heart on the image, quick view and add to
+  bag on hover (a round add button on touch devices), star ratings, and a
+  quiet compare checkbox. Stock badges only appear for scarcity
+  ("Only 3 left", "Sold out").
+- **Adding to the bag** opens the mini-cart drawer; saving to the wishlist flies
+  the product photo to the heart and bumps its badge.
+- **Collection filters** live in the URL so links, refreshes and Back keep the
+  shopper's view.
+- **Sticky mobile action bars** (product, bag, checkout) sit above the tab bar
+  and only appear once the primary action has scrolled away.
+- Customer copy never names infrastructure providers; describe outcomes
+  ("saved securely to your account") instead.
+
 ## Controls and feedback
 
 - Button labels describe the result: `Create product`, `Save address`, or
   `Approve review` rather than a generic `Submit`.
 - Destructive actions require explicit confirmation and identify the affected
-  record.
+  record. Low-risk customer removals (bag rows, wishlist items) may instead be
+  reversible immediately through an Undo toast.
 - Loading states preserve layout with skeletons or an inline progress message.
 - Empty states explain why the area is empty and, when useful, provide the next
   action.
-- Success and error notifications use plain language, can be dismissed, and
-  normally disappear after eight seconds.
+- Success and error notifications use plain language and can be dismissed.
+  Storefront toasts show a tone icon, stay five seconds (seven with an action,
+  eight for errors); admin notifications keep the eight-second default.
 - Disabled controls remain legible and explain unmet requirements when the
   reason is not obvious.
 

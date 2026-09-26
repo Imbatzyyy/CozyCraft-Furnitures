@@ -22,6 +22,8 @@ import {
 import { createPortal } from "react-dom";
 import { HomeCircle } from "./HomeCircle";
 import { ProfileOverview } from "./ProfileOverview";
+import { AccountOverview } from "./AccountOverview";
+import { SlidingIndicator, useSlidingIndicator } from "@/components/storefront/SlidingIndicator";
 import {
   createBrowserRouter,
   Link,
@@ -34,6 +36,9 @@ import {
   Activity,
   ArrowLeft,
   ArrowRight,
+  LayoutGrid,
+  MapPin,
+  Sparkles,
   Archive,
   Bell,
   Boxes,
@@ -154,13 +159,26 @@ import {
   type CustomerDeviceSession,
 } from "@/services/auth/device-session.service";
 
+const accountTabIcons: Record<string, typeof UserRound> = {
+  Overview: LayoutGrid,
+  Profile: UserRound,
+  "Home Circle": Sparkles,
+  Orders: Package,
+  Addresses: MapPin,
+  Payments: CreditCard,
+  "Change password": ShieldCheck,
+  Support: MessageCircle,
+};
+
 const profileTabFromSearch = (search: string) => {
   const requested = new URLSearchParams(search).get("tab")?.toLowerCase();
   if (requested === "security" || requested === "account-security") {
     return "Change password";
   }
+  if (!requested) return new URLSearchParams(search).has("email-change") ? "Profile" : "Overview";
   return (
     [
+      "Overview",
       "Profile",
       "Home Circle",
       "Orders",
@@ -172,7 +190,7 @@ const profileTabFromSearch = (search: string) => {
       (item) =>
         item.toLowerCase().replace(/\s+/g, "-") === requested ||
         item.toLowerCase() === requested,
-    ) ?? "Profile"
+    ) ?? "Overview"
   );
 };
 
@@ -432,7 +450,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+          <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
             SAVED DELIVERY DETAILS
           </p>
           <h2 className="mt-2 font-serif text-3xl">Your addresses.</h2>
@@ -457,7 +475,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
               <div className="flex gap-2">
                 <b className="text-sm">{address.label}</b>
                 {address.primary && (
-                  <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[10px] font-bold text-[#56714f]">
+                  <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[11px] font-bold text-[#56714f]">
                     DEFAULT
                   </span>
                 )}
@@ -516,7 +534,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
         >
           <div className="flex justify-between">
             <div>
-              <p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">
+              <p className="text-[11px] font-bold tracking-[.15em] text-muted-foreground">
                 {draft.id ? "EDIT ADDRESS" : "NEW DELIVERY ADDRESS"}
               </p>
               <h3 className="mt-1 text-lg font-semibold">
@@ -741,6 +759,19 @@ function CustomerProfile() {
   const location = useLocation();
   const passwordMinimum = storeSettings.account_settings.password_minimum_length;
   const [tab, setTab] = useState(() => profileTabFromSearch(location.search));
+  const { containerRef: accountTabsRef, indicatorStyle: accountTabIndicator } = useSlidingIndicator<HTMLDivElement>(tab);
+  const accountPanelRef = useRef<HTMLElement | null>(null);
+  const firstTabRender = useRef(true);
+  useEffect(() => {
+    if (firstTabRender.current) {
+      firstTabRender.current = false;
+      return;
+    }
+    const panel = accountPanelRef.current;
+    if (!panel || typeof panel.animate !== "function" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    panel.animate([{ opacity: 0.35, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 420, easing: "cubic-bezier(.22,1,.36,1)" });
+    if (window.innerWidth < 1024) panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [tab]);
   const requestedOrderId = useMemo(
     () => new URLSearchParams(location.search).get("order") ?? "",
     [location.search],
@@ -1717,6 +1748,7 @@ function CustomerProfile() {
     );
   }
   const tabs = [
+    "Overview",
     "Profile",
     "Home Circle",
     "Orders",
@@ -1995,7 +2027,7 @@ function CustomerProfile() {
                 </button>
               </div>
               <div>
-                <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">
+                <p className="text-[11px] font-bold tracking-[.18em] text-muted-foreground">
                   COZYCRAFT MEMBER
                 </p>
                 <h1 className="mt-1 break-words font-serif text-3xl sm:text-4xl">
@@ -2016,22 +2048,30 @@ function CustomerProfile() {
           </div>
         </section>
         <div className="mt-5 grid gap-5 lg:grid-cols-[250px_1fr]">
-          <aside className="flex h-fit gap-1 overflow-x-auto rounded-[1.25rem] border border-border bg-[#fbfaf7] p-2 shadow-[0_10px_30px_rgba(35,31,27,.035)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:block lg:rounded-[1.75rem] lg:p-3">
-            <p className="hidden px-3 py-2 text-[10px] font-bold tracking-[.16em] text-muted-foreground lg:block">
+          <aside className="cc-no-scrollbar flex h-fit gap-1 overflow-x-auto rounded-[1.25rem] border border-border bg-[#fbfaf7] p-2 shadow-[var(--shadow-soft)] lg:sticky lg:top-24 lg:block lg:rounded-[1.75rem] lg:p-3">
+            <p className="hidden px-3 py-2 text-[11px] font-bold tracking-[.16em] text-muted-foreground lg:block">
               MY ACCOUNT
             </p>
-            {tabs.map((item) => (
-              <button
-                onClick={() => setTab(item)}
-                key={item}
-                className={`flex w-auto shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm transition lg:w-full lg:py-3 ${tab === item ? "bg-foreground font-semibold text-background shadow-sm" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
-              >
-                {item}
-                {item === "Orders" && <span className="text-xs">{customerOrderPagination?.counts.all ?? orders.length}</span>}
-                {item === "Change password" && <ShieldCheck size={14} />}
-                {item === "Support" && <MessageCircle size={14} />}
-              </button>
-            ))}
+            <div ref={accountTabsRef} role="tablist" aria-label="My account sections" className="relative flex shrink-0 gap-1 lg:block">
+              <SlidingIndicator style={accountTabIndicator} className="rounded-xl bg-foreground shadow-sm" />
+              {tabs.map((item) => {
+                const TabIcon = accountTabIcons[item] ?? UserRound;
+                return (
+                  <button
+                    onClick={() => setTab(item)}
+                    key={item}
+                    role="tab"
+                    aria-selected={tab === item}
+                    data-active={tab === item}
+                    className={`relative z-10 flex w-auto shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm transition-colors duration-300 lg:w-full lg:py-3 ${tab === item ? "font-semibold text-background" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+                  >
+                    <TabIcon size={16} className="shrink-0" />
+                    <span className="flex-1">{item === "Change password" ? "Security" : item}</span>
+                    {item === "Orders" && <span className={`rounded-full px-1.5 text-xs tabular-nums ${tab === item ? "bg-white/15" : "bg-secondary"}`}>{customerOrderPagination?.counts.all ?? orders.length}</span>}
+                  </button>
+                );
+              })}
+            </div>
             <div className="flex shrink-0 gap-1 lg:mt-3 lg:block lg:border-t lg:border-border lg:pt-3">
               <Link
                 to="/wishlist"
@@ -2047,13 +2087,25 @@ function CustomerProfile() {
               </Link>
             </div>
           </aside>
-          <section className="min-w-0 min-h-[420px] rounded-[1.25rem] border border-border bg-card p-4 shadow-[0_10px_30px_rgba(35,31,27,.035)] sm:rounded-[1.75rem] sm:p-9 lg:min-h-[560px]">
+          <section ref={accountPanelRef} role="tabpanel" aria-label={tab} className="min-w-0 min-h-[420px] rounded-[1.25rem] border border-border bg-card p-4 shadow-[var(--shadow-soft)] sm:rounded-[1.75rem] sm:p-9 lg:min-h-[560px]">
+            {tab === "Overview" && (
+              <AccountOverview
+                name={first || user || ""}
+                orders={orders}
+                orderCount={customerOrderPagination?.counts.all ?? orders.length}
+                savedProducts={products.filter((product) => saved.includes(product.id))}
+                cartCount={cart.reduce((sum, line) => sum + line.quantity, 0)}
+                addressCount={addresses.length}
+                money={money}
+                openTab={(next) => setTab(next)}
+              />
+            )}
             {userId && <HomeCircle key={userId} userId={userId} active={tab === "Home Circle"} />}
             {tab === "Profile" && (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                    <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                       PERSONAL DETAILS
                     </p>
                     <h2 className="mt-2 font-serif text-3xl">
@@ -2158,11 +2210,11 @@ function CustomerProfile() {
                       <div className="flex items-center justify-between gap-3">
                         <label htmlFor="customer-phone">Phone number</label>
                         {draftPhoneIsVerified ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e3ecdf] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#56714f]">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e3ecdf] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#56714f]">
                             <ShieldCheck size={12} /> Verified
                           </span>
                         ) : phone.trim() ? (
-                          <span className="rounded-full bg-[#f3e5d4] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#8b5c46]">
+                          <span className="rounded-full bg-[#f3e5d4] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#8b5c46]">
                             Verification required
                           </span>
                         ) : null}
@@ -2270,7 +2322,7 @@ function CustomerProfile() {
                     ].map(([label, value]) => (
                       <div key={label}>
                         <p className="font-serif text-2xl">{value}</p>
-                        <p className="mt-1 text-[9px] font-bold uppercase tracking-[.12em] text-muted-foreground">
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-[.12em] text-muted-foreground">
                           {label}
                         </p>
                       </div>
@@ -2308,7 +2360,7 @@ function CustomerProfile() {
               <>
                 {securityView === "setup" ? (
                   <section className="max-w-lg">
-                    <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                    <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                       SET UP PASSWORD
                     </p>
                     <h2 className="mt-2 font-serif text-3xl">
@@ -2340,7 +2392,7 @@ function CustomerProfile() {
                   </section>
                 ) : securityView === "change" ? (
                   <form onSubmit={submitPassword} className="max-w-lg">
-                    <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                    <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                       CHANGE PASSWORD
                     </p>
                     <h2 className="mt-2 font-serif text-3xl">
@@ -2405,7 +2457,7 @@ function CustomerProfile() {
                   </form>
                 ) : (
                   <div className="max-w-lg">
-                    <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                    <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                       ACCOUNT SECURITY
                     </p>
                     <h2 className="mt-2 font-serif text-3xl">
@@ -2499,7 +2551,7 @@ function CustomerProfile() {
                                       {session.browser_label} on {session.device_label}
                                     </p>
                                     {session.is_current && (
-                                      <span className="rounded-full bg-[#dfeadb] px-2 py-1 text-[9px] font-bold uppercase tracking-[.12em] text-[#50674b]">
+                                      <span className="rounded-full bg-[#dfeadb] px-2 py-1 text-[10px] font-bold uppercase tracking-[.12em] text-[#50674b]">
                                         This device
                                       </span>
                                     )}
@@ -2514,7 +2566,7 @@ function CustomerProfile() {
                                       })}
                                   </p>
                                   {!session.is_current && (
-                                    <p className="text-[10px] leading-4 text-muted-foreground/80">
+                                    <p className="text-[11px] leading-4 text-muted-foreground/80">
                                       First seen {new Date(session.signed_in_at).toLocaleDateString("en-PH", {
                                         timeZone: "Asia/Manila",
                                         dateStyle: "medium",
@@ -2553,7 +2605,7 @@ function CustomerProfile() {
                           Sign out all other devices
                         </button>
                       )}
-                      <p className="mt-4 text-[10px] leading-4 text-muted-foreground">
+                      <p className="mt-4 text-[11px] leading-4 text-muted-foreground">
                         For privacy, CozyCraft stores only a general device and browser label. No IP address or full browser fingerprint is saved.
                       </p>
                     </div>
@@ -2571,7 +2623,7 @@ function CustomerProfile() {
               <>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                    <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                       PURCHASE HISTORY
                     </p>
                     <h2 className="mt-2 font-serif text-3xl">Your order center.</h2>
@@ -2612,12 +2664,12 @@ function CustomerProfile() {
                   <section className="mt-5 rounded-2xl border border-[#d8c8ad] bg-[#f7f1e7] p-5 shadow-sm">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-[10px] font-bold tracking-[.16em] text-[#7b684d]">RESTORING RESERVED ORDER</p>
+                        <p className="text-[11px] font-bold tracking-[.16em] text-[#7b684d]">RESTORING RESERVED ORDER</p>
                         <h3 className="mt-2 font-serif text-2xl">
                           #{unloadedPaymentRecovery.orderNumber ?? "Pending payment"}
                         </h3>
                         <p className="mt-2 text-xs leading-5 text-[#75654f]">
-                          Your order is saved in Supabase. Its complete details are still loading, but secure payment can continue now.
+                          Your order is saved to your account. Its complete details are still loading, but secure payment can continue now.
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
@@ -2686,14 +2738,14 @@ function CustomerProfile() {
                           </p>
                           <b className="mt-3 block text-sm">{money(Number(order.total))}</b>
                           {remaining > 0 && (
-                            <span className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[#d8c8ad] bg-[#f7f1e7] px-3 py-2 text-[10px] font-semibold text-[#67563f]">
+                            <span className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[#d8c8ad] bg-[#f7f1e7] px-3 py-2 text-[11px] font-semibold text-[#67563f]">
                               <span className="flex items-center gap-1.5"><Clock size={11} /> Payment reserved</span>
                               <time dateTime={order.payment_expires_at ?? undefined} className="tabular-nums">
                                 {paymentCountdown(remaining)}
                               </time>
                             </span>
                           )}
-                          {order.cancellation_status && <span className={`mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${order.cancellation_status === "pending" ? "bg-[#f2e8d7] text-[#765d3c]" : order.cancellation_status === "approved" ? "bg-[#e5eee1] text-[#45603f]" : "bg-secondary text-muted-foreground"}`}><Clock size={11}/> Cancellation {order.cancellation_status}</span>}
+                          {order.cancellation_status && <span className={`mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize ${order.cancellation_status === "pending" ? "bg-[#f2e8d7] text-[#765d3c]" : order.cancellation_status === "approved" ? "bg-[#e5eee1] text-[#45603f]" : "bg-secondary text-muted-foreground"}`}><Clock size={11}/> Cancellation {order.cancellation_status}</span>}
                         </button>
                         );
                       })}
@@ -2701,7 +2753,7 @@ function CustomerProfile() {
                     <article className="relative z-[1] mb-6 overflow-hidden rounded-2xl border border-border bg-[#fcfbf8] xl:mb-0">
                       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-5">
                         <div>
-                          <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">ORDER DETAILS</p>
+                          <p className="text-[11px] font-bold tracking-[.14em] text-muted-foreground">ORDER DETAILS</p>
                           <h3 className="mt-2 font-serif text-2xl">#{selectedOrder.order_number}</h3>
                           <p className="mt-1 text-xs text-muted-foreground">
                             Placed {new Date(selectedOrder.created_at).toLocaleString("en-PH", {
@@ -2717,7 +2769,7 @@ function CustomerProfile() {
                         <div className="border-b border-[#dfd2bd] bg-[#f7f1e7] p-4 sm:p-5">
                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
-                              <p className="text-[10px] font-bold tracking-[.16em] text-[#7b684d]">PAYMENT RESERVED</p>
+                              <p className="text-[11px] font-bold tracking-[.16em] text-[#7b684d]">PAYMENT RESERVED</p>
                               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                                 <b className="text-sm">Complete your {selectedOrder.payment_method === "gcash" ? "GCash" : "card"} payment</b>
                                 <time
@@ -2776,10 +2828,10 @@ function CustomerProfile() {
                         <div className="border-b border-border bg-gradient-to-b from-[#fcfbf8] to-[#f7f3ec] p-4 sm:p-6">
                           <div className="flex flex-wrap items-end justify-between gap-2">
                             <div>
-                              <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">LIVE ORDER TRACKING</p>
+                              <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">LIVE ORDER TRACKING</p>
                               <h4 className="mt-1 text-base font-semibold">Delivery progress</h4>
                             </div>
-                            <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] font-semibold capitalize text-muted-foreground">Current: {selectedOrder.status}</span>
+                            <span className="rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold capitalize text-muted-foreground">Current: {selectedOrder.status}</span>
                           </div>
                           <div className="relative mt-5 grid gap-0 md:grid-cols-5 md:gap-3">
                             <span className="absolute left-[10%] right-[10%] top-6 hidden h-0.5 bg-[#ddd6cc] md:block" aria-hidden="true" />
@@ -2854,7 +2906,7 @@ function CustomerProfile() {
                               return reviewedOrderItemIds.has(item.id) ? (
                                 <Link
                                   to={reviewProductId ? `/products/${reviewProductId}#reviews` : "#"}
-                                  className="flex items-center gap-1.5 rounded-xl border border-[#78906f]/35 bg-[#e6eee2] px-3 py-2 text-[10px] font-semibold text-[#4e6848] transition hover:bg-[#dce8d7]"
+                                  className="flex items-center gap-1.5 rounded-xl border border-[#78906f]/35 bg-[#e6eee2] px-3 py-2 text-[11px] font-semibold text-[#4e6848] transition hover:bg-[#dce8d7]"
                                 >
                                   <Check size={12} /> Review submitted
                                 </Link>
@@ -2862,12 +2914,12 @@ function CustomerProfile() {
                                 <button
                                   type="button"
                                   onClick={() => openReview({ orderNumber: selectedOrder.order_number, item })}
-                                  className="flex items-center gap-1.5 rounded-xl border border-foreground bg-foreground px-3 py-2 text-[10px] font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                                  className="flex items-center gap-1.5 rounded-xl border border-foreground bg-foreground px-3 py-2 text-[11px] font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                                 >
                                   <Star size={12} /> Write a review
                                 </button>
                               ) : (
-                                <span className="rounded-lg bg-secondary px-3 py-2 text-[10px] text-muted-foreground">
+                                <span className="rounded-lg bg-secondary px-3 py-2 text-[11px] text-muted-foreground">
                                   Product unavailable
                                 </span>
                               );
@@ -2877,13 +2929,13 @@ function CustomerProfile() {
                       </div>
                       <div className="grid gap-4 border-t border-border bg-secondary/45 p-5 sm:grid-cols-2">
                         <div>
-                          <p className="text-[10px] font-bold tracking-[.12em] text-muted-foreground">DELIVER TO</p>
+                          <p className="text-[11px] font-bold tracking-[.12em] text-muted-foreground">DELIVER TO</p>
                           <p className="mt-2 text-xs leading-5">
                             {[selectedOrder.shipping_address.name, selectedOrder.shipping_address.line, selectedOrder.shipping_address.barangay, selectedOrder.shipping_address.city, selectedOrder.shipping_address.province, selectedOrder.shipping_address.postal].filter(Boolean).join(", ")}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold tracking-[.12em] text-muted-foreground">PAYMENT</p>
+                          <p className="text-[11px] font-bold tracking-[.12em] text-muted-foreground">PAYMENT</p>
                           <p className="mt-2 text-xs">
                             {orderPaymentMethodLabel(selectedOrder.payment_method)} · <span className="capitalize">{effectiveOrderPaymentStatus(selectedOrder)}</span>
                           </p>
@@ -2902,7 +2954,7 @@ function CustomerProfile() {
                             <div className="flex min-w-0 items-start gap-3">
                               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-foreground text-background"><FileText size={17}/></span>
                               <div>
-                                <p className="text-[9px] font-bold tracking-[.15em] text-muted-foreground">DELIVERED ORDER</p>
+                                <p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">DELIVERED ORDER</p>
                                 <h4 id="digital-invoice-title" className="mt-1 text-sm font-semibold">Your digital invoice receipt is ready.</h4>
                                 <p className="mt-1 text-[11px] leading-5 text-muted-foreground">A portrait PDF with your items, exact delivery fee, discounts, payment record, and delivery details.</p>
                               </div>
@@ -2976,7 +3028,7 @@ function CustomerProfile() {
             {tab === "Addresses" && <AddressManager notify={setNotice} />}
             {tab === "Payments" && (
               <>
-                <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                   PAYMENT PREFERENCES
                 </p>
                 <h2 className="mt-2 font-serif text-3xl">Ways to pay.</h2>
@@ -2985,7 +3037,7 @@ function CustomerProfile() {
                   Payment availability updates from Store Settings in realtime. Card and GCash details stay on PayMongo’s protected checkout; CozyCraft never stores card numbers.
                 </p>
                 <div className="mt-8 border-t border-border pt-7">
-                  <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">BILLING & INVOICES</p>
+                  <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">BILLING & INVOICES</p>
                   <h3 className="mt-2 font-serif text-2xl">Invoice details.</h3>
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">These details belong only to your account and are protected by database row-level security. Payment credentials are never stored here.</p>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -3006,7 +3058,7 @@ function CustomerProfile() {
             )}
             {tab === "Support" && (
               <>
-                <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                   CARE & SUPPORT
                 </p>
                 <h2 className="mt-2 font-serif text-3xl">
@@ -3026,7 +3078,7 @@ function CustomerProfile() {
                   className="mt-3 min-h-36 w-full rounded-2xl border border-border bg-[#fcfbf8] p-4 text-sm outline-none"
                   placeholder="Include your order number and a short description of your concern."
                 />
-                <p className="mt-1 text-right text-[10px] text-muted-foreground">{ticket.length}/4,000</p>
+                <p className="mt-1 text-right text-[11px] text-muted-foreground">{ticket.length}/4,000</p>
                 <label className="mt-3 grid gap-2 text-xs font-semibold">Evidence (optional, up to 3 files)<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event)=>setTicketFiles(Array.from(event.target.files??[]).slice(0,3))} className="rounded-xl border border-border bg-[#fcfbf8] p-3 font-normal"/></label>
                 <button
                   onClick={async () => {
@@ -3058,7 +3110,7 @@ function CustomerProfile() {
                           {item.status.replace(/_/g, " ")}
                         </Status>
                       </div>
-                      <p className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-muted-foreground">{item.category} · {item.priority} priority</p>
+                      <p className="mt-2 text-[11px] font-bold uppercase tracking-[.12em] text-muted-foreground">{item.category} · {item.priority} priority</p>
                       <p className="mt-2 font-semibold">
                         {item.status === "open"
                           ? "Your concern has been received."
@@ -3112,7 +3164,7 @@ function CustomerProfile() {
                   <ShieldCheck size={20} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-[.18em] text-muted-foreground">
+                  <p className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
                     SECURE VERIFICATION
                   </p>
                   <h2 id="phone-verification-title" className="mt-1 font-serif text-2xl sm:text-3xl">
@@ -3220,7 +3272,7 @@ function CustomerProfile() {
                     ? "Verify and replace number"
                     : "Verify and save number"}
               </button>
-              <p className="mt-4 text-center text-[10px] leading-4 text-muted-foreground">
+              <p className="mt-4 text-center text-[11px] leading-4 text-muted-foreground">
                 CozyCraft will never ask you to share this code with another person.
               </p>
             </form>
@@ -3238,7 +3290,7 @@ function CustomerProfile() {
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#f3e5d4] text-[#8b5c46]">
               <ShieldCheck size={18} />
             </span>
-            <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            <p className="mt-5 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
               ACCOUNT PROTECTION
             </p>
             <h2 id="remove-authenticator-title" className="mt-2 font-serif text-3xl">
@@ -3280,7 +3332,7 @@ function CustomerProfile() {
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-secondary">
               <LogOut size={18} />
             </span>
-            <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            <p className="mt-5 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
               SESSION SECURITY
             </p>
             <h2 id="sign-out-devices-title" className="mt-2 font-serif text-3xl">
@@ -3322,7 +3374,7 @@ function CustomerProfile() {
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-secondary">
               <MonitorSmartphone size={18} />
             </span>
-            <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            <p className="mt-5 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
               DEVICE SECURITY
             </p>
             <h2 id="sign-out-device-title" className="mt-2 font-serif text-3xl">
@@ -3364,7 +3416,7 @@ function CustomerProfile() {
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e3ecdf] text-[#56714f]">
               <Pencil size={18} />
             </span>
-            <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            <p className="mt-5 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
               CONFIRM PROFILE CHANGES
             </p>
             <h2 id="confirm-profile-title" className="mt-2 font-serif text-3xl">
@@ -3417,7 +3469,7 @@ function CustomerProfile() {
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#e3ecdf] text-[#56714f]">
                 <ShieldCheck size={21} />
               </span>
-              <p className="mt-5 text-[10px] font-bold tracking-[.18em] text-white/60">
+              <p className="mt-5 text-[11px] font-bold tracking-[.18em] text-white/60">
                 VERIFY YOUR NEW EMAIL
               </p>
               <h2
@@ -3431,15 +3483,15 @@ function CustomerProfile() {
               <p className="text-sm leading-6 text-muted-foreground">
                 We sent a secure confirmation link to{" "}
                 <strong className="text-foreground">{pendingEmail}</strong>.
-                Your current email remains active until Supabase confirms this
-                change.
+                Your current email remains active until you confirm this
+                change from the new inbox.
               </p>
               <div className="mt-5 rounded-2xl bg-secondary p-4 text-xs leading-5 text-muted-foreground">
                 This screen stays locked while the change is pending. Depending
                 on your security settings, you may also receive a confirmation
                 message at your current email address.
               </div>
-              <p className="mt-3 text-center text-[10px] leading-4 text-muted-foreground">
+              <p className="mt-3 text-center text-[11px] leading-4 text-muted-foreground">
                 Changed your mind? Use the X and ignore the verification email.
               </p>
               {emailCheckMessage && (
@@ -3487,7 +3539,7 @@ function CustomerProfile() {
           <section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+                <p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">
                   PROFILE PICTURE
                 </p>
                 <h2
@@ -3554,7 +3606,7 @@ function CustomerProfile() {
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#f3e5d4] text-[#8b5c46]">
               <LockKeyhole size={19} />
             </span>
-            <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
+            <p className="mt-5 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
               ACCOUNT SECURITY
             </p>
             <h2 className="mt-2 font-serif text-3xl">
@@ -3587,10 +3639,10 @@ function CustomerProfile() {
       {returnOrderId && (
         <div role="dialog" aria-modal="true" aria-labelledby="return-title" className="fixed inset-0 z-[120] grid place-items-center bg-black/55 p-5 backdrop-blur-sm">
           <section className="w-full max-w-lg rounded-3xl bg-card p-7 shadow-2xl">
-            <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">RETURN REQUEST</p><h2 id="return-title" className="mt-2 font-serif text-3xl">Tell us what happened.</h2></div><button onClick={() => setReturnOrderId(null)} className="rounded-full border border-border p-2" aria-label="Close"><X size={16}/></button></div>
+            <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">RETURN REQUEST</p><h2 id="return-title" className="mt-2 font-serif text-3xl">Tell us what happened.</h2></div><button onClick={() => setReturnOrderId(null)} className="rounded-full border border-border p-2" aria-label="Close"><X size={16}/></button></div>
             <label className="mt-5 grid gap-2 text-sm font-semibold">Reason<select value={returnReason} onChange={(event)=>setReturnReason(event.target.value)} className="h-12 rounded-xl border border-border bg-background px-3 font-normal"><option>Changed my mind</option><option>Damaged on arrival</option><option>Wrong item delivered</option><option>Missing parts</option><option>Product differs from description</option><option>Other</option></select></label>
             <label className="mt-4 grid gap-2 text-sm font-semibold">Details<textarea value={returnDetails} onChange={(event)=>setReturnDetails(event.target.value)} rows={4} maxLength={1000} placeholder="Describe the issue and condition of the item…" className="resize-none rounded-xl border border-border bg-background p-3 font-normal"/></label>
-            <label className="mt-4 grid gap-2 text-sm font-semibold">Evidence photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event)=>setReturnFiles(Array.from(event.target.files ?? []).slice(0,3))} className="rounded-xl border border-border p-3 text-xs font-normal"/><span className="text-[10px] font-normal text-muted-foreground">Each image must be 5 MB or less.</span></label>
+            <label className="mt-4 grid gap-2 text-sm font-semibold">Evidence photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event)=>setReturnFiles(Array.from(event.target.files ?? []).slice(0,3))} className="rounded-xl border border-border p-3 text-xs font-normal"/><span className="text-[11px] font-normal text-muted-foreground">Each image must be 5 MB or less.</span></label>
             <div className="mt-6 flex justify-end gap-3"><button onClick={()=>setReturnOrderId(null)} disabled={returnSubmitting} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Cancel</button><button onClick={()=>void submitReturnRequest()} disabled={returnSubmitting || returnDetails.trim().length<10} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{returnSubmitting?"Submitting…":"Submit return"}</button></div>
           </section>
         </div>
@@ -3601,7 +3653,7 @@ function CustomerProfile() {
             <div className="w-full overflow-hidden rounded-[1.75rem] bg-[#fbfaf7] shadow-[0_30px_90px_rgba(0,0,0,.28)]">
               <header className="flex items-start justify-between gap-4 border-b border-border bg-[#eee8de] p-5 sm:p-7">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">DELIVERED PURCHASE · #{reviewTarget.orderNumber}</p>
+                  <p className="text-[11px] font-bold tracking-[.18em] text-muted-foreground">DELIVERED PURCHASE · #{reviewTarget.orderNumber}</p>
                   <h2 id="order-review-title" className="mt-2 font-serif text-3xl sm:text-4xl">How does it feel at home?</h2>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">Your experience helps another customer choose confidently.</p>
                 </div>
@@ -3612,7 +3664,7 @@ function CustomerProfile() {
                   <div className="flex items-center gap-4 lg:block">
                     {reviewTarget.item.image_url ? <ResilientImage src={reviewTarget.item.image_url} alt={reviewTarget.item.product_name} className="h-24 w-24 shrink-0 rounded-2xl object-cover lg:h-auto lg:w-full lg:aspect-square"/> : <span className="grid h-24 w-24 shrink-0 place-items-center rounded-2xl bg-card lg:aspect-square lg:h-auto lg:w-full"><Package size={28}/></span>}
                     <div className="min-w-0 lg:mt-5">
-                      <p className="text-[10px] font-bold tracking-[.14em] text-muted-foreground">YOUR PURCHASE</p>
+                      <p className="text-[11px] font-bold tracking-[.14em] text-muted-foreground">YOUR PURCHASE</p>
                       <h3 className="mt-1 truncate text-base font-semibold lg:whitespace-normal">{reviewTarget.item.product_name}</h3>
                       <p className="mt-1 text-xs text-muted-foreground">Quantity {reviewTarget.item.quantity}</p>
                     </div>
@@ -3634,12 +3686,12 @@ function CustomerProfile() {
                     </div>
                   </fieldset>
                   <label className="mt-6 grid gap-2 text-sm font-semibold">Review title <span className="text-xs font-normal text-muted-foreground">Optional</span><input value={reviewTitle} onChange={(event)=>setReviewTitle(event.target.value.slice(0,120))} className="h-12 rounded-xl border border-border bg-card px-4 font-normal outline-none focus:border-foreground" placeholder="e.g. Beautiful and comfortable"/></label>
-                  <label className="mt-5 grid gap-2 text-sm font-semibold">Your review <span className="text-[#9d5f49]">*</span><textarea value={reviewBody} onChange={(event)=>setReviewBody(event.target.value.slice(0,1200))} className="min-h-32 resize-y rounded-xl border border-border bg-card p-4 font-normal leading-6 outline-none focus:border-foreground" placeholder="How was the quality, comfort, size, assembly, or delivery experience?"/><span className="text-right text-[10px] font-normal text-muted-foreground">{reviewBody.length}/1200</span></label>
+                  <label className="mt-5 grid gap-2 text-sm font-semibold">Your review <span className="text-[#9d5f49]">*</span><textarea value={reviewBody} onChange={(event)=>setReviewBody(event.target.value.slice(0,1200))} className="min-h-32 resize-y rounded-xl border border-border bg-card p-4 font-normal leading-6 outline-none focus:border-foreground" placeholder="How was the quality, comfort, size, assembly, or delivery experience?"/><span className="text-right text-[11px] font-normal text-muted-foreground">{reviewBody.length}/1200</span></label>
                   <div className="mt-5">
-                    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Add real-life photos</p><p className="mt-1 text-xs text-muted-foreground">Up to 2 JPG, PNG, WebP, HEIC, or HEIF images · 5 MB each</p></div><span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-semibold">{reviewPhotos.length}/2</span></div>
+                    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">Add real-life photos</p><p className="mt-1 text-xs text-muted-foreground">Up to 2 JPG, PNG, WebP, HEIC, or HEIF images · 5 MB each</p></div><span className="rounded-full bg-secondary px-3 py-1 text-[11px] font-semibold">{reviewPhotos.length}/2</span></div>
                     <div className="mt-3 grid grid-cols-2 gap-3 sm:flex">
                       {reviewPhotos.map((photo,index)=><div key={photo.preview} className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-secondary sm:h-28 sm:w-28"><img src={photo.preview} alt={`Review upload preview ${index+1}`} className="h-full w-full object-cover"/><button type="button" onClick={()=>removeReviewPhoto(index)} className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-white" aria-label={`Remove review photo ${index+1}`}><Trash2 size={14}/></button></div>)}
-                      {reviewPhotos.length < 2 && <label className="grid aspect-square cursor-pointer place-items-center rounded-2xl border border-dashed border-[#9f978a] bg-card text-center transition hover:bg-secondary sm:h-28 sm:w-28"><span><ImagePlus className="mx-auto" size={22}/><span className="mt-2 block text-[10px] font-semibold">Add photo</span></span><input type="file" accept={PHOTO_ACCEPT} disabled={preparingPhotos} multiple className="sr-only" onChange={(event)=>{void addReviewPhotos(event.target.files);event.target.value="";}}/></label>}
+                      {reviewPhotos.length < 2 && <label className="grid aspect-square cursor-pointer place-items-center rounded-2xl border border-dashed border-[#9f978a] bg-card text-center transition hover:bg-secondary sm:h-28 sm:w-28"><span><ImagePlus className="mx-auto" size={22}/><span className="mt-2 block text-[11px] font-semibold">Add photo</span></span><input type="file" accept={PHOTO_ACCEPT} disabled={preparingPhotos} multiple className="sr-only" onChange={(event)=>{void addReviewPhotos(event.target.files);event.target.value="";}}/></label>}
                     </div>
                   </div>
                   {preparingPhotos && <p role="status" className="mt-4 text-sm leading-6 text-muted-foreground">Preparing your photos on this device…</p>}
@@ -3648,14 +3700,14 @@ function CustomerProfile() {
                     <button type="button" onClick={()=>void submitOrderReview()} disabled={preparingPhotos || reviewSubmitting || reviewRating < 1 || reviewBody.trim().length < 5} className="min-h-12 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45">{reviewSubmitting ? "Publishing your review…" : "Submit review"}</button>
                     <button type="button" onClick={clearReviewDraft} disabled={reviewSubmitting} className="min-h-12 rounded-xl border border-border px-5 text-sm font-semibold disabled:opacity-50">Cancel</button>
                   </div>
-                  <p className="mt-4 text-[10px] leading-5 text-muted-foreground">Only delivered purchases can be reviewed. Your review appears publicly as soon as it is submitted. CozyCraft may hide content later only when it violates our content standards.</p>
+                  <p className="mt-4 text-[11px] leading-5 text-muted-foreground">Only delivered purchases can be reviewed. Your review appears publicly as soon as it is submitted. CozyCraft may hide content later only when it violates our content standards.</p>
                 </div>
               </div>
             </div>
           </section>
         </div>, document.body)}
-      {reviewSuccess && createPortal(<div className="fixed inset-0 z-[330] grid place-items-center bg-[#171614]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="review-success-title"><section className="w-full max-w-md rounded-[1.75rem] bg-[#fbfaf7] p-7 text-center shadow-2xl sm:p-9"><span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e1ecdd] text-[#4e6848]"><Check size={30}/></span><p className="mt-5 text-[10px] font-bold tracking-[.18em] text-muted-foreground">REVIEW PUBLISHED</p><h2 id="review-success-title" className="mt-2 font-serif text-3xl">Thank you for sharing.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Your review for <b className="text-foreground">{reviewSuccess.productName}</b> is now visible to other shoppers.</p><button type="button" onClick={()=>setReviewSuccess(null)} className="mt-7 min-h-12 w-full rounded-xl bg-foreground px-5 text-sm font-semibold text-background">Back to my order</button></section></div>, document.body)}
-      {cancelOrderId && <div className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-cancel-title"><section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"><p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">CANCELLATION REQUEST</p><h2 id="customer-cancel-title" className="mt-2 font-serif text-3xl">Request a review.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Requests are accepted within {storeSettings.fulfillment_settings.cancellation_window_hours} hours of ordering. Your order remains active until an administrator approves it; approved paid orders are safely refunded.</p><label className="mt-5 grid gap-2 text-sm font-semibold">Reason<textarea value={cancelReason} onChange={(event)=>setCancelReason(event.target.value)} minLength={5} maxLength={500} className="min-h-24 rounded-xl border border-border bg-background p-3 font-normal" placeholder="Tell us why you need to cancel" /></label><div className="mt-5 grid gap-3 min-[390px]:grid-cols-2"><button disabled={cancelSubmitting || cancelReason.trim().length < 5} onClick={()=>void submitCancellation()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{cancelSubmitting ? "Sending request…" : "Submit request"}</button><button disabled={cancelSubmitting} onClick={()=>{setCancelOrderId(null);setCancelReason("");}} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button></div></section></div>}
+      {reviewSuccess && createPortal(<div className="fixed inset-0 z-[330] grid place-items-center bg-[#171614]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="review-success-title"><section className="w-full max-w-md rounded-[1.75rem] bg-[#fbfaf7] p-7 text-center shadow-2xl sm:p-9"><span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e1ecdd] text-[#4e6848]"><Check size={30}/></span><p className="mt-5 text-[11px] font-bold tracking-[.18em] text-muted-foreground">REVIEW PUBLISHED</p><h2 id="review-success-title" className="mt-2 font-serif text-3xl">Thank you for sharing.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Your review for <b className="text-foreground">{reviewSuccess.productName}</b> is now visible to other shoppers.</p><button type="button" onClick={()=>setReviewSuccess(null)} className="mt-7 min-h-12 w-full rounded-xl bg-foreground px-5 text-sm font-semibold text-background">Back to my order</button></section></div>, document.body)}
+      {cancelOrderId && <div className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-cancel-title"><section className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"><p className="text-[11px] font-bold tracking-[.16em] text-muted-foreground">CANCELLATION REQUEST</p><h2 id="customer-cancel-title" className="mt-2 font-serif text-3xl">Request a review.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Requests are accepted within {storeSettings.fulfillment_settings.cancellation_window_hours} hours of ordering. Your order remains active until an administrator approves it; approved paid orders are safely refunded.</p><label className="mt-5 grid gap-2 text-sm font-semibold">Reason<textarea value={cancelReason} onChange={(event)=>setCancelReason(event.target.value)} minLength={5} maxLength={500} className="min-h-24 rounded-xl border border-border bg-background p-3 font-normal" placeholder="Tell us why you need to cancel" /></label><div className="mt-5 grid gap-3 min-[390px]:grid-cols-2"><button disabled={cancelSubmitting || cancelReason.trim().length < 5} onClick={()=>void submitCancellation()} className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background disabled:opacity-50">{cancelSubmitting ? "Sending request…" : "Submit request"}</button><button disabled={cancelSubmitting} onClick={()=>{setCancelOrderId(null);setCancelReason("");}} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold">Keep order</button></div></section></div>}
       {confirmSignOut && (
         <ConfirmSignOut
           kind="customer"

@@ -17,13 +17,13 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   font-weight: 750;
   letter-spacing: 0.15em;
   color: #4d6247;
 }
 .finder-hero h1 {
-  font-family: Georgia, serif;
+  font-family: var(--font-serif, Georgia), serif;
   font-size: clamp(2.6rem, 6vw, 4.6rem);
   line-height: 1.04;
   letter-spacing: -0.04em;
@@ -58,11 +58,11 @@
   gap: 1rem;
 }
 .finder-hero-note > span {
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   letter-spacing: 0.15em;
 }
 .finder-hero-note > p {
-  font-family: Georgia, serif;
+  font-family: var(--font-serif, Georgia), serif;
   font-size: 1.8rem !important;
   line-height: 1.4 !important;
 }
@@ -89,7 +89,7 @@
 }
 .finder-form h2,
 .finder-results h2 {
-  font-family: Georgia, serif;
+  font-family: var(--font-serif, Georgia), serif;
   line-height: 1.25;
   font-size: 1.8rem;
   margin: 0.5rem 0;
@@ -199,7 +199,7 @@
   align-items: flex-start;
 }
 .finder-welcome h3 {
-  font-family: Georgia, serif;
+  font-family: var(--font-serif, Georgia), serif;
   font-size: 2rem;
   line-height: 1.3;
   margin: 1rem 0;
@@ -229,7 +229,7 @@
   padding: 0.85rem 0.5rem 1rem;
 }
 .finder-reasons > p {
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   letter-spacing: 0.13em;
   font-weight: 750;
   color: #4d6247;
@@ -356,7 +356,7 @@
   margin: 1rem 0;
 }
 .finder-understood > p {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   letter-spacing: 0.1em;
   font-weight: 700;
   color: #42563b;
@@ -383,4 +383,20 @@
 .finder-note button {
   text-decoration: underline;
   min-height: 40px;
+}
+
+/* Storefront typography: lighter editorial serif, consistent with the site. */
+.finder-hero h1,
+.finder-hero-note > p,
+.finder-results h2,
+.finder-welcome h3,
+.finder-form h2 {
+  font-weight: 400;
+  font-optical-sizing: auto;
+}
+.finder-hero h1 { letter-spacing: -0.025em; }
+.finder-hero { animation: cc-fade-up .7s var(--ease-out, ease) both; }
+.finder-form, .finder-results { animation: cc-fade-up .7s var(--ease-out, ease) .08s both; }
+@media (prefers-reduced-motion: reduce) {
+  .finder-hero, .finder-form, .finder-results { animation: none; }
 }

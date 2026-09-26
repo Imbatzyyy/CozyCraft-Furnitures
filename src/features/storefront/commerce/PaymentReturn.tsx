@@ -99,10 +99,10 @@ const ReturnShell = ({
   compact?: boolean;
 }) => (
   <main className="min-h-dvh bg-[#ebe7df] px-4 py-5 text-[#1f1e1b] sm:px-6 sm:py-8">
-    <div className="mx-auto flex min-h-[calc(100dvh-2.5rem)] max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-[#dcd5ca] bg-[#f9f7f3] shadow-[0_28px_90px_rgba(49,42,34,.12)] sm:min-h-[calc(100dvh-4rem)] sm:rounded-[2.25rem]">
+    <div className="cc-enter-up mx-auto flex min-h-[calc(100dvh-2.5rem)] max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-[#dcd5ca] bg-[#f9f7f3] shadow-[0_28px_90px_rgba(49,42,34,.12)] sm:min-h-[calc(100dvh-4rem)] sm:rounded-[2.25rem]">
       <header className="flex items-center justify-between border-b border-[#ddd7cd] px-5 py-4 sm:px-8 sm:py-5">
         <Logo />
-        <span className="inline-flex items-center gap-2 rounded-full bg-[#ece7df] px-3 py-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#66615a] sm:text-xs">
+        <span className="inline-flex items-center gap-2 rounded-full bg-[#ece7df] px-3 py-2 text-[11px] font-bold uppercase tracking-[.16em] text-[#66615a] sm:text-xs">
           <LockKeyhole size={14} /> Secure payment
         </span>
       </header>
@@ -126,7 +126,7 @@ const RestoringPayment = ({ opening = false }: { opening?: boolean }) => (
       <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#282620] text-white">
         <LoaderCircle className="animate-spin" size={24} />
       </span>
-      <p className="mt-7 text-[10px] font-bold uppercase tracking-[.22em] text-[#777169]">
+      <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
         {opening ? "Opening secure checkout" : "Restoring your payment"}
       </p>
       <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
@@ -558,7 +558,7 @@ export function PaymentReturn() {
           <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#ece7df] text-[#38352f]">
             <LockKeyhole size={24} />
           </span>
-          <p className="mt-7 text-[10px] font-bold uppercase tracking-[.22em] text-[#777169]">
+          <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
             Account check required
           </p>
           <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
@@ -586,10 +586,10 @@ export function PaymentReturn() {
     return (
       <ReturnShell compact>
         <div className="w-full max-w-xl text-center" aria-live="polite">
-          <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#dfe9da] text-[#4e6d47]">
-            <Check size={28} strokeWidth={2.25} />
+          <span className="cc-ring relative mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#dfe9da] text-[#4e6d47]">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path className="cc-draw" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
           </span>
-          <p className="mt-7 text-[10px] font-bold uppercase tracking-[.22em] text-[#64735e]">
+          <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#64735e]">
             Payment confirmed
           </p>
           <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
@@ -617,7 +617,7 @@ export function PaymentReturn() {
           <div className="rounded-[1.75rem] border border-[#d8d0c5] bg-white p-6 shadow-[0_20px_60px_rgba(53,45,36,.08)] sm:p-9">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#777169]">
+                <p className="text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
                   Payment reserved
                 </p>
                 <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
@@ -625,11 +625,11 @@ export function PaymentReturn() {
                 </h1>
                 <p className="mt-4 max-w-lg text-sm leading-6 text-[#6f6a63] sm:text-base">
                   {message ||
-                    "You left PayMongo without completing payment. Your order is saved in Supabase and can be continued here or from another signed-in device."}
+                    "You left PayMongo without completing payment. Your order is saved to your account and can be continued here or from another signed-in device."}
                 </p>
               </div>
               <div className="shrink-0 rounded-2xl bg-[#282620] px-5 py-4 text-white sm:min-w-36 sm:text-center">
-                <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#cbc4b9] sm:justify-center">
+                <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-[#cbc4b9] sm:justify-center">
                   <Clock3 size={14} /> Time left
                 </span>
                 <time
@@ -691,7 +691,7 @@ export function PaymentReturn() {
           </div>
           <p className="mt-5 flex items-start justify-center gap-2 text-center text-xs leading-5 text-[#777169]">
             <LockKeyhole className="mt-0.5 shrink-0" size={14} />
-            The countdown runs on this device only; Supabase stores the actual deadline so refreshing or changing devices does not reset it.
+            The countdown on this screen is for convenience; your reservation deadline is kept securely with your order, so refreshing or changing devices does not reset it.
           </p>
         </div>
       </ReturnShell>
@@ -705,7 +705,7 @@ export function PaymentReturn() {
         <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#eee8df] text-[#6f675e]">
           {isExpired ? <Clock3 size={24} /> : <XCircle size={24} />}
         </span>
-        <p className="mt-7 text-[10px] font-bold uppercase tracking-[.22em] text-[#777169]">
+        <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
           {isExpired ? "Payment window closed" : "Payment check interrupted"}
         </p>
         <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">

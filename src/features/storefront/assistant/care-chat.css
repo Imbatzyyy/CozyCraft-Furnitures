@@ -13,3 +13,21 @@
 @media(min-width:768px){.care-launch{right:1.75rem;bottom:1.75rem}.care-chat-layer{padding:1.75rem}}
 @media(max-width:400px){.care-chat-layer{padding:.5rem}.care-panel{border-radius:1rem}.care-transcript{padding:.875rem}.care-header{padding:.75rem 1rem}.care-message{padding:.875rem}.care-toolbar{padding:.125rem 1rem;gap:.5rem}.care-composer{padding:.75rem}}
 @media(prefers-reduced-motion:reduce){.care-panel *{scroll-behavior:auto!important}}
+
+/* Storefront polish: launcher motion, panel entrance, message rhythm. */
+.care-launch{transition:transform .45s var(--ease-out,ease),opacity .3s ease,box-shadow .3s ease,background-color .3s ease;box-shadow:0 14px 34px #26221c40}
+.care-launch:hover{transform:translateY(-2px) scale(1.04);background:#35332e}
+.care-launch:active{transform:scale(.96)}
+@media(max-width:767px){.care-launch-tucked{transform:translateY(140%) scale(.85);opacity:0;pointer-events:none}}
+.care-chat-backdrop{animation:cc-fade-in .28s var(--ease-out,ease) both}
+.care-panel{transform-origin:bottom right;animation:cc-scale-in .42s var(--ease-out,ease) both;box-shadow:0 30px 90px #1c181440}
+.care-header p{font-family:var(--font-serif);font-weight:420;font-size:1.3rem;letter-spacing:-.01em}
+.care-message{animation:cc-fade-up .45s var(--ease-out,ease) both}
+.care-thinking{display:inline-flex;align-items:center;gap:.25rem;padding:.8rem 1rem;border-radius:1.125rem 1.125rem 1.125rem .375rem;background:#fff;border:1px solid #e0dacd;color:#8d7863;animation:cc-fade-up .35s var(--ease-out,ease) both}
+.care-thinking .cc-typing{display:inline-flex;gap:.3rem}
+.care-suggestions button{transition:background-color .2s ease,border-color .2s ease,transform .15s ease}
+.care-suggestions button:hover{background:#f6f2eb;border-color:#bfb5a4}
+.care-suggestions button:active{transform:scale(.98)}
+.care-composer>div{transition:border-color .2s ease,box-shadow .2s ease}
+.care-composer>div:focus-within{border-color:#8d7863;box-shadow:0 0 0 4px #b8a58d26}
+@media(prefers-reduced-motion:reduce){.care-launch,.care-panel,.care-message,.care-chat-backdrop,.care-thinking{animation:none!important;transition:none!important}}

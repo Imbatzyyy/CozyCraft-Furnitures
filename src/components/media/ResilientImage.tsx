@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { productImageSources } from "@/lib/catalog/responsive-image";
 
 const ERROR_IMAGE_SOURCE =
@@ -9,11 +9,19 @@ export function ResilientImage(
 ) {
   const [didError, setDidError] = useState(false);
   const [originalFallback, setOriginalFallback] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setDidError(false);
     setOriginalFallback(false);
+    setLoaded(false);
   }, [props.src]);
+
+  // Cached images can finish before React attaches onLoad; mark them at once
+  // so the storefront fade-in never hides an image that is already decoded.
+  const markIfComplete = useCallback((node: HTMLImageElement | null) => {
+    if (node?.complete && node.naturalWidth > 0) setLoaded(true);
+  }, []);
 
   const {
     src,
@@ -25,6 +33,7 @@ export function ResilientImage(
     srcSet,
     sizes,
     onError,
+    onLoad,
     optimize = true,
     ...rest
   } = props;
@@ -44,6 +53,7 @@ export function ResilientImage(
             loading={loading}
             decoding={decoding}
             {...rest}
+            data-loaded=""
           />
         </div>
       </div>
@@ -56,11 +66,17 @@ export function ResilientImage(
       srcSet={responsive?.srcSet ?? (originalFallback ? undefined : srcSet)}
       sizes={sizes ?? (responsive ? "(max-width: 768px) 100vw, 60vw" : undefined)}
       alt={alt}
-      className={className}
+      className={`cc-img ${className ?? ""}`}
       style={style}
       loading={loading}
       decoding={decoding}
       {...rest}
+      ref={markIfComplete}
+      data-loaded={loaded ? "" : undefined}
+      onLoad={(event) => {
+        setLoaded(true);
+        onLoad?.(event);
+      }}
       onError={(event) => {
         if (responsive) setOriginalFallback(true);
         else { setDidError(true); onError?.(event); }
