@@ -1977,7 +1977,7 @@ export function ProductCard({ product }: { product: Product }) {
           </span>
         </Link>
         {badge && (
-          <span className={`pointer-events-none absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur ${badge.tone === "warning" ? "bg-[#fbf3e8]/95 text-[#7d5233]" : "bg-white/90 text-muted-foreground"}`}>
+          <span className={`pointer-events-none absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm ${badge.tone === "warning" ? "bg-[#fbf3e8] text-[#7d5233]" : "bg-white/95 text-muted-foreground"}`}>
             {badge.label}
           </span>
         )}
@@ -1986,7 +1986,7 @@ export function ProductCard({ product }: { product: Product }) {
           onClick={toggleSaved}
           aria-pressed={savedNow}
           aria-label={savedNow ? `Remove ${product.name} from wishlist` : `Save ${product.name} to wishlist`}
-          className="cc-press absolute right-2.5 top-2.5 grid h-10 w-10 place-items-center rounded-full bg-white/85 text-foreground shadow-sm backdrop-blur transition hover:bg-white"
+          className="cc-press absolute right-2.5 top-2.5 grid h-10 w-10 place-items-center rounded-full bg-white/90 text-foreground shadow-sm transition hover:bg-white"
         >
           <Heart key={heartPulse} size={17} fill={savedNow ? "currentColor" : "none"} className={`${savedNow ? "text-[#9a4f46]" : ""} ${heartPulse ? "cc-pop" : ""}`} />
         </button>
@@ -1994,7 +1994,7 @@ export function ProductCard({ product }: { product: Product }) {
           <button
             type="button"
             onClick={() => setQuickView(true)}
-            className="cc-press flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/95 text-xs font-semibold text-foreground shadow-md backdrop-blur hover:bg-white"
+            className="cc-press flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/95 text-xs font-semibold text-foreground shadow-md hover:bg-white"
           >
             <Eye size={15} /> Quick view
           </button>

@@ -453,7 +453,7 @@ export function Home() {
               </div>
             </div>
             {slides.length > 1 && (
-              <div className="absolute inset-x-6 bottom-[calc(var(--mobile-store-nav-height)+1.75rem)] flex items-center justify-between gap-6 text-white sm:inset-x-14 md:bottom-10">
+              <div className="absolute inset-x-6 bottom-[calc(var(--mobile-store-nav-height)+1.75rem)] flex items-center justify-between gap-6 text-white sm:left-14 sm:right-28 md:bottom-10">
                 <div className="flex min-w-0 max-w-[calc(100%-4.5rem)] flex-1 items-center gap-4 sm:max-w-none">
                   <span className="font-mono text-[11px] tabular-nums">{String(activeIndex + 1).padStart(2, "0")}</span>
                   <div className="flex max-w-[280px] flex-1 gap-2">
