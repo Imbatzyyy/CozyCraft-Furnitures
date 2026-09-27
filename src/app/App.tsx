@@ -82,6 +82,8 @@ import {
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
 import { prefersReducedMotion } from "@/components/storefront/motion";
+import { adminTitleForPath } from "@/lib/admin/admin-titles";
+import { defaultTicketFilter, ticketFilterStatuses, type TicketFilter } from "@/lib/admin/ticket-filter";
 import { titleForPath } from "@/components/storefront/page-meta";
 import {
   orderRealtimeTarget,
@@ -261,6 +263,11 @@ function App() {
   const [ticketsBusy, setTicketsBusy] = useState(false);
   const [ticketsError, setTicketsError] = useState("");
   const ticketPageRef = useRef(ticketPage); ticketPageRef.current = ticketPage;
+  // Admin inbox filters are applied in the same bounded, paged query.
+  const [ticketFilter, setTicketFilterState] = useState<TicketFilter>(defaultTicketFilter);
+  const ticketFilterRef = useRef(ticketFilter); ticketFilterRef.current = ticketFilter;
+  const adminUserIdRef = useRef(adminUserId); adminUserIdRef.current = adminUserId;
+  const setTicketFilter = useCallback((next: TicketFilter) => { setTicketFilterState(next); setTicketPage(1); }, []);
   const [ordersRealtimeConnected, setOrdersRealtimeConnected] = useState(false);
   const [customerProfiles, setCustomerProfiles] = useState<
     DbCustomerProfile[]
@@ -580,14 +587,21 @@ function App() {
     if (!workspaceScopeCanLoad(requestScope) || requestScope === "customer:guest") return Promise.resolve(null);
     return reads.current.run(`tickets:${requestScope}`, async () => {
       const page = ticketPageRef.current;
+      const filter = requestScope.startsWith("admin:") ? ticketFilterRef.current : defaultTicketFilter;
       setTicketsBusy(true); setTicketsError("");
-      const { data, error, count } = await portalSupabase
+      let query = portalSupabase
         .from("support_tickets")
         .select(
           "id,ticket_number,user_id,order_id,subject,message,status,category,priority,assigned_to,attachment_paths,admin_reply,created_at,updated_at,profiles!support_tickets_user_id_fkey(full_name,email)", {count:"exact"},
-        )
+        );
+      const statuses = ticketFilterStatuses(filter.status);
+      if (statuses) query = query.in("status", statuses);
+      if (filter.priority === "urgent") query = query.in("priority", ["urgent", "high"]);
+      if (filter.owner === "unassigned") query = query.is("assigned_to", null);
+      if (filter.owner === "mine" && adminUserIdRef.current) query = query.eq("assigned_to", adminUserIdRef.current);
+      const { data, error, count } = await query
         .order("created_at", { ascending: false }).order("id", {ascending:false}).range((page-1)*10,page*10-1);
-      if (ordersScopeRef.current !== requestScope || ticketPageRef.current !== page) return null;
+      if (ordersScopeRef.current !== requestScope || ticketPageRef.current !== page || (requestScope.startsWith("admin:") && ticketFilterRef.current !== filter)) return null;
       setTicketsBusy(false);
       if (error) { setTicketsError(error.message); return error.message; }
       setTicketTotal(count ?? 0);
@@ -1144,7 +1158,7 @@ function App() {
   }, [adminPortal, refreshOrders, userId, customerOrderView]);
   useEffect(() => {
     if (workspaceScopeCanLoad(ordersScope) && ordersScope !== "customer:guest") void refreshTickets();
-  }, [ordersScope, refreshTickets, ticketPage]);
+  }, [ordersScope, refreshTickets, ticketPage, ticketFilter]);
 
   useEffect(() => {
     if (!userId) return;
@@ -2302,7 +2316,7 @@ function App() {
     addresses,
     orders,
     customerOrderPagination: orderPagination,
-    ticketPagination: {page:ticketPage,total:ticketTotal,busy:ticketsBusy,error:ticketsError,setPage:setTicketPage},
+    ticketPagination: {page:ticketPage,total:ticketTotal,busy:ticketsBusy,error:ticketsError,setPage:setTicketPage,filter:ticketFilter,setFilter:setTicketFilter},
     ordersRealtimeConnected,
     customerProfiles,
     supportTickets,
@@ -2571,7 +2585,7 @@ function RouteShell() {
   useLayoutEffect(() => {
     const admin = location.pathname.startsWith("/admin");
     document.documentElement.dataset.surface = admin ? "admin" : "store";
-    document.title = admin ? storeName : titleForPath(location.pathname, storeName);
+    document.title = admin ? adminTitleForPath(location.pathname, storeName) : titleForPath(location.pathname, storeName);
   }, [location.pathname, storeName]);
   return (
     <>
@@ -2580,6 +2594,43 @@ function RouteShell() {
     </>
   );
 }
+
+const adminWorkspaceRoutes = [
+  { path: "/admin", lazy: () => adminOperationsRoute("Admin") },
+  { path: "/admin/team", lazy: () => adminTeamRoute("TeamAccessPage") },
+  { path: "/admin/products", lazy: () => adminCatalogRoute("ProductManager") },
+  { path: "/admin/products/new", lazy: () => adminCatalogRoute("ProductManager") },
+  { path: "/admin/categories", lazy: () => adminCatalogRoute("CategoriesPage") },
+  { path: "/admin/inventory", lazy: () => adminCatalogRoute("InventoryPage") },
+  { path: "/admin/orders", lazy: () => adminOperationsRoute("OrdersWorkspacePage") },
+  { path: "/admin/payments", lazy: () => adminOperationsRoute("PaymentsPage") },
+  { path: "/admin/customers", lazy: () => adminOperationsRoute("CustomersPage") },
+  { path: "/admin/member-tiers", lazy: () => adminLoyaltyRoute("MemberTierMonitoringPage") },
+  {
+    path: "/admin/experience",
+    lazy: async () => {
+      const { MerchandisingExperiencePage } = await import(
+        "@/features/admin/merchandising/MerchandisingExperience"
+      );
+      return { Component: MerchandisingExperiencePage };
+    },
+  },
+  {
+    path: "/admin/content",
+    lazy: async () => {
+      const { ContentManagementPage } = await import(
+        "@/features/admin/content/ContentManagement"
+      );
+      return { Component: ContentManagementPage };
+    },
+  },
+  { path: "/admin/reviews", lazy: () => adminOperationsRoute("ReviewsPage") },
+  { path: "/admin/reports", lazy: () => adminOperationsRoute("ReportsPage") },
+  { path: "/admin/system-health", lazy: () => adminOperationsRoute("SystemHealthPage") },
+  { path: "/admin/activity-logs", lazy: () => adminOperationsRoute("ActivityLogsPage") },
+  { path: "/admin/support", lazy: () => adminOperationsRoute("SupportPage") },
+  { path: "/admin/settings", lazy: () => adminTeamRoute("StoreSettingsPage") },
+].map((route) => ({ ...route, errorElement: <RouteErrorBoundary /> }));
 
 const routes = [
   { path: "/", lazy: () => storefrontCatalogRoute("Home") },
@@ -2654,40 +2705,12 @@ const routes = [
   { path: "/profile", lazy: () => storefrontProfileRoute("Profile") },
   { path: "/admin/login", lazy: () => adminShellRoute("AdminLogin") },
   { path: "/admin/setup-account", lazy: () => adminShellRoute("AdminSetupAccount") },
-  { path: "/admin", lazy: () => adminOperationsRoute("Admin") },
-  { path: "/admin/team", lazy: () => adminTeamRoute("TeamAccessPage") },
-  { path: "/admin/products", lazy: () => adminCatalogRoute("ProductManager") },
-  { path: "/admin/products/new", lazy: () => adminCatalogRoute("ProductManager") },
-  { path: "/admin/categories", lazy: () => adminCatalogRoute("CategoriesPage") },
-  { path: "/admin/inventory", lazy: () => adminCatalogRoute("InventoryPage") },
-  { path: "/admin/orders", lazy: () => adminOperationsRoute("OrdersWorkspacePage") },
-  { path: "/admin/payments", lazy: () => adminOperationsRoute("PaymentsPage") },
-  { path: "/admin/customers", lazy: () => adminOperationsRoute("CustomersPage") },
-  { path: "/admin/member-tiers", lazy: () => adminLoyaltyRoute("MemberTierMonitoringPage") },
   {
-    path: "/admin/experience",
-    lazy: async () => {
-      const { MerchandisingExperiencePage } = await import(
-        "@/features/admin/merchandising/MerchandisingExperience"
-      );
-      return { Component: MerchandisingExperiencePage };
-    },
+    // One persistent frame for every protected admin page: security gates,
+    // navigation and header stay mounted while pages change.
+    lazy: () => adminShellRoute("AdminLayout"),
+    children: adminWorkspaceRoutes,
   },
-  {
-    path: "/admin/content",
-    lazy: async () => {
-      const { ContentManagementPage } = await import(
-        "@/features/admin/content/ContentManagement"
-      );
-      return { Component: ContentManagementPage };
-    },
-  },
-  { path: "/admin/reviews", lazy: () => adminOperationsRoute("ReviewsPage") },
-  { path: "/admin/reports", lazy: () => adminOperationsRoute("ReportsPage") },
-  { path: "/admin/system-health", lazy: () => adminOperationsRoute("SystemHealthPage") },
-  { path: "/admin/activity-logs", lazy: () => adminOperationsRoute("ActivityLogsPage") },
-  { path: "/admin/support", lazy: () => adminOperationsRoute("SupportPage") },
-  { path: "/admin/settings", lazy: () => adminTeamRoute("StoreSettingsPage") },
   { path: "*", lazy: () => storefrontCatalogRoute("NotFound") },
 ].map((route) => ({
   ...route,

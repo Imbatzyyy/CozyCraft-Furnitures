@@ -36,11 +36,13 @@ alone.
 
 ## Typography
 
-- Customer pages use self-hosted variable fonts from `@fontsource-variable`
+- Both surfaces use self-hosted variable fonts from `@fontsource-variable`
   (imported in `src/main.tsx`): **Inter** for body and interface text and
-  **Fraunces** (with optical sizing) for editorial headings. Both are scoped to
-  the storefront through `:root[data-surface="store"]` in
-  `src/styles/storefront.css`; the admin workspace keeps the system stack.
+  **Fraunces** (with optical sizing) for editorial headings. They are scoped
+  through `:root[data-surface="store"]` in `src/styles/storefront.css` and
+  `:root[data-surface="admin"]` in `src/styles/admin.css`.
+- Numbers in tables, totals and counters use `adm-num` (tabular, lining
+  figures) so columns line up.
 - Use `font-serif` for display headings. Do not reference font families that
   are not loaded (for example `font-[Playfair_Display]`).
 - Customer-facing text should not go below 11 px; eyebrow labels use 11 px,
@@ -117,10 +119,60 @@ one-off timings:
 - Empty states explain why the area is empty and, when useful, provide the next
   action.
 - Success and error notifications use plain language and can be dismissed.
-  Storefront toasts show a tone icon, stay five seconds (seven with an action,
-  eight for errors); admin notifications keep the eight-second default.
+  Toasts show a tone icon, stay five seconds (seven with an action, eight for
+  errors). Pass an explicit `tone` whenever the caller knows the outcome; in
+  the admin, `useNotice()` does this so failures never look like successes.
 - Disabled controls remain legible and explain unmet requirements when the
   reason is not obvious.
+
+## Admin workspace
+
+The operations workspace shares the brand but is tuned for speed and density.
+Styles live in `src/styles/admin.css`; components in `src/components/admin/`.
+
+- **Frame.** `AdminLayout` (in `features/admin/shell`) is one persistent route
+  that owns security checks, the collapsible sidebar (full or icon rail), the
+  header, the command palette (⌘K), notifications, and keyboard shortcuts.
+  Pages render through its `<Outlet/>`, so navigation never re-runs security
+  checks. Sidebar badges come from a shared, cached attention summary.
+- **Page anatomy.** Every page starts with `PageHeader` (eyebrow, serif
+  title, one-line description, actions) and, when useful, a `StatStrip` of
+  three or four linked metrics. Content sits in `Card` + `CardHeader`.
+- **Tokens.** Use semantic colors: `bg-canvas`, `bg-card`, `bg-subtle`,
+  `bg-inverse`, `bg-brand`, and tone pairs such as
+  `bg-success-soft text-success-ink` (also warning, danger, info). `Pill` and
+  `Status` map states to these tones.
+- **Themes.** Light, dark, or automatic (profile menu or ⌘K). Dark values
+  redefine the shared tokens under `[data-admin-theme="dark"]`, so components
+  written with tokens need no dark-specific classes.
+- **Controls.** `adm-btn` (+ `-primary`, `-danger`, `-ghost`, `-sm`,
+  `-icon`), `adm-input`, `adm-select`, `adm-textarea`, `adm-label`,
+  `adm-chip`, `Switch`, `Segmented` (gliding highlight), `SearchField`
+  (focus with `/`), `ActionMenu`, `CopyButton`, and `Pagination`.
+- **Tables.** `adm-table` gives sticky headers, right-aligned numeric columns
+  (`adm-right adm-num`), sortable headers (`adm-sort`) and selected rows
+  (`data-selected`). Below `md`, tables switch to stacked rows.
+- **Overlays.** `Sheet` (right panel; full-height sheet on phones), `Dialog`,
+  and `confirmAction`/`promptAction` from `components/admin/confirm.tsx`.
+  Never use `window.confirm` or `window.prompt`. Risky actions (deletes,
+  role changes, bulk updates, refunds, marking cash received) must confirm;
+  permanent deletions also require typing a phrase.
+- **Master–detail.** Orders, customers and support show list and detail side
+  by side on large screens and open the detail in a `Sheet` on smaller ones.
+- **Data loading.** Pass `{ keepPrevious: true }` to `useAdminQuery` for
+  paged or filtered views: the last results stay visible with a `BusyBar`
+  while the next page loads, instead of blanking the screen.
+- **Formats.** Use `src/lib/admin/format.ts` (`formatDate`,
+  `formatDateTime`, `relativeTime`, `ageLabel`, `plural`, `humanize`) for
+  Manila-time dates and consistent wording.
+- **Motion.** Admin timings are shorter than the storefront's (`--dur-1…4`
+  are redefined to 110–380 ms). Page content fades up once (`adm-page`,
+  fill-mode `backwards` so fixed children are not trapped), rows flash
+  (`adm-flash`) when live data changes them, and sections expand with
+  `adm-collapse`.
+- **Keyboard.** ⌘K / Ctrl K search and jump, `/` search this page, `?`
+  shortcuts, `G` then a letter to navigate; the order desk adds `J`/`K`, `X`
+  and `P`.
 
 ## Responsive behavior
 

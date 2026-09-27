@@ -107,6 +107,7 @@ import {
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import type { PublicStoreSettings } from "@/lib/settings/store-settings";
+import type { TicketFilter } from "@/lib/admin/ticket-filter";
 import { functionErrorMessage } from "@/lib/shared/function-error";
 import { rankCatalogSearch } from "@/lib/catalog/discovery";
 import {
@@ -384,7 +385,7 @@ export type Store = {
     page: number; status: string; ids: string[]; total: number; counts: Record<string, number>;
     busy: boolean; error: string; setPage: (page: number) => void; setStatus: (status: string) => void;
   };
-  ticketPagination?: { page: number; total: number; busy: boolean; error: string; setPage: (page: number) => void };
+  ticketPagination?: { page: number; total: number; busy: boolean; error: string; setPage: (page: number) => void; filter?: TicketFilter; setFilter?: (filter: TicketFilter) => void };
   ordersRealtimeConnected: boolean;
   customerProfiles: DbCustomerProfile[];
   supportTickets: DbSupportTicket[];
@@ -2166,10 +2167,10 @@ export function ConfirmSignOut({
       aria-modal="true"
       aria-labelledby="signout-title"
       data-state="open"
-      className={`fixed inset-0 z-[100] grid place-items-center bg-black/45 p-5 backdrop-blur-sm ${isAdmin ? "" : "cc-backdrop"}`}
+      className="cc-backdrop fixed inset-0 z-[260] grid place-items-center bg-black/45 p-5 backdrop-blur-sm"
     >
-      <div data-state="open" className={`w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-2xl ${isAdmin ? "" : "cc-dialog"}`}>
-        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#eee8df] text-foreground">
+      <div data-state="open" className="cc-dialog w-full max-w-sm rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-2xl">
+        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-secondary text-foreground">
           <LogOut size={20} />
         </span>
         <p className="mt-5 text-[10px] font-bold tracking-[.16em] text-muted-foreground">
@@ -2186,13 +2187,13 @@ export function ConfirmSignOut({
         <div className="mt-7 flex gap-3">
           <button
             onClick={onCancel}
-            className={`flex-1 rounded-xl border border-border px-4 py-3 text-sm font-semibold ${isAdmin ? "" : "cc-press hover:bg-secondary"}`}
+            className="cc-press flex-1 rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-secondary"
           >
             Stay signed in
           </button>
           <button
             onClick={onConfirm}
-            className={`flex-1 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background ${isAdmin ? "" : "cc-press"}`}
+            className="cc-press flex-1 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
           >
             {isAdmin ? "Log out" : "Sign out"}
           </button>
@@ -2205,14 +2206,14 @@ export function ConfirmSignOut({
 export function Status({ children, text }: { children?: ReactNode; text?: string }) {
   const label = String(children ?? text ?? "Unknown");
   const normalized = label.toLowerCase().replaceAll("_", " ");
-  const tone = ["complete", "active", "paid", "delivered", "resolved", "approved", "verified"].some((value) => normalized.includes(value))
-    ? "bg-[#e3ecdf] text-[#56714f]"
-    : ["cancel", "failed", "declined", "rejected", "refund required"].some((value) => normalized.includes(value))
-      ? "bg-[#f5dfda] text-[#9a4f46]"
+  const tone = ["complete", "active", "paid", "delivered", "resolved", "approved", "verified", "in stock", "visible"].some((value) => normalized.includes(value))
+    ? "bg-success-soft text-success-ink"
+    : ["cancel", "failed", "declined", "rejected", "refund required", "out of stock", "suspended"].some((value) => normalized.includes(value))
+      ? "bg-danger-soft text-danger-ink"
       : ["ship", "packed", "out for delivery", "information"].some((value) => normalized.includes(value))
-        ? "bg-[#e1e8ee] text-[#526b7b]"
-        : ["low", "pending", "process", "progress", "open", "refund pending"].some((value) => normalized.includes(value))
-          ? "bg-[#f3e5d4] text-[#9a6047]"
+        ? "bg-info-soft text-info-ink"
+        : ["low", "pending", "process", "progress", "open", "refund pending", "draft"].some((value) => normalized.includes(value))
+          ? "bg-warning-soft text-warning-ink"
           : "bg-secondary text-muted-foreground";
   return (
     <span
@@ -2255,10 +2256,11 @@ export function Toast({
 }) {
   const [isLeaving, setIsLeaving] = useState(false);
   const closeRef = useRef(close);
-  // The admin workspace keeps its original notification style and timing.
+  // The admin workspace has no bottom navigation, so its toasts sit lower and
+  // show a countdown bar.
   const adminSurface = typeof document !== "undefined" && document.documentElement.dataset.surface === "admin";
   const resolvedTone = tone ?? (toastErrorPattern.test(message) ? "error" : "success");
-  const lifetime = adminSurface ? 8000 : resolvedTone === "error" ? 8000 : action ? 7000 : 5000;
+  const lifetime = resolvedTone === "error" ? 8000 : action ? 7000 : 5000;
 
   useEffect(() => {
     closeRef.current = close;
@@ -2269,7 +2271,7 @@ export function Toast({
 
     const fadeTimer = window.setTimeout(() => {
       setIsLeaving(true);
-    }, adminSurface ? 7200 : lifetime - 400);
+    }, lifetime - 400);
     const dismissTimer = window.setTimeout(() => {
       closeRef.current();
     }, lifetime);
@@ -2278,35 +2280,18 @@ export function Toast({
       window.clearTimeout(fadeTimer);
       window.clearTimeout(dismissTimer);
     };
-  }, [message, lifetime, adminSurface]);
-
-  if (adminSurface) {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className={`fixed bottom-[calc(var(--mobile-store-nav-height)+.75rem)] left-3 right-3 z-[70] flex items-start gap-3 rounded-xl bg-[#201f1d] px-4 py-3 text-sm text-white shadow-xl transition-all duration-700 ease-out md:bottom-6 md:left-auto md:right-6 md:max-w-md md:items-center ${
-          isLeaving ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
-        }`}
-      >
-        <Check size={16} />
-        <span className="min-w-0 flex-1 break-words">{message}</span>
-        <button className="shrink-0" aria-label="Dismiss notification" onClick={close}>
-          <X size={16} />
-        </button>
-      </div>
-    );
-  }
+  }, [message, lifetime]);
 
   const Icon = resolvedTone === "error" ? CircleAlert : resolvedTone === "info" ? Info : Check;
   return (
     <div
       role={resolvedTone === "error" ? "alert" : "status"}
       aria-live={resolvedTone === "error" ? "assertive" : "polite"}
-      className={`cc-enter-pop fixed bottom-[calc(var(--mobile-store-nav-height)+.75rem)] left-3 right-3 z-[170] flex items-center gap-3 rounded-2xl bg-[#201f1d] py-3 pl-3 pr-2 text-sm text-white shadow-[var(--shadow-overlay)] transition-all duration-500 ease-out md:bottom-6 md:left-auto md:right-6 md:w-[420px] ${
+      className={`cc-enter-pop fixed ${adminSurface ? "bottom-3 z-[320] overflow-hidden ring-1 ring-white/10" : "bottom-[calc(var(--mobile-store-nav-height)+.75rem)] z-[170]"} left-3 right-3 flex items-center gap-3 rounded-2xl bg-[#201f1d] py-3 pl-3 pr-2 text-sm text-white shadow-[var(--shadow-overlay)] transition-all duration-500 ease-out md:bottom-6 md:left-auto md:right-6 md:w-[420px] ${
         isLeaving ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
       }`}
     >
+      {adminSurface && <span aria-hidden="true" key={message} className="adm-toast-countdown absolute inset-x-0 bottom-0 h-0.5 origin-left bg-white/30" style={{ animationDuration: `${lifetime}ms` }} />}
       <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${resolvedTone === "error" ? "bg-[#6b3a31] text-[#f7d2c6]" : resolvedTone === "info" ? "bg-white/10" : "bg-[#3d4a37] text-[#cfe2c6]"}`}>
         <Icon size={16} />
       </span>

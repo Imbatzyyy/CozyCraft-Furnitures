@@ -1,4 +1,5 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { applyAdminTheme } from "@/lib/admin/admin-theme";
 import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import { DialogAccessibility } from "./components/DialogAccessibility";
@@ -6,9 +7,11 @@ import "@fontsource-variable/fraunces/opsz.css";
 import "@fontsource-variable/inter/wght.css";
 import "./styles/index.css";
 
-// Storefront typography and motion are scoped to customer pages; the admin
-// workspace keeps its own look. RouteShell keeps this in sync on navigation.
+// Storefront and admin styles are scoped by surface. RouteShell keeps this in
+// sync on navigation.
 document.documentElement.dataset.surface = window.location.pathname.startsWith("/admin") ? "admin" : "store";
+// Admin light/dark preference is applied before first paint to avoid a flash.
+applyAdminTheme();
 
 const preferredTextSize = localStore.getItem("cozycraft-text-size-v1");
 document.documentElement.style.fontSize = preferredTextSize === "large" ? "20px" : preferredTextSize === "comfortable" ? "18px" : "16px";

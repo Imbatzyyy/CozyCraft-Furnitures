@@ -4,7 +4,13 @@ import { ADMIN_DATA_CHANGED } from "@/lib/admin/workspace-events";
 import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
 import { watchVisibleRecovery } from "@/lib/shared/visible-recovery";
 
-export function useAdminQuery<T>(name: string, params: Record<string, unknown>, enabled: boolean, identity: string | null) {
+/**
+ * Loads one admin read model. With `keepPrevious`, the last result for the
+ * same signed-in identity stays on screen while new filters or pages load
+ * (flagged by `refreshing`), so views never blank out between requests.
+ * Results are never shown across identities.
+ */
+export function useAdminQuery<T>(name: string, params: Record<string, unknown>, enabled: boolean, identity: string | null, options: { keepPrevious?: boolean } = {}) {
   const key = JSON.stringify(params);
   const [data, setData] = useState<T | null>(null);
   const [loadedKey, setLoadedKey] = useState("");
@@ -48,5 +54,7 @@ export function useAdminQuery<T>(name: string, params: Record<string, unknown>, 
     };
   }, [name, key, enabled, identity]);
   const current = enabled && loadedKey === `${identity}:${key}`;
-  return { data: current ? data : null, error, loading: loading || (!current && !error), reload };
+  const sameIdentity = enabled && loadedKey.startsWith(`${identity}:`);
+  const visible = current || (options.keepPrevious && sameIdentity) ? data : null;
+  return { data: visible, error, loading: loading || (!current && !error), refreshing: Boolean(visible) && !current, reload };
 }

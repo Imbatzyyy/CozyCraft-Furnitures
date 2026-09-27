@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Bell, Check, MapPin, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Bell, MapPin, Plus, RefreshCw, Search, SearchX, Sparkles, Trash2, Truck } from "lucide-react";
 import { AdminShell } from "@/features/admin/shell/AdminShell";
-import { useStore } from "@/app/core";
-import { supabase } from "@/services/supabase/client";
+import { money, useStore, Toast } from "@/app/core";
+import { adminSupabase as supabase } from "@/services/supabase/client";
+import { ResilientImage } from "@/components/media/ResilientImage";
+import { primaryProductImage } from "@/lib/catalog/product-images";
+import { plural, relativeTime } from "@/lib/admin/format";
+import { confirmAction } from "@/components/admin/confirm";
+import { Card, CardHeader, EmptyState, PageHeader, Pill, StatStrip, Switch, useNotice } from "@/components/admin/ui";
 import {
   clearExperienceConfigCache,
   type SearchSynonym,
@@ -30,7 +35,10 @@ export function MerchandisingExperiencePage() {
   const [alerts, setAlerts] = useState<ProductAlertRow[]>([]);
   const [searches, setSearches] = useState<SearchEventRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState("");
+  const { notice, notify, clear } = useNotice();
+  const setNotice = (message: string) => { if (message) notify(message, /could ?n|failed|error|denied|violates|permission/i.test(message) ? "error" : "success"); };
+  const termRef = useRef<HTMLInputElement>(null);
+  const [savingArea, setSavingArea] = useState<number | null>(null);
   const [newTerm, setNewTerm] = useState("");
   const [newSynonyms, setNewSynonyms] = useState("");
 
@@ -88,7 +96,7 @@ export function MerchandisingExperiencePage() {
   }, [searches]);
 
   const saveArea = async (area: DeliveryServiceArea) => {
-    setNotice("");
+    setSavingArea(area.id);
     const { error } = await supabase.from("delivery_service_areas").update({
       name: area.name,
       description: area.description,
@@ -100,6 +108,7 @@ export function MerchandisingExperiencePage() {
       active: area.active,
       updated_at: new Date().toISOString(),
     }).eq("id", area.id);
+    setSavingArea(null);
     setNotice(error?.message ?? `${area.name} delivery settings saved.`);
     if (!error) clearExperienceConfigCache();
   };
@@ -114,20 +123,152 @@ export function MerchandisingExperiencePage() {
   };
 
   const removeSynonym = async (id: number) => {
+    const entry = synonyms.find((item) => item.id === id);
+    const confirmed = await confirmAction({ title: `Remove “${entry?.term ?? "this term"}”?`, description: "Customers searching these alternative names may no longer find matching products.", confirmLabel: "Remove", tone: "danger" });
+    if (!confirmed) return;
     const { error } = await supabase.from("search_synonyms").delete().eq("id", id);
     setNotice(error?.message ?? "Search language removed.");
     if (!error) { clearExperienceConfigCache(); setSynonyms((current) => current.filter((item) => item.id !== id)); }
   };
 
-  return <AdminShell title="Merchandising & experience"><main className="mx-auto max-w-[1500px] p-5 lg:p-8">
-    <header className="flex flex-col gap-4 border-b border-border pb-7 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-bold tracking-[.18em] text-muted-foreground">CUSTOMER EXPERIENCE CONTROL</p><h1 className="mt-3 font-serif text-4xl sm:text-5xl">Merchandising & experience</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Manage delivery promises and discovery language, then use saved customer intent to make better catalog decisions.</p></div><button type="button" onClick={() => void load()} disabled={loading} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 text-xs font-semibold disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""}/>Refresh insights</button></header>
-    {notice && <div role="status" className="mt-5 flex items-center gap-2 rounded-xl bg-[#e7eee3] px-4 py-3 text-xs font-semibold text-[#50664b]"><Check size={15}/>{notice}</div>}
-    <section className="mt-7 grid gap-4 sm:grid-cols-3"><article className="rounded-2xl border border-border bg-card p-5"><Bell size={18}/><p className="mt-4 text-3xl font-serif">{alerts.length}</p><p className="mt-1 text-xs text-muted-foreground">Active stock and price alerts</p></article><article className="rounded-2xl border border-border bg-card p-5"><Search size={18}/><p className="mt-4 text-3xl font-serif">{searches.length}</p><p className="mt-1 text-xs text-muted-foreground">Deduplicated searches · last 30 days</p></article><article className="rounded-2xl border border-border bg-card p-5"><MapPin size={18}/><p className="mt-4 text-3xl font-serif">{areas.filter((area) => area.active).length}</p><p className="mt-1 text-xs text-muted-foreground">Active delivery service areas</p></article></section>
-    <div className="mt-7 grid gap-7 xl:grid-cols-[1.2fr_.8fr]">
-      <section className="rounded-2xl border border-border bg-card"><header className="border-b border-border p-5"><h2 className="text-lg font-semibold">Delivery promises</h2><p className="mt-1 text-xs text-muted-foreground">Changes appear on product pages after the short configuration cache expires.</p></header><div className="divide-y divide-border">{areas.map((area) => <article key={area.id} className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4"><label className="grid gap-1 text-[10px] font-bold text-muted-foreground sm:col-span-2">AREA<input value={area.name} onChange={(event) => setAreas((current) => current.map((item) => item.id === area.id ? { ...item, name: event.target.value } : item))} className="h-10 rounded-xl border border-border px-3 text-xs font-normal text-foreground"/></label><label className="grid gap-1 text-[10px] font-bold text-muted-foreground">FEE<input type="number" min="0" value={area.delivery_fee} onChange={(event) => setAreas((current) => current.map((item) => item.id === area.id ? { ...item, delivery_fee: Number(event.target.value) } : item))} className="h-10 rounded-xl border border-border px-3 text-xs font-normal text-foreground"/></label><label className="grid gap-1 text-[10px] font-bold text-muted-foreground">FREE FROM<input type="number" min="0" value={area.free_delivery_minimum ?? ""} onChange={(event) => setAreas((current) => current.map((item) => item.id === area.id ? { ...item, free_delivery_minimum: event.target.value ? Number(event.target.value) : null } : item))} className="h-10 rounded-xl border border-border px-3 text-xs font-normal text-foreground"/></label><label className="grid gap-1 text-[10px] font-bold text-muted-foreground">MIN DAYS<input type="number" min="0" max="60" value={area.lead_time_min_days} onChange={(event) => setAreas((current) => current.map((item) => item.id === area.id ? { ...item, lead_time_min_days: Number(event.target.value) } : item))} className="h-10 rounded-xl border border-border px-3 text-xs font-normal text-foreground"/></label><label className="grid gap-1 text-[10px] font-bold text-muted-foreground">MAX DAYS<input type="number" min={area.lead_time_min_days} max="90" value={area.lead_time_max_days} onChange={(event) => setAreas((current) => current.map((item) => item.id === area.id ? { ...item, lead_time_max_days: Number(event.target.value) } : item))} className="h-10 rounded-xl border border-border px-3 text-xs font-normal text-foreground"/></label><label className="flex items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={area.assembly_available} onChange={(event) => setAreas((current) => current.map((item) => item.id === area.id ? { ...item, assembly_available: event.target.checked } : item))}/>Assembly available</label><button type="button" onClick={() => void saveArea(area)} className="h-10 rounded-xl bg-foreground px-4 text-xs font-semibold text-background">Save area</button></article>)}</div></section>
-      <section className="rounded-2xl border border-border bg-card"><header className="border-b border-border p-5"><h2 className="text-lg font-semibold">Search language</h2><p className="mt-1 text-xs text-muted-foreground">Help customers find products with familiar alternative names.</p></header><form onSubmit={addSynonym} className="grid gap-3 border-b border-border p-5"><input value={newTerm} onChange={(event) => setNewTerm(event.target.value)} placeholder="Catalog term, e.g. ottoman" className="h-10 rounded-xl border border-border px-3 text-xs"/><input value={newSynonyms} onChange={(event) => setNewSynonyms(event.target.value)} placeholder="Synonyms separated by commas" className="h-10 rounded-xl border border-border px-3 text-xs"/><button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-foreground text-xs font-semibold text-background"><Plus size={14}/>Add search language</button></form><div className="max-h-[520px] divide-y divide-border overflow-y-auto">{synonyms.map((entry) => <div key={entry.id} className="flex items-start gap-3 p-4"><Sparkles size={15} className="mt-0.5 shrink-0"/><div className="min-w-0 flex-1"><p className="text-xs font-semibold">{entry.term}</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">{entry.synonyms.join(" · ")}</p></div><button type="button" onClick={() => void removeSynonym(entry.id)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-secondary" aria-label={`Remove ${entry.term}`}><Trash2 size={14}/></button></div>)}</div></section>
-    </div>
-    <div className="mt-7 grid gap-7 lg:grid-cols-2"><section className="rounded-2xl border border-border bg-card p-5"><h2 className="text-lg font-semibold">Products customers are watching</h2><p className="mt-1 text-xs text-muted-foreground">Prioritize replenishment and promotions using durable customer intent.</p><div className="mt-4 divide-y divide-border">{alertDemand.length ? alertDemand.map((item) => <div key={item.productId} className="grid grid-cols-[1fr_auto] gap-3 py-3"><div><p className="text-xs font-semibold">{item.product?.name ?? "Unavailable product"}</p><p className="mt-1 text-[10px] text-muted-foreground">{item.product?.subcategory ?? item.product?.category ?? item.productId}</p></div><div className="text-right text-[10px] text-muted-foreground"><p className="font-semibold text-foreground">{item.total} alerts</p><p>{item.back} stock · {item.price} price</p></div></div>) : <p className="py-8 text-center text-xs text-muted-foreground">No customer alerts yet.</p>}</div></section><section className="rounded-2xl border border-border bg-card p-5"><h2 className="text-lg font-semibold">Search opportunities</h2><p className="mt-1 text-xs text-muted-foreground">Zero-result terms come first so the catalog team can add synonyms or products.</p><div className="mt-4 divide-y divide-border">{searchDemand.length ? searchDemand.map((item) => <div key={item.query} className="flex items-center justify-between gap-3 py-3"><div><p className="text-xs font-semibold">“{item.query}”</p><p className="mt-1 text-[10px] text-muted-foreground">Last searched {new Date(item.latest).toLocaleDateString("en-PH")}</p></div><div className="text-right text-[10px]"><p className={item.zero ? "font-semibold text-[#8b5c46]" : "font-semibold text-[#56714f]"}>{item.zero} zero-result</p><p className="mt-1 text-muted-foreground">{item.count} searches</p></div></div>) : <p className="py-8 text-center text-xs text-muted-foreground">Search insights will appear after signed-in customers search.</p>}</div></section></div>
-    <p className="mt-6 text-center text-[10px] text-muted-foreground">Analytics refresh when this page opens, regains focus, or you choose Refresh. No continuous polling is used, protecting database egress.</p>
-  </main></AdminShell>;
+  const updateArea = (id: number, patch: Partial<DeliveryServiceArea>) => setAreas((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  const productFor = (id: string) => adminProducts.find((product) => product.id === id);
+  const zeroResults = searchDemand.filter((item) => item.zero > 0).length;
+
+  return (
+    <AdminShell title="Merchandising & experience">
+      <PageHeader
+        eyebrow="Customer experience"
+        title="Merchandising"
+        description="Manage delivery promises and search language, then use saved customer intent to make better catalog decisions."
+        actions={<button type="button" onClick={() => void load()} disabled={loading} className="adm-btn"><RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh insights</button>}
+      >
+        <StatStrip
+          loading={loading && !areas.length}
+          items={[
+            { label: "Watched products", value: alertDemand.length, note: `${plural(alerts.length, "active alert")} for stock or price`, icon: Bell },
+            { label: "Searches · 30 days", value: searches.length, note: "Recent customer searches", icon: Search },
+            { label: "Zero-result terms", value: zeroResults, note: "Searches that found nothing", icon: SearchX, tone: zeroResults ? "warning" : "neutral" },
+            { label: "Delivery areas", value: areas.filter((area) => area.active).length, note: "Active service areas", icon: MapPin },
+          ]}
+        />
+      </PageHeader>
+      <div className="grid gap-5 xl:grid-cols-[1.25fr_.75fr] xl:items-start">
+        <Card className="overflow-hidden">
+          <CardHeader eyebrow="Delivery promises" title="Service areas" description="Shown on product pages after the short configuration cache refreshes." />
+          {areas.length === 0 ? (
+            <EmptyState icon={Truck} title={loading ? "Loading delivery areas…" : "No delivery areas configured."} compact />
+          ) : (
+            <div className="divide-y divide-border">
+              {areas.map((area) => (
+                <form key={area.id} onSubmit={(event) => { event.preventDefault(); void saveArea(area); }} className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
+                  <label className="adm-label sm:col-span-2">
+                    Area name
+                    <input value={area.name} onChange={(event) => updateArea(area.id, { name: event.target.value })} className="adm-input font-normal" />
+                  </label>
+                  <label className="adm-label">
+                    Delivery fee
+                    <input type="number" min="0" value={area.delivery_fee} onChange={(event) => updateArea(area.id, { delivery_fee: Number(event.target.value) })} className="adm-input adm-num font-normal" />
+                  </label>
+                  <label className="adm-label">
+                    Free from
+                    <input type="number" min="0" value={area.free_delivery_minimum ?? ""} placeholder="No minimum" onChange={(event) => updateArea(area.id, { free_delivery_minimum: event.target.value ? Number(event.target.value) : null })} className="adm-input adm-num font-normal" />
+                  </label>
+                  <label className="adm-label">
+                    Lead time from
+                    <span className="relative block"><input type="number" min="0" max="60" value={area.lead_time_min_days} onChange={(event) => updateArea(area.id, { lead_time_min_days: Number(event.target.value) })} className="adm-input adm-num pr-12 font-normal" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">days</span></span>
+                  </label>
+                  <label className="adm-label">
+                    Lead time to
+                    <span className="relative block"><input type="number" min={area.lead_time_min_days} max="90" value={area.lead_time_max_days} onChange={(event) => updateArea(area.id, { lead_time_max_days: Number(event.target.value) })} className="adm-input adm-num pr-12 font-normal" /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">days</span></span>
+                  </label>
+                  <div className="grid gap-2 sm:col-span-2 lg:col-span-4 sm:grid-cols-2">
+                    <Switch label="In-home assembly" description="Offered in this area" checked={area.assembly_available} onChange={(value) => updateArea(area.id, { assembly_available: value })} className="!p-3" />
+                    <Switch label="Area active" description="Shown on product pages" checked={area.active} onChange={(value) => updateArea(area.id, { active: value })} className="!p-3" />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 sm:col-span-2 lg:col-span-4">
+                    <span className="text-[11px] text-muted-foreground">{money(area.delivery_fee)} · {area.lead_time_min_days}–{area.lead_time_max_days} days{area.free_delivery_minimum ? ` · free from ${money(area.free_delivery_minimum)}` : ""}</span>
+                    <button type="submit" disabled={savingArea === area.id} className="adm-btn adm-btn-primary adm-btn-sm">{savingArea === area.id ? "Saving…" : "Save area"}</button>
+                  </div>
+                </form>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card className="overflow-hidden">
+          <CardHeader eyebrow="Search language" title="Alternative names" description="Help customers find products using the words they already know." />
+          <form onSubmit={addSynonym} className="grid gap-2.5 border-b border-border p-4 sm:p-5">
+            <input ref={termRef} value={newTerm} onChange={(event) => setNewTerm(event.target.value)} placeholder="Catalog term, e.g. ottoman" aria-label="Catalog term" className="adm-input font-normal" />
+            <input value={newSynonyms} onChange={(event) => setNewSynonyms(event.target.value)} placeholder="Synonyms, separated by commas" aria-label="Synonyms" className="adm-input font-normal" />
+            <button disabled={newTerm.trim().length < 2 || !newSynonyms.trim()} className="adm-btn adm-btn-primary"><Plus size={14} /> Add search language</button>
+          </form>
+          {synonyms.length ? (
+            <ul className="max-h-[440px] divide-y divide-border overflow-y-auto">
+              {synonyms.map((entry) => (
+                <li key={entry.id} className="flex items-start gap-3 px-4 py-3 sm:px-5">
+                  <Sparkles size={14} className="mt-1 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold">{entry.term}</p>
+                    <p className="mt-1 flex flex-wrap gap-1">{entry.synonyms.map((word) => <Pill key={word} tone="neutral">{word}</Pill>)}</p>
+                  </div>
+                  <button type="button" onClick={() => void removeSynonym(entry.id)} className="adm-btn adm-btn-ghost adm-btn-icon adm-btn-sm" aria-label={`Remove ${entry.term}`}><Trash2 size={14} /></button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState icon={Sparkles} title="No search language yet." description="Add alternative names above." compact />
+          )}
+        </Card>
+      </div>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <Card className="overflow-hidden">
+          <CardHeader eyebrow="Customer intent" title="Products customers are watching" description="Back-in-stock and price-drop alerts — prioritize restocks and promotions." />
+          {alertDemand.length ? (
+            <ul className="divide-y divide-border">
+              {alertDemand.map((item) => {
+                const product = productFor(item.productId);
+                return (
+                  <li key={item.productId} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                    <span className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-secondary">{product && <ResilientImage src={primaryProductImage(product)} alt="" className="h-full w-full object-cover" />}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold">{item.product?.name ?? "Unavailable product"}</p>
+                      <p className="text-[11px] text-muted-foreground">{item.back} back-in-stock · {item.price} price-drop</p>
+                    </div>
+                    <Pill tone="warning" className="adm-num">{plural(item.total, "alert")}</Pill>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <EmptyState icon={Bell} title="No customer alerts yet." description="Alerts appear when shoppers ask to be notified." compact />
+          )}
+        </Card>
+        <Card className="overflow-hidden">
+          <CardHeader eyebrow="Search opportunities" title="What customers search for" description="Zero-result terms come first — add a synonym or a product to close the gap." />
+          {searchDemand.length ? (
+            <ul className="divide-y divide-border">
+              {searchDemand.map((item) => (
+                <li key={item.query} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${item.zero ? "bg-warning-soft text-warning-ink" : "bg-secondary text-muted-foreground"}`}>{item.zero ? <SearchX size={15} /> : <Search size={15} />}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold">“{item.query}”</p>
+                    <p className="text-[11px] text-muted-foreground">{plural(item.count, "search", "searches")} · {relativeTime(item.latest).toLowerCase()}</p>
+                  </div>
+                  {item.zero ? (
+                    <button type="button" onClick={() => { setNewSynonyms(item.query); termRef.current?.focus(); termRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }} className="adm-btn adm-btn-sm">Add synonym</button>
+                  ) : (
+                    <Pill tone="success">Found results</Pill>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState icon={Search} title="No search insights yet." description="They appear after signed-in customers search." compact />
+          )}
+        </Card>
+      </div>
+      <p className="mt-5 text-center text-[11px] text-muted-foreground">Insights refresh when this page opens, regains focus, or you choose Refresh — no constant polling.</p>
+      {notice && <Toast message={notice.message} tone={notice.tone} close={clear} action={notice.action} />}
+    </AdminShell>
+  );
 }

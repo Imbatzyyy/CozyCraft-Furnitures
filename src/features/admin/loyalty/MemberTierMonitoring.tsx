@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownRight,
@@ -9,7 +9,6 @@ import {
   CircleDollarSign,
   Gift,
   RefreshCw,
-  Search,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -17,7 +16,7 @@ import { AdminShell } from "@/features/admin/shell/AdminShell";
 import { useAdminSession } from "@/app/core";
 import { useAdminQuery } from "@/services/admin/use-admin-query";
 import { useAdminTableInvalidation } from "@/services/admin/use-table-invalidation";
-import { DataPagination } from "@/components/DataPagination";
+import { BusyBar, EmptyState, PageHeader, Pagination, SearchField, Skeleton, StatStrip, useDebouncedValue } from "@/components/admin/ui";
 import {
   getLoyaltyTierProgress,
   loyaltyTierOrder,
@@ -68,10 +67,10 @@ type LoyaltyRedemption = {
 };
 
 const tierStyles: Record<LoyaltyTier, string> = {
-  member: "border-[#d8d1c7] bg-[#efebe5] text-[#665f56]",
-  plus: "border-[#c8d7c1] bg-[#e5eee1] text-[#50664b]",
-  premium: "border-[#d7c49f] bg-[#f2e7d0] text-[#785d2d]",
-  elite: "border-[#3a3631] bg-[#24211e] text-white",
+  member: "border-border bg-secondary text-muted-foreground",
+  plus: "border-transparent bg-success-soft text-success-ink",
+  premium: "border-transparent bg-warning-soft text-warning-ink",
+  elite: "border-transparent bg-foreground text-background",
 };
 
 const money = (value: number) =>
@@ -119,7 +118,7 @@ function MemberAvatar({ member }: { member: CustomerProfile }) {
       className="h-11 w-11 shrink-0 rounded-2xl border border-border object-cover"
     />
   ) : (
-    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#dfd2c0] text-xs font-bold">
+    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand text-xs font-bold text-brand-foreground">
       {initials(member)}
     </span>
   );
@@ -150,15 +149,16 @@ export function MemberTierMonitoringPage() {
 
 
   const { userId, workspaceReady } = useAdminSession();
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const result = useAdminQuery<{rows:LoyaltyMember[];total:number;members:number;points:number;spend:number;elite:number;tiers:Record<string,number>}>(
-    "admin_member_page", {p_query:query.slice(0,200),p_tier:tierFilter,p_sort:sort,p_page:page}, workspaceReady, userId,
+    "admin_member_page", {p_query:debouncedQuery.slice(0,200),p_tier:tierFilter,p_sort:sort,p_page:page}, workspaceReady, userId, { keepPrevious: true },
   );
-  const loading = result.loading;
+  const loading = !result.data && result.loading;
   const total = result.data?.total ?? 0;
   const loadMembers = result.reload;
   const selectedRef = useRef(selectedId); selectedRef.current = selectedId;
   const detailGeneration = useRef(0);
-  useEffect(() => setPage(1), [query,tierFilter,sort]);
+  useEffect(() => setPage(1), [debouncedQuery,tierFilter,sort]);
   useEffect(() => {
     if (result.error) setError(result.error);
     if (result.data && !result.loading) setPage(p => Math.min(p,Math.max(1,Math.ceil(result.data!.total/20))));
@@ -229,86 +229,55 @@ export function MemberTierMonitoringPage() {
 
   return (
     <AdminShell title="Member tiers">
-      <section className="rounded-[1.75rem] bg-[#24211e] p-5 text-white shadow-sm sm:p-7 lg:p-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-[10px] font-bold tracking-[.2em] text-[#d9c7af]">HOME CIRCLE / LIVE MONITORING</p>
-            <h2 className="mt-3 font-serif text-4xl tracking-[-.04em] sm:text-5xl">Points and member tiers.</h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-white/65">
-              Follow every customer’s earned balance, lifetime eligible spend, tier progress, and reward activity from one secure workspace.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-2 text-[11px] font-semibold">
-              <span className={`h-2 w-2 rounded-full ${!result.error ? "bg-[#9fc595]" : "bg-[#d7b876]"}`} />
-              {!result.error ? "Automatic updates enabled" : "Refresh needed"}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                void loadMembers();
-                if (selectedId) void loadMemberDetails(selectedId);
-              }}
-              className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[11px] font-bold text-[#24211e]"
-            >
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-          </div>
-        </div>
-      </section>
+      <PageHeader
+        eyebrow="Home Circle · live monitoring"
+        title="Member tiers"
+        description="Every customer’s point balance, lifetime eligible spend, tier progress, and reward activity."
+        actions={
+          <button
+            type="button"
+            onClick={() => {
+              void loadMembers();
+              if (selectedId) void loadMemberDetails(selectedId);
+            }}
+            className="adm-btn"
+          >
+            <RefreshCw size={14} className={result.loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        }
+      >
+        <StatStrip
+          loading={!result.data}
+          items={[
+            { label: "Enrolled members", value: result.data?.members, format: (value) => compact(value), note: "Customer loyalty accounts", icon: Users },
+            { label: "Available points", value: result.data ? totalPoints : null, format: (value) => compact(value), note: "Across all members", icon: Sparkles },
+            { label: "Eligible spend", value: result.data ? totalSpend : null, format: (value) => `₱${compact(value)}`, note: "Delivered and paid orders", icon: CircleDollarSign, tone: "success" },
+            { label: "Elite members", value: result.data ? topTierMembers : null, note: "₱120,000+ eligible spend", icon: Award },
+          ]}
+        />
+      </PageHeader>
 
       {error && (
-        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#dfc7aa] bg-[#f3e5d4] p-4 text-sm font-semibold text-[#80563f] sm:flex-row sm:items-center sm:justify-between">
+        <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl bg-danger-soft p-4 text-sm font-semibold text-danger-ink sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
-          <button type="button" onClick={() => void loadMembers()} className="text-left underline underline-offset-4">
-            Try again
-          </button>
+          <button type="button" onClick={() => void loadMembers()} className="adm-btn adm-btn-sm">Try again</button>
         </div>
       )}
 
-      <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Enrolled members", value: compact(result.data?.members ?? 0), note: "Customer loyalty accounts", Icon: Users },
-          { label: "Available points", value: compact(totalPoints), note: "Across all members", Icon: Sparkles },
-          { label: "Eligible spend", value: compact(totalSpend), note: "Delivered and paid orders", Icon: CircleDollarSign },
-          { label: "Elite members", value: compact(topTierMembers), note: "₱120,000+ eligible spend", Icon: Award },
-        ].map(({ label, value, note, Icon }) => (
-          <article key={label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[.15em] text-muted-foreground">{label}</p>
-                <p className="mt-3 text-3xl font-semibold tracking-[-.04em]">{loading ? "—" : value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{note}</p>
-              </div>
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-secondary"><Icon size={17} /></span>
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <DataPagination page={page} total={total} size={20} onChange={setPage} busy={loading} label="Member directory pages"/>
-      <section className="mt-4 overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-sm">
+      <section className="adm-card overflow-hidden">
         <header className="border-b border-border p-4 sm:p-5">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-[10px] font-bold tracking-[.16em] text-muted-foreground">MEMBER DIRECTORY</p>
-              <h3 className="mt-1 text-xl font-semibold">{total} matching member{total === 1 ? "" : "s"}</h3>
+              <h3 className="mt-1 text-[15px] font-semibold"><span className="adm-num">{total}</span> matching member{total === 1 ? "" : "s"}</h3>
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto]">
-              <label className="flex h-11 items-center gap-2 rounded-xl border border-border bg-background px-3">
-                <Search size={16} className="text-muted-foreground" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search name, username, or email"
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                />
-              </label>
+              <SearchField value={query} onChange={setQuery} label="Search members" placeholder="Search name, username, or email" />
               <select
                 value={tierFilter}
                 onChange={(event) => setTierFilter(event.target.value as "all" | LoyaltyTier)}
-                className="h-11 rounded-xl border border-border bg-background px-3 text-sm font-semibold"
+                className="adm-select h-11 text-xs font-semibold"
                 aria-label="Filter by member tier"
               >
                 <option value="all">All tiers</option>
@@ -317,7 +286,7 @@ export function MemberTierMonitoringPage() {
               <select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as typeof sort)}
-                className="h-11 rounded-xl border border-border bg-background px-3 text-sm font-semibold"
+                className="adm-select h-11 text-xs font-semibold"
                 aria-label="Sort members"
               >
                 <option value="points">Highest points</option>
@@ -332,29 +301,27 @@ export function MemberTierMonitoringPage() {
                 key={tier}
                 type="button"
                 onClick={() => setTierFilter((current) => current === tier ? "all" : tier)}
-                className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold capitalize ${tierFilter === tier ? tierStyles[tier] : "border-border bg-background text-muted-foreground"}`}
+                data-active={tierFilter === tier}
+                className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold capitalize transition-colors ${tierFilter === tier ? tierStyles[tier] : "border-border bg-card text-muted-foreground hover:bg-secondary"}`}
               >
                 {tier} · {result.data?.tiers[tier] ?? 0}
               </button>
             ))}
           </div>
         </header>
+        <BusyBar active={result.refreshing} />
 
         {loading ? (
           <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[0, 1, 2].map((item) => <div key={item} className="h-32 animate-pulse rounded-2xl bg-secondary" />)}
+            {[0, 1, 2].map((item) => <Skeleton key={item} className="h-32 w-full" />)}
           </div>
         ) : filteredMembers.length === 0 ? (
-          <div className="px-5 py-16 text-center">
-            <Users className="mx-auto text-muted-foreground" size={24} />
-            <p className="mt-3 text-sm font-semibold">No members match these filters.</p>
-            <button type="button" onClick={() => { setQuery(""); setTierFilter("all"); }} className="mt-2 text-xs font-semibold underline underline-offset-4">Clear filters</button>
-          </div>
+          <EmptyState icon={Users} title="No members match these filters." action={<button type="button" onClick={() => { setQuery(""); setTierFilter("all"); }} className="adm-btn">Clear filters</button>} />
         ) : (
           <>
             <div className="hidden overflow-x-auto lg:block">
-              <table className="w-full min-w-[920px] text-left">
-                <thead className="bg-secondary/55 text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+              <table className={`adm-table min-w-[920px] transition-opacity ${result.refreshing ? "opacity-60" : ""}`}>
+                <thead>
                   <tr>
                     <th className="px-5 py-3 font-bold">Member</th>
                     <th className="px-4 py-3 font-bold">Tier</th>
@@ -369,7 +336,8 @@ export function MemberTierMonitoringPage() {
                     <tr
                       key={member.id}
                       onClick={() => setSelectedId(member.id)}
-                      className={`cursor-pointer transition hover:bg-secondary/40 ${selectedId === member.id ? "bg-[#eee8df]" : ""}`}
+                      data-selected={selectedId === member.id}
+                      className="cursor-pointer"
                     >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3"><MemberAvatar member={member} /><div className="min-w-0"><b className="block truncate text-sm">{member.full_name || member.username || "CozyCraft member"}</b><span className="mt-0.5 block truncate text-xs text-muted-foreground">@{member.username || "member"} · {member.email || "No email"}</span></div></div>
@@ -390,7 +358,7 @@ export function MemberTierMonitoringPage() {
                   key={member.id}
                   type="button"
                   onClick={() => setSelectedId(member.id)}
-                  className={`rounded-2xl border p-4 text-left transition ${selectedId === member.id ? "border-[#a8957d] bg-[#eee8df]" : "border-border bg-background"}`}
+                  className={`rounded-2xl border p-4 text-left transition ${selectedId === member.id ? "border-foreground bg-brand/20" : "border-border bg-card"}`}
                 >
                   <div className="flex items-start gap-3"><MemberAvatar member={member} /><div className="min-w-0 flex-1"><b className="block truncate text-sm">{member.full_name || member.username || "CozyCraft member"}</b><span className="mt-1 block truncate text-xs text-muted-foreground">{member.email || "No email"}</span></div><ChevronRight size={16} /></div>
                   <div className="mt-4 flex items-center justify-between gap-3"><TierBadge tier={member.tier} /><span className="text-sm font-semibold tabular-nums">{member.points_balance.toLocaleString("en-PH")} pts</span></div>
@@ -400,13 +368,14 @@ export function MemberTierMonitoringPage() {
             </div>
           </>
         )}
+        {result.data && <Pagination page={page} total={total} size={20} onChange={setPage} busy={result.refreshing} label="Member directory pages" />}
       </section>
 
       {selectedMember && progress && (
         <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,.9fr)]">
-          <article className="rounded-[1.75rem] border border-border bg-card p-5 shadow-sm sm:p-6">
+          <article className="adm-card p-5 sm:p-6">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex min-w-0 items-center gap-3"><MemberAvatar member={selectedMember} /><div className="min-w-0"><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">SELECTED MEMBER</p><h3 className="mt-1 truncate text-xl font-semibold">{selectedMember.full_name || selectedMember.username}</h3><p className="truncate text-xs text-muted-foreground">@{selectedMember.username || "member"} · {selectedMember.email}</p></div></div>
+              <div className="flex min-w-0 items-center gap-3"><MemberAvatar member={selectedMember} /><div className="min-w-0"><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">SELECTED MEMBER</p><h3 className="mt-1 truncate font-serif text-[1.6rem] leading-tight">{selectedMember.full_name || selectedMember.username}</h3><p className="truncate text-xs text-muted-foreground">@{selectedMember.username || "member"} · {selectedMember.email}</p></div></div>
               <TierBadge tier={selectedMember.tier} />
             </div>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -416,20 +385,20 @@ export function MemberTierMonitoringPage() {
             </div>
             <div className="mt-6 rounded-2xl border border-border p-4 sm:p-5">
               <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-semibold capitalize">{selectedMember.tier} tier progress</p><p className="mt-1 text-xs text-muted-foreground">{progress.nextTier ? `${money(progress.remaining)} more eligible spend to reach ${progress.nextTier}.` : "This member has reached the highest Home Circle tier."}</p></div><span className="text-sm font-semibold tabular-nums">{Math.round(progress.percent)}%</span></div>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-[#2c2925] transition-[width]" style={{ width: `${progress.percent}%` }} /></div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-secondary"><div className="adm-bar-grow h-full rounded-full bg-foreground transition-[width] duration-700" style={{ width: `${progress.percent}%` }} /></div>
               <div className="mt-3 flex justify-between text-[10px] font-semibold uppercase tracking-[.1em] text-muted-foreground"><span>{selectedMember.tier}</span><span>{progress.nextTier ?? "Top tier"}</span></div>
             </div>
           </article>
 
-          <article className="rounded-[1.75rem] border border-border bg-card p-5 shadow-sm sm:p-6">
+          <article className="adm-card p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">POINT HISTORY</p><h3 className="mt-1 text-xl font-semibold">Recent activity</h3></div><Activity size={19} className="text-muted-foreground" /></div>
             {detailsLoading ? <div className="mt-5 h-40 animate-pulse rounded-2xl bg-secondary" /> : transactions.length ? (
               <div className="mt-4 max-h-[360px] space-y-1 overflow-y-auto pr-1">
                 {transactions.map((transaction) => (
                   <div key={transaction.id} className="flex items-start gap-3 rounded-2xl p-3 transition hover:bg-secondary/60">
-                    <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl ${transaction.points > 0 ? "bg-[#e5eee1] text-[#50664b]" : "bg-[#f1e4dc] text-[#8b5c46]"}`}>{transaction.points > 0 ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}</span>
+                    <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl ${transaction.points > 0 ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink"}`}>{transaction.points > 0 ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}</span>
                     <div className="min-w-0 flex-1"><p className="text-xs font-semibold leading-5">{transaction.description}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{dateTime(transaction.created_at)}</p></div>
-                    <b className={`text-xs tabular-nums ${transaction.points > 0 ? "text-[#50664b]" : "text-[#8b5c46]"}`}>{transaction.points > 0 ? "+" : ""}{transaction.points}</b>
+                    <b className={`text-xs tabular-nums ${transaction.points > 0 ? "text-success-ink" : "text-warning-ink"}`}>{transaction.points > 0 ? "+" : ""}{transaction.points}</b>
                   </div>
                 ))}
               </div>
@@ -439,12 +408,12 @@ export function MemberTierMonitoringPage() {
       )}
 
       {selectedMember && (
-        <section className="mt-4 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">REWARD REDEMPTIONS</p><h3 className="mt-1 text-xl font-semibold">Codes and redemption status</h3></div><p className="text-xs text-muted-foreground">Tier valid until {dateTime(selectedMember.tier_valid_until)}</p></div>
+        <section className="adm-card mt-4 p-5 sm:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">REWARD REDEMPTIONS</p><h3 className="mt-1 text-xl font-semibold">Codes and redemption status</h3></div><p className="text-xs text-muted-foreground">{selectedMember.tier_valid_until ? `Tier valid until ${dateTime(selectedMember.tier_valid_until)}` : "Tier has no expiry date"}</p></div>
           {detailsLoading ? <div className="mt-5 h-24 animate-pulse rounded-2xl bg-secondary" /> : redemptions.length ? (
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {redemptions.map((redemption) => (
-                <article key={redemption.id} className="rounded-2xl border border-border bg-background p-4">
+                <article key={redemption.id} className="adm-inset p-4">
                   <div className="flex items-start justify-between gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-secondary"><Gift size={16} /></span><span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.1em]">{redemption.status}</span></div>
                   <p className="mt-4 font-mono text-sm font-semibold">{redemption.code}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{redemption.points_cost} points · {money(redemption.discount_amount)} reward</p>

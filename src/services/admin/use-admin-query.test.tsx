@@ -23,3 +23,16 @@ it('does not expose an old identity/page and ignores late responses after naviga
   await act(()=>vi.advanceTimersByTimeAsync(200));await act(()=>{requests[2].resolve({data:{value:'B-two'},error:null});});expect(host.textContent).toBe('B-two');
   await act(()=>root.unmount());
 });
+it('keeps the last page visible for the same identity while the next page loads',async()=>{
+  vi.useFakeTimers();const requests:Array<{resolve:(value:unknown)=>void}>=[];
+  mock.rpc.mockImplementation(()=>({abortSignal:()=>new Promise(resolve=>requests.push({resolve}))}));
+  let state:ReturnType<typeof useAdminQuery<{value:string}>>;
+  function Harness({owner,page}:{owner:string;page:number}){state=useAdminQuery('fixture',{page},true,owner,{keepPrevious:true});return <div>{state.data?.value ?? 'loading'}{state.refreshing?' (refreshing)':''}</div>;}
+  const host=document.createElement('div');const root=createRoot(host);
+  await act(async()=>{root.render(<Harness owner="a" page={1}/>);});
+  await act(()=>vi.advanceTimersByTimeAsync(200));await act(()=>{requests[0].resolve({data:{value:'A-one'},error:null});});
+  await act(()=>root.render(<Harness owner="a" page={2}/>));expect(host.textContent).toBe('A-one (refreshing)');
+  await act(()=>vi.advanceTimersByTimeAsync(200));await act(()=>{requests[1].resolve({data:{value:'A-two'},error:null});});expect(host.textContent).toBe('A-two');
+  await act(()=>root.render(<Harness owner="b" page={2}/>));expect(host.textContent).toBe('loading');
+  await act(()=>root.unmount());
+});

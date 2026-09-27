@@ -1,0 +1,283 @@
+/* CozyCraft operations workspace: typography, tokens, light/dark themes,
+   quick motion and the shared building blocks used by every admin page.
+   Everything visual is scoped to :root[data-surface="admin"] so customer
+   pages are unaffected. Motion honours prefers-reduced-motion through
+   accessibility.css and theme.css. */
+
+@layer base {
+  :root {
+    --adm-canvas: #f3f0ea;
+    --adm-subtle: #f8f6f1;
+    --adm-raised: #ffffff;
+    --adm-inverse: #24211e;
+    --adm-inverse-fg: #f4f2ee;
+    --adm-inverse-muted: #bdb3a6;
+    --adm-brand: #d8c7b0;
+    --adm-brand-fg: #201f1d;
+    --adm-line-strong: #cfc7bb;
+    --adm-success-soft: #e3ecdf;
+    --adm-success-ink: #4f6a48;
+    --adm-warning-soft: #f3e5d4;
+    --adm-warning-ink: #8f5d40;
+    --adm-danger-soft: #f5dfda;
+    --adm-danger-ink: #9a4f46;
+    --adm-info-soft: #e1e8ee;
+    --adm-info-ink: #526b7b;
+    --adm-chart-line: #3b342c;
+    --adm-chart-fill: #b8a58d;
+    --adm-chart-grid: #e6e0d6;
+    --adm-chart-axis: #7a746b;
+    --adm-shadow-card: 0 1px 2px rgb(35 31 27 / .04), 0 8px 24px rgb(35 31 27 / .035);
+    --adm-shadow-pop: 0 2px 6px rgb(35 31 27 / .06), 0 24px 60px rgb(35 31 27 / .16);
+    --adm-skeleton-a: #ebe6de;
+    --adm-skeleton-b: #f6f3ee;
+  }
+
+  :root[data-surface="admin"] {
+    --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-serif: "Fraunces Variable", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    /* Tools should feel quick: shorter than the storefront's timings. */
+    --dur-1: 110ms;
+    --dur-2: 170ms;
+    --dur-3: 240ms;
+    --dur-4: 380ms;
+    scrollbar-color: #c9c0b3 transparent;
+  }
+
+  :root[data-surface="admin"] body {
+    font-family: var(--font-sans);
+    background: var(--adm-canvas);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  :root[data-surface="admin"] ::selection { background: #dccdb8; color: #1c1b19; }
+
+
+  :root[data-surface="admin"][data-admin-theme="dark"] ::selection { background: #5b4e3d; color: #f4efe7; }
+}
+
+/* Unlayered so it overrides the shared tokens defined in theme.css. */
+/* Dark operations theme (warm, low-glare). Shared shadcn-style tokens are
+   redefined so bg-card, text-muted-foreground, border-border and friends
+   follow automatically. */
+:root[data-surface="admin"][data-admin-theme="dark"] {
+  color-scheme: dark;
+  --background: #141311;
+  --foreground: #eeeae3;
+  --card: #1c1a18;
+  --card-foreground: #eeeae3;
+  --popover: #211f1c;
+  --popover-foreground: #eeeae3;
+  --primary: #eeeae3;
+  --primary-foreground: #161513;
+  --secondary: #2a2723;
+  --secondary-foreground: #eeeae3;
+  --muted: #25221f;
+  --muted-foreground: #a9a197;
+  --accent: #b8a58d;
+  --accent-foreground: #161513;
+  --destructive: #e28f80;
+  --border: #35312c;
+  --input: #1c1a18;
+  --input-background: #1c1a18;
+  --switch-background: #4a453f;
+  --ring: #c9b69c;
+  --sidebar: #0f0e0d;
+  --adm-canvas: #141311;
+  --adm-subtle: #201e1b;
+  --adm-raised: #24211e;
+  --adm-inverse: #27241f;
+  --adm-inverse-fg: #f1ece4;
+  --adm-inverse-muted: #b3a999;
+  --adm-brand: #cdb89c;
+  --adm-brand-fg: #1a1815;
+  --adm-line-strong: #4a453e;
+  --adm-success-soft: #1f2b1d;
+  --adm-success-ink: #a9c99f;
+  --adm-warning-soft: #33291a;
+  --adm-warning-ink: #e2c28f;
+  --adm-danger-soft: #3a211c;
+  --adm-danger-ink: #eea493;
+  --adm-info-soft: #1c2630;
+  --adm-info-ink: #a3c2d6;
+  --adm-chart-line: #e4d6c2;
+  --adm-chart-fill: #b8a58d;
+  --adm-chart-grid: #2e2b27;
+  --adm-chart-axis: #9a9186;
+  --adm-shadow-card: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px rgb(0 0 0 / .18);
+  --adm-shadow-pop: 0 2px 8px rgb(0 0 0 / .4), 0 30px 70px rgb(0 0 0 / .5);
+  --adm-skeleton-a: #26231f;
+  --adm-skeleton-b: #312d28;
+  scrollbar-color: #4a453e transparent;
+}
+
+@theme inline {
+  --color-canvas: var(--adm-canvas);
+  --color-subtle: var(--adm-subtle);
+  --color-raised: var(--adm-raised);
+  --color-inverse: var(--adm-inverse);
+  --color-inverse-foreground: var(--adm-inverse-fg);
+  --color-inverse-muted: var(--adm-inverse-muted);
+  --color-brand: var(--adm-brand);
+  --color-brand-foreground: var(--adm-brand-fg);
+  --color-line-strong: var(--adm-line-strong);
+  --color-success-soft: var(--adm-success-soft);
+  --color-success-ink: var(--adm-success-ink);
+  --color-warning-soft: var(--adm-warning-soft);
+  --color-warning-ink: var(--adm-warning-ink);
+  --color-danger-soft: var(--adm-danger-soft);
+  --color-danger-ink: var(--adm-danger-ink);
+  --color-info-soft: var(--adm-info-soft);
+  --color-info-ink: var(--adm-info-ink);
+}
+
+@layer components {
+  /* Numbers line up in tables, totals and counters. */
+  .adm-num { font-variant-numeric: tabular-nums lining-nums; }
+  :root[data-surface="admin"] .font-serif { font-optical-sizing: auto; letter-spacing: -0.015em; font-variant-numeric: lining-nums; }
+  :root[data-surface="admin"] :is(h1, h2, h3, p, span, strong, b).font-serif { font-weight: 400; }
+
+  .adm-eyebrow { font-size: .625rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted-foreground); }
+
+  .adm-card {
+    border: 1px solid var(--border);
+    background: var(--card);
+    border-radius: 1.25rem;
+    box-shadow: var(--adm-shadow-card);
+  }
+  .adm-card-flat { border: 1px solid var(--border); background: var(--card); border-radius: 1.25rem; }
+  .adm-inset { border-radius: .9rem; background: var(--adm-subtle); border: 1px solid var(--border); }
+
+  .adm-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    min-height: 2.5rem; padding: .5rem .95rem; border-radius: .8rem;
+    font-size: .8rem; font-weight: 600; line-height: 1.1; white-space: nowrap;
+    border: 1px solid var(--border); background: var(--card); color: var(--foreground);
+    transition: background-color var(--dur-2), border-color var(--dur-2), color var(--dur-2), box-shadow var(--dur-2), transform var(--dur-1) var(--ease-out), opacity var(--dur-2);
+  }
+  .adm-btn:hover:not(:disabled) { background: var(--secondary); }
+  .adm-btn:active:not(:disabled) { transform: scale(.97); }
+  .adm-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .adm-btn-primary { background: var(--foreground); color: var(--background); border-color: transparent; }
+  .adm-btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 86%, var(--background)); }
+  .adm-btn-danger { background: var(--adm-danger-ink); color: #fff; border-color: transparent; }
+  :root[data-admin-theme="dark"] .adm-btn-danger { color: #1a1311; }
+  .adm-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--adm-danger-ink) 88%, #000); }
+  .adm-btn-ghost { background: transparent; border-color: transparent; }
+  .adm-btn-sm { min-height: 2rem; padding: .35rem .7rem; font-size: .72rem; border-radius: .65rem; }
+  .adm-btn-icon { min-height: 2.5rem; width: 2.5rem; padding: 0; }
+  .adm-btn-icon.adm-btn-sm { width: 2rem; min-height: 2rem; }
+
+  .adm-input, .adm-select, .adm-textarea {
+    display: block; width: 100%; min-height: 2.75rem; border-radius: .8rem; border: 1px solid var(--border);
+    background: var(--adm-subtle); color: var(--foreground); padding: .55rem .85rem; font-size: .85rem;
+    transition: border-color var(--dur-2), box-shadow var(--dur-2), background-color var(--dur-2);
+  }
+  .adm-textarea { line-height: 1.55; resize: vertical; }
+  .adm-input::placeholder, .adm-textarea::placeholder { color: color-mix(in srgb, var(--muted-foreground) 80%, transparent); }
+  .adm-input:focus, .adm-select:focus, .adm-textarea:focus { outline: none; border-color: var(--adm-line-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 28%, transparent); background: var(--card); }
+  .adm-input:disabled, .adm-select:disabled, .adm-textarea:disabled { opacity: .55; cursor: not-allowed; }
+  .adm-select { appearance: none; -webkit-appearance: none; padding-right: 2.2rem; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8278' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right .8rem center; }
+  .adm-label { display: grid; gap: .4rem; font-size: .78rem; font-weight: 600; }
+  .adm-hint { font-size: .7rem; font-weight: 400; color: var(--muted-foreground); line-height: 1.45; }
+
+  .adm-chip {
+    display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; flex-shrink: 0;
+    min-height: 2.25rem; padding: .35rem .8rem; border-radius: 999px; font-size: .72rem; font-weight: 600;
+    border: 1px solid var(--border); background: var(--card); color: var(--foreground);
+    transition: background-color var(--dur-2), color var(--dur-2), border-color var(--dur-2);
+  }
+  .adm-chip:hover { background: var(--secondary); }
+  .adm-chip[data-active="true"] { background: var(--foreground); color: var(--background); border-color: transparent; }
+  .adm-chip-count { border-radius: 999px; padding: .05rem .4rem; font-size: .62rem; background: var(--secondary); color: var(--foreground); }
+  .adm-chip[data-active="true"] .adm-chip-count { background: color-mix(in srgb, var(--background) 18%, transparent); color: inherit; }
+
+  .adm-kbd { display: inline-grid; place-items: center; min-width: 1.35rem; height: 1.35rem; padding: 0 .3rem; border-radius: .4rem; border: 1px solid var(--border); background: var(--adm-subtle); font-size: .65rem; font-weight: 600; color: var(--muted-foreground); font-family: var(--font-sans); }
+
+  /* Data tables */
+  .adm-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; font-size: .8rem; }
+  .adm-table thead th { position: sticky; top: 0; z-index: 2; background: var(--adm-subtle); padding: .7rem .9rem; font-size: .62rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted-foreground); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .adm-table tbody td { padding: .8rem .9rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .adm-table tbody tr:last-child td { border-bottom: 0; }
+  .adm-table tbody tr { transition: background-color var(--dur-2); }
+  .adm-table tbody tr:hover { background: color-mix(in srgb, var(--secondary) 50%, transparent); }
+  .adm-table tbody tr[data-selected="true"] { background: color-mix(in srgb, var(--adm-brand) 26%, transparent); }
+  .adm-table .adm-right { text-align: right; }
+  .adm-sort { display: inline-flex; align-items: center; gap: .3rem; text-transform: inherit; letter-spacing: inherit; font: inherit; color: inherit; }
+  .adm-sort:hover, .adm-sort[data-active="true"] { color: var(--foreground); }
+
+  .adm-check { width: 1rem; height: 1rem; border-radius: .3rem; accent-color: var(--foreground); cursor: pointer; }
+
+  .adm-skeleton {
+    background: linear-gradient(90deg, var(--adm-skeleton-a) 20%, var(--adm-skeleton-b) 45%, var(--adm-skeleton-a) 70%);
+    background-size: 300% 100%;
+    animation: cc-shimmer-bg 1.6s ease-in-out infinite;
+    border-radius: .6rem;
+  }
+
+  /* Thin progress bar shown while fresh data replaces the current view. */
+  .adm-busy-bar { position: relative; height: 2px; overflow: hidden; border-radius: 999px; }
+  .adm-busy-bar::after { content: ""; position: absolute; inset: 0; width: 40%; background: var(--adm-brand); animation: adm-busy 1.1s var(--ease-in-out) infinite; }
+
+  .adm-scroll-x { overflow-x: auto; scrollbar-width: none; }
+  .adm-scroll-x::-webkit-scrollbar { display: none; }
+  .adm-fade-x { mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+
+  /* Motion */
+  /* backwards (not both): once finished, no transform lingers to trap
+     position: fixed descendants such as toasts and bulk-action bars. */
+  .adm-page { animation: adm-page-in var(--dur-4) var(--ease-out) backwards; }
+  .adm-rise > * { animation: cc-fade-up var(--dur-4) var(--ease-out) backwards; }
+  .adm-rise > :nth-child(2) { animation-delay: 35ms; }
+  .adm-rise > :nth-child(3) { animation-delay: 70ms; }
+  .adm-rise > :nth-child(4) { animation-delay: 105ms; }
+  .adm-rise > :nth-child(5) { animation-delay: 140ms; }
+  .adm-rise > :nth-child(n + 6) { animation-delay: 170ms; }
+  .adm-flash { animation: adm-flash 1.6s var(--ease-out); }
+  .adm-swap { animation: cc-fade-in var(--dur-3) var(--ease-out) both; }
+  .adm-drawer-left[data-state="open"] { animation: adm-slide-in-left var(--dur-3) var(--ease-out) both; }
+  .adm-drawer-left[data-state="closed"] { animation: adm-slide-out-left var(--dur-2) var(--ease-in-out) both; pointer-events: none; }
+  .adm-collapse { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-3) var(--ease-out), opacity var(--dur-3) var(--ease-out); opacity: 0; }
+  .adm-collapse[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
+  .adm-collapse > * { overflow: hidden; min-height: 0; }
+  .adm-bar-grow { transform-origin: left; animation: adm-grow .8s var(--ease-out) both; }
+  .adm-live-dot { position: relative; }
+  .adm-live-dot::after { content: ""; position: absolute; inset: -3px; border-radius: 999px; border: 2px solid currentColor; opacity: 0; animation: cc-ring 2.4s var(--ease-out) infinite; }
+
+  /* Sticky save bars never cover content on phones. */
+  .adm-savebar { position: sticky; bottom: .75rem; z-index: 20; }
+}
+
+/* Overlay containers take programmatic focus for screen readers; the visible
+   ring belongs on the controls inside them. Unlayered to beat the global
+   focus rule in accessibility.css. */
+:root[data-surface="admin"] :is([role="dialog"], [role="alertdialog"], #admin-main):focus,
+:root[data-surface="admin"] :is([role="dialog"], [role="alertdialog"], #admin-main):focus-visible { outline: none; }
+/* Admin fields show a soft ring (box-shadow) instead of the global outline. */
+:root[data-surface="admin"] :is(.adm-input, .adm-select, .adm-textarea):focus-visible { outline: none; }
+
+/* Hardcoded warm-neutral utilities left in older markup follow the theme. */
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.bg-white, .bg-\[\#fcfbf8\], .bg-\[\#faf9f6\], .bg-\[\#faf8f4\], .bg-\[\#f8f5ef\], .bg-\[\#fffefa\], .bg-\[\#f7f3ec\], .bg-\[\#f5f1ea\], .bg-\[\#f7f2e9\]) { background-color: var(--adm-subtle); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.bg-\[\#f3f0ea\], .bg-\[\#e9e5de\], .bg-\[\#f3eee6\]) { background-color: var(--adm-canvas); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.bg-\[\#ece7df\], .bg-\[\#ede6dc\], .bg-\[\#eee8df\], .bg-\[\#eeeae3\], .bg-\[\#efebe5\], .bg-\[\#e8e0d4\], .bg-\[\#e6d7c4\], .bg-\[\#e8dcc8\], .bg-\[\#e9dfd1\], .bg-\[\#dfd2c0\]) { background-color: var(--secondary); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.bg-\[\#e5eee1\], .bg-\[\#e3ecdf\], .bg-\[\#e7eee3\], .bg-\[\#e4ecdf\], .bg-\[\#e6eee2\], .bg-\[\#e8efe5\], .bg-\[\#e8efe3\], .bg-\[\#edf3ea\], .bg-\[\#dce9d7\]) { background-color: var(--adm-success-soft); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.bg-\[\#f3e5d4\], .bg-\[\#f2e8d7\], .bg-\[\#f5ecdc\], .bg-\[\#f7eadc\], .bg-\[\#f2e7d0\], .bg-\[\#f5e4d5\]) { background-color: var(--adm-warning-soft); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.bg-\[\#f2dfd8\], .bg-\[\#f4e4de\], .bg-\[\#f4e3dc\], .bg-\[\#f0d7cc\], .bg-\[\#f1e4dc\]) { background-color: var(--adm-danger-soft); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.text-\[\#45603f\], .text-\[\#56714f\], .text-\[\#50664b\], .text-\[\#5b744f\], .text-\[\#486242\], .text-\[\#45613f\], .text-\[\#41553c\], .text-\[\#5f7059\], .text-\[\#4e6846\], .text-\[\#6c805f\], .text-emerald-700) { color: var(--adm-success-ink); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.text-\[\#765d3c\], .text-\[\#8b5c46\], .text-\[\#725a36\], .text-\[\#80563f\], .text-\[\#735c48\], .text-\[\#785d2d\], .text-\[\#9a6047\], .text-amber-700) { color: var(--adm-warning-ink); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.text-\[\#8f4f38\], .text-\[\#854b36\], .text-\[\#984f3d\], .text-\[\#9a493f\], .text-\[\#9a553f\], .text-\[\#814d3c\], .text-\[\#845238\], .text-\[\#a05f46\], .text-red-700) { color: var(--adm-danger-ink); }
+:root[data-surface="admin"][data-admin-theme="dark"] :is(.border-\[\#d9c5a6\], .border-\[\#d6c09a\], .border-\[\#d8cdbd\], .border-\[\#dfc7aa\], .border-\[\#d6b18f\], .border-\[\#b9c9b4\], .border-\[\#aec0a7\], .border-\[\#afbea8\], .border-\[\#cdd9c8\], .border-\[\#c8d7c1\], .border-\[\#bd8068\], .border-\[\#d7c49f\], .border-\[\#d8d1c7\]) { border-color: var(--border); }
+
+@keyframes adm-page-in { from { opacity: 0; transform: translate3d(0, 8px, 0); } }
+@keyframes adm-slide-in-left { from { transform: translate3d(-100%, 0, 0); } }
+@keyframes adm-slide-out-left { to { transform: translate3d(-100%, 0, 0); } }
+@keyframes adm-flash { 0% { background-color: color-mix(in srgb, var(--adm-brand) 55%, transparent); } 100% { background-color: transparent; } }
+@keyframes adm-grow { from { transform: scaleX(0); } }
+@keyframes adm-busy { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.adm-toast-countdown { animation: adm-countdown linear both; }
+@keyframes adm-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+:root[data-surface="admin"][data-admin-theme="dark"] .dark-invert { filter: brightness(0) invert(1); }
