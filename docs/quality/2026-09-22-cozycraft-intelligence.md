@@ -1,5 +1,8 @@
 # CozyCraft Intelligence release — 22 September 2026
 
+Historical release record: forecast/demo behavior is superseded by
+[the live-only September 27 release](2026-09-27-live-intelligence.md).
+
 ## Scope
 
 - Admin Reports: 7/14-day settled-sales and settled-order forecasts, transparent validation, chart/table/CSV, and explicit synthetic demonstration.

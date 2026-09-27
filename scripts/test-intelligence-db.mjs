@@ -2,7 +2,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-const container = "cozy-intelligence-qa";
+const container = process.env.FORECAST_QA_CONTAINER || "cozy-intelligence-qa";
+assert.ok(["cozy-intelligence-qa", "cozy-architecture-qa"].includes(container), "Only named isolated QA containers are supported");
 const database = `intelligence_${Date.now()}`;
 execFileSync("docker", ["exec", container, "createdb", "-U", "postgres", database]);
 const args = ["exec", "-i", container, "psql", "-U", "postgres", "-d", database, "-X", "-qAt", "-v", "ON_ERROR_STOP=1"];
@@ -33,6 +34,7 @@ try {
     insert into public.order_items select id,'piece',1,100 from public.orders;
     insert into public.profiles values('00000000-0000-4000-8000-000000000099','Test Customer','test','test@example.invalid','customer');`);
   sql(readFileSync(new URL("../supabase/migrations/20260922090000_ai_forecast_read_model.sql", import.meta.url), "utf8"));
+  sql(readFileSync(new URL("../supabase/migrations/20260927090000_live_forecast_inputs.sql", import.meta.url), "utf8"));
   const admin = query => sql(`begin; set local test.role='admin'; set local test.aal='aal2'; set local role authenticated; ${query}; commit;`).split("\n").at(-1);
   const result = JSON.parse(admin("select public.admin_forecast_inputs()"));
   assert.equal(result.eligibleOrders, 2);
@@ -42,15 +44,35 @@ try {
   assert.equal(result.series.reduce((s,r) => s+r.sales,0), 200);
   assert.equal(result.series[0].orders, 1);
   assert.equal(result.series[1].orders, 1);
+  assert.equal(result.version,2); assert.equal(result.sourceCounts.recordedOrders,9);
   assert.ok(!JSON.stringify(result).includes("example.invalid"));
   const cached = JSON.parse(admin("select public.admin_forecast_inputs()"));
   assert.equal(cached.generatedAt,result.generatedAt,"server cache reused");
+  sql("update public.orders set total=120 where order_number='CC-1';");
+  assert.equal(sql("select count(*) from private.forecast_input_cache"),"0","order changes invalidate cache");
+  assert.equal(JSON.parse(admin("select public.admin_forecast_inputs()")).series.reduce((s,r)=>s+r.sales,0),220);
+  sql("update public.orders set total=100 where order_number='CC-1';");
+  admin("select public.admin_forecast_inputs()");
+  sql("update public.payment_transactions set status='refunded' where order_id=(select id from public.orders where order_number='CC-1');");
+  assert.equal(sql("select count(*) from private.forecast_input_cache"),"0","payment changes invalidate cache");
+  assert.equal(JSON.parse(admin("select public.admin_forecast_inputs()")).eligibleOrders,1);
+  sql("update public.payment_transactions set status='paid' where order_id=(select id from public.orders where order_number='CC-1');");
+  admin("select public.admin_forecast_inputs()");
+  sql("update public.order_status_history set changed_at=now() where order_id=(select id from public.orders where order_number='CC-3');");
+  assert.equal(sql("select count(*) from private.forecast_input_cache"),"0","delivery changes invalidate cache");
+  assert.equal(JSON.parse(admin("select public.admin_forecast_inputs()")).eligibleOrders,1,"today is excluded after correction");
+  sql("update public.order_status_history set changed_at=(now() at time zone 'Asia/Manila')::date::timestamp at time zone 'Asia/Manila'-interval '1 day' where order_id=(select id from public.orders where order_number='CC-3');");
+  sql("update public.orders set total='NaN'::numeric where order_number='CC-1';");
+  const invalidAmount = JSON.parse(admin("select public.admin_forecast_inputs()"));
+  assert.equal(invalidAmount.sourceCounts.invalidAmounts,1); assert.equal(invalidAmount.eligibleOrders,1);
+  sql("update public.orders set total=100 where order_number='CC-1';");
   for (const role of ["customer", "revoked", ""]) {
     const denied = sql(`begin; set local test.role='${role}'; set local role authenticated; do $$begin begin perform public.admin_forecast_inputs(); raise exception 'Access leaked'; exception when insufficient_privilege then null; end; end$$; rollback; select 'denied';`);
     assert.equal(denied,"denied");
   }
   assert.equal(sql("select has_function_privilege('anon','public.admin_forecast_inputs()','execute')"),"f");
   assert.equal(sql("select has_table_privilege('authenticated','private.forecast_input_cache','select')"),"f");
+  assert.equal(sql("select has_function_privilege('authenticated','private.invalidate_forecast_input_cache()','execute')"),"f");
   assert.equal(sql("begin; set local test.role='admin'; set local test.aal='aal1'; do $$begin begin perform public.admin_forecast_inputs(); raise exception 'MFA bypass'; exception when insufficient_privilege then null; end; end$$; rollback; select 'denied';"),"denied");
   for (const call of ["public.admin_reports_summary('Quarter')", "public.admin_report_export('Sales performance','Quarter',1)"]) {
     for (const [role, aal] of [["customer", "aal2"], ["admin", "aal1"]]) {
