@@ -6,7 +6,7 @@ const deepLinkResponse = (payment: "success" | "cancelled", orderId: string) =>
   new Response(null, {
     status: 302,
     headers: {
-      "Location": `com.cozycraft.furniture://payment/callback?payment=${payment}&order=${encodeURIComponent(orderId)}`,
+      "Location": `com.cozycraft.furniture://payment/return?payment=${payment}&order=${encodeURIComponent(orderId)}`,
       "Cache-Control": "no-store",
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
@@ -39,7 +39,7 @@ Deno.serve(async (request) => {
         if (transaction?.provider_session_id && transaction.status === "pending" && order?.payment_status === "pending" && ["card", "gcash"].includes(order?.payment_method)) {
           const providerResponse = await fetch(
             `https://api.paymongo.com/v1/checkout_sessions/${encodeURIComponent(transaction.provider_session_id)}`,
-            { headers: { Authorization: `Basic ${btoa(`${paymongoSecretKey}:`)}` } },
+            { headers: { Authorization: `Basic ${btoa(`${paymongoSecretKey}:`)}` }, signal: AbortSignal.timeout(8_000) },
           );
           if (providerResponse.ok) {
             const providerPayload = await providerResponse.json();

@@ -1,5 +1,6 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
 import { applyAdminTheme } from "@/lib/admin/admin-theme";
+import { nativePaymentReturnTarget } from "@/lib/commerce/native-payment-return";
 import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import { DialogAccessibility } from "./components/DialogAccessibility";
@@ -37,4 +38,10 @@ window.addEventListener("vite:preloadError", (event) => {
 // chunk is no longer available, while unfinished admin forms are separately
 // protected by session draft recovery.
 
-createRoot(document.getElementById("root")!).render(<><DialogAccessibility /><App /></>);
+const nativeReturn = nativePaymentReturnTarget(window.location, [sessionStore, localStore]);
+if (nativeReturn) {
+  // Do not mount web checkout/auth UI during an app-owned payment handoff.
+  window.location.replace(nativeReturn);
+} else {
+  createRoot(document.getElementById("root")!).render(<><DialogAccessibility /><App /></>);
+}

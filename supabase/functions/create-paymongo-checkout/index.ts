@@ -3,6 +3,7 @@ import { serveProtected } from "../_shared/security-boundary.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.111.0";
 import { reconcileElapsedPaymongoSession } from "../_shared/paymongo-expiry.ts";
 import { buildPaymongoLineItems } from "../_shared/paymongo-line-items.ts";
+import { paymentReturnUrls } from "../_shared/payment-return.ts";
 import { isUuid, normalizeMobilePaymentIntent, mobilePaymentIntentDigest } from '../_shared/mobile-payment-authorization.ts';
 
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
@@ -70,7 +71,7 @@ serveProtected(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired. Please sign in again." }, 401);
 
-  let payload: { addressId?: string; paymentMethod?: string; returnOrigin?: string; checkoutKey?: string; paymentAuthorizationId?: string; redemptionId?: string | null; items?: Array<{ product_id: string; quantity: number }> };
+  let payload: { addressId?: string; paymentMethod?: string; mobileReturn?: boolean; returnOrigin?: string; checkoutKey?: string; paymentAuthorizationId?: string; redemptionId?: string | null; items?: Array<{ product_id: string; quantity: number }> };
   try {
     payload = await request.json();
   } catch {
@@ -239,8 +240,7 @@ serveProtected(async (request) => {
           attributes: {
             line_items: lineItems,
             payment_method_types: [paymentMethod],
-            success_url: `${canonicalOrigin}/payment-return?payment=success&order=${order.id}`,
-            cancel_url: `${canonicalOrigin}/payment-return?payment=cancelled&order=${order.id}`,
+            ...paymentReturnUrls(order.id, payload.mobileReturn === true),
             reference_number: order.order_number,
             description: `CozyCraft order ${order.order_number}`,
             send_email_receipt: true,
