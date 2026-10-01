@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -151,4 +151,55 @@ export function collapseElement(element: HTMLElement | null, duration = 360) {
   );
   element.style.overflow = "hidden";
   return animation.finished.then(() => undefined, () => undefined);
+}
+
+/**
+ * Keeps a sticky element (the product gallery) exactly where it is when
+ * content beside it grows. A sticky element pinned to the bottom of its
+ * column would otherwise be dragged down as an accordion opens. Call `hold()`
+ * just before the content changes; scrolling back up eases the element into
+ * its normal sticky position again.
+ */
+export function useStickyHold<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const hold = useCallback(() => {
+    const node = ref.current;
+    if (!node || typeof window === "undefined") return;
+    const style = window.getComputedStyle(node);
+    if (style.position !== "sticky") return;
+    const natural = node.dataset.stickyTop ? Number(node.dataset.stickyTop) : parseFloat(style.top);
+    if (!Number.isFinite(natural)) return;
+    const current = node.getBoundingClientRect().top;
+    // Already resting at its sticky offset: growing content won't move it.
+    if (current >= natural - 0.5) return;
+    node.dataset.stickyTop = String(natural);
+    node.style.top = `${current}px`;
+  }, []);
+  useEffect(() => {
+    let lastY = window.scrollY;
+    const release = () => {
+      const node = ref.current;
+      if (!node?.dataset.stickyTop) return;
+      node.style.top = "";
+      delete node.dataset.stickyTop;
+    };
+    const onScroll = () => {
+      const node = ref.current;
+      const y = window.scrollY;
+      const delta = lastY - y;
+      lastY = y;
+      if (!node?.dataset.stickyTop || delta <= 0) return;
+      const next = parseFloat(node.style.top) + delta;
+      if (next >= Number(node.dataset.stickyTop)) release();
+      else node.style.top = `${next}px`;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", release);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", release);
+      release();
+    };
+  }, []);
+  return { ref, hold };
 }

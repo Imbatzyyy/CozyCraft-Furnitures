@@ -152,7 +152,7 @@ import { roomCollections, subcategoryProductMap } from "@/lib/catalog/room-colle
 import { journalEntries, findJournalEntry } from "./journal";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/storefront/SlidingIndicator";
 import { StarRating } from "@/components/storefront/StarRating";
-import { prefersReducedMotion as prefersReducedMotionNow, usePresence, useReducedMotion } from "@/components/storefront/motion";
+import { prefersReducedMotion as prefersReducedMotionNow, usePresence, useReducedMotion, useStickyHold } from "@/components/storefront/motion";
 import { usePageTitle } from "@/components/storefront/page-meta";
 
 import {
@@ -2408,6 +2408,8 @@ function ProductPageContent({
   const [ctaVisible, setCtaVisible] = useState(true);
   const ctaRef = useRef<HTMLDivElement | null>(null);
   const mobileGalleryRef = useRef<HTMLDivElement | null>(null);
+  // Keeps the sticky desktop gallery still while the detail accordions open.
+  const galleryHold = useStickyHold<HTMLElement>();
   const [zoomOrigin, setZoomOrigin] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState("");
   const [ratingCounts, setRatingCounts] = useState<number[] | null>(null);
@@ -2794,7 +2796,7 @@ function ProductPageContent({
           </div>
         )}
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,.88fr)] lg:gap-12 xl:gap-16">
-          <section aria-label={`${product.name} photos`} className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+          <section ref={galleryHold.ref} aria-label={`${product.name} photos`} className="min-w-0 lg:sticky lg:top-24 lg:self-start">
             {/* Phones and tablets: swipeable gallery */}
             <div className="relative lg:hidden">
               <div
@@ -3012,7 +3014,12 @@ function ProductPageContent({
               })}
             </ul>
 
-            <div className="mt-6 divide-y divide-border border-y border-border">
+            <div
+              className="mt-6 divide-y divide-border border-y border-border"
+              onClickCapture={(event) => {
+                if ((event.target as HTMLElement).closest("summary")) galleryHold.hold();
+              }}
+            >
               <details className="cc-accordion group" open>
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-sm font-semibold [&::-webkit-details-marker]:hidden">Materials & finish<Plus size={16} className="shrink-0 transition duration-300 group-open:rotate-45" /></summary>
                 <ul className="grid gap-3 pb-6 text-sm">
