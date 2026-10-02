@@ -195,20 +195,12 @@
   .cc-range input[type="range"]:focus-visible::-moz-range-thumb { outline: 3px solid var(--ring); outline-offset: 2px; }
 }
 
-/* Smooth accordions where the browser can animate to height: auto.
-   Height eases in and out evenly: a front-loaded curve made the panel jump
-   most of its height in the first frames, which yanked the sticky product
-   gallery (and everything below) and read as a flicker. */
-@supports (interpolate-size: allow-keywords) {
-  :root[data-surface="store"] { interpolate-size: allow-keywords; }
-  .cc-accordion::details-content {
-    height: 0;
-    opacity: 0;
-    overflow: clip;
-    transition: height .5s cubic-bezier(.45, 0, .2, 1), opacity .35s ease, content-visibility .5s allow-discrete;
-  }
-  .cc-accordion[open]::details-content { height: auto; opacity: 1; }
-}
+/* Keep disclosures native in every engine. Animating the intrinsic height and
+   content visibility of ::details-content repeatedly lays out the whole product
+   row in Chromium, including the sticky gallery and already-painted text. The
+   large dimensions sketch made that repaint visible as flicker. Only the summary
+   icon animates; opening content must not animate layout or hide loaded media. */
+:root[data-surface="store"] .cc-accordion::details-content { transition: none; }
 
 /* Page-to-page transitions (React Router viewTransition). */
 @media (prefers-reduced-motion: no-preference) {
