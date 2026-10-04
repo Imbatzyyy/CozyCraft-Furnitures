@@ -52,15 +52,9 @@
   [headers.values]
     X-Robots-Tag = "noindex, nofollow, noarchive"
 
+# Remote Image CDN responses inherit cache policy from Supabase, not header
+# rules here. The native app displays them without a CORS/canvas request.
 # Vite filenames include a content hash, so these files can be cached forever.
-[[headers]]
-  for = "/.netlify/images"
-  [headers.values]
-    Cache-Control = "public, max-age=3600"
-    # Public product images are also rendered inside the Capacitor storefront.
-    Access-Control-Allow-Origin = "*"
-    Cross-Origin-Resource-Policy = "cross-origin"
-
 [[headers]]
   for = "/assets/*"
   [headers.values]
