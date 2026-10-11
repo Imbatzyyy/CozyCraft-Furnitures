@@ -82,9 +82,17 @@ export function deliveryDateRange(
   area: Pick<DeliveryServiceArea, "lead_time_min_days" | "lead_time_max_days">,
   from = new Date(),
 ): { earliest: Date; latest: Date } {
-  const earliest = new Date(from);
-  const latest = new Date(from);
-  earliest.setDate(earliest.getDate() + area.lead_time_min_days);
-  latest.setDate(latest.getDate() + area.lead_time_max_days);
-  return { earliest, latest };
+  // Philippine calendar days have a fixed UTC+08 offset and no DST. Avoid
+  // the visitor's local setDate(), which can add 23/25 hours around DST.
+  const day = 86_400_000;
+  return {
+    earliest: new Date(from.getTime() + area.lead_time_min_days * day),
+    latest: new Date(from.getTime() + area.lead_time_max_days * day),
+  };
+}
+
+export function formatDeliveryDate(date: Date): string {
+  return date.toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila", month: "short", day: "numeric",
+  });
 }

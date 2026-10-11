@@ -3,6 +3,7 @@ import {
   deliveryAreaCodeForAddress,
   deliveryAreaForAddress,
   deliveryDateRange,
+  formatDeliveryDate,
   deliveryFeeFor,
   type DeliveryServiceArea,
 } from "./delivery";
@@ -29,8 +30,17 @@ describe("delivery estimates", () => {
 
   it("builds an inclusive estimated date window", () => {
     const result = deliveryDateRange(area, new Date("2026-08-14T00:00:00+08:00"));
-    expect(result.earliest.getDate()).toBe(16);
-    expect(result.latest.getDate()).toBe(18);
+    expect(result.earliest.toISOString()).toBe("2026-08-15T16:00:00.000Z");
+    expect(result.latest.toISOString()).toBe("2026-08-17T16:00:00.000Z");
+    expect(formatDeliveryDate(result.earliest)).toBe("Aug 16");
+    expect(formatDeliveryDate(result.latest)).toBe("Aug 18");
+  });
+
+  it("keeps Philippine dates across a visitor's daylight-saving transition", () => {
+    const result = deliveryDateRange(area, new Date("2026-03-07T16:30:00Z"));
+    expect(result.earliest.toISOString()).toBe("2026-03-09T16:30:00.000Z");
+    expect(formatDeliveryDate(result.earliest)).toBe("Mar 10");
+    expect(formatDeliveryDate(result.latest)).toBe("Mar 12");
   });
 
   it.each([

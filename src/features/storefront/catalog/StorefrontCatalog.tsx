@@ -135,6 +135,7 @@ import {
 } from "@/lib/catalog/compare";
 import {
   deliveryDateRange,
+  formatDeliveryDate,
   deliveryFeeFor,
   type DeliveryServiceArea,
 } from "@/lib/catalog/delivery";
@@ -2998,7 +2999,7 @@ function ProductPageContent({
               </div>
               {selectedDeliveryArea && deliveryWindow ? (
                 <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
-                  <p><span className="block text-muted-foreground">Arrives</span><span className="mt-1 block text-sm font-semibold">{deliveryWindow.earliest.toLocaleDateString("en-PH", { month: "short", day: "numeric" })} – {deliveryWindow.latest.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</span></p>
+                  <p><span className="block text-muted-foreground">Estimated arrival · Philippine time</span><span className="mt-1 block text-sm font-semibold">{formatDeliveryDate(deliveryWindow.earliest)} – {formatDeliveryDate(deliveryWindow.latest)}</span></p>
                   <p><span className="block text-muted-foreground">Delivery</span><span className="mt-1 block text-sm font-semibold">{deliveryFee === 0 ? "Free" : money(deliveryFee ?? 0)}</span></p>
                   <p><span className="block text-muted-foreground">Assembly</span><span className="mt-1 block text-sm font-semibold">{selectedDeliveryArea.assembly_available ? "Available" : "Guidance included"}</span></p>
                 </div>

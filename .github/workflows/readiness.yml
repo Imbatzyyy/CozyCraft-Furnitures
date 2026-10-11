@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      TZ: UTC
       VITE_SUPABASE_URL: https://fixture.supabase.co
       VITE_SUPABASE_PUBLISHABLE_KEY: public-test-fixture-key
     steps:
@@ -25,4 +26,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify:release
+      - run: TZ=America/New_York npx vitest run src/lib/catalog/delivery.test.ts
       - run: npm audit --audit-level=high

@@ -10,10 +10,13 @@ a measured 45-browser capacity result.
 
 ## Verification recorded for this release
 
-- Local `verify:release`: TypeScript/build passed, 620 application tests across
+- Local `verify:release`: TypeScript/build passed, 621 application tests across
   99 files, 20 Edge Function tests plus eight steps, isolated PostgreSQL
   regressions, and the 132-version migration hash manifest passed.
 - Full and production-only npm dependency audits reported zero vulnerabilities.
+- The first Linux CI run exposed a timezone-dependent delivery estimate check.
+  Delivery calculations and display now explicitly follow Philippine dates;
+  the suite also runs in UTC and checks a US daylight-saving transition.
 - Rollback-only live-schema rehearsal passed before the three new migrations
   were committed. The four changed/new Edge Functions were deployed.
 - Live checks confirmed the payment guard and worker cron are installed;
@@ -25,7 +28,7 @@ a measured 45-browser capacity result.
   explicitly labelled local fixture data. Full amounts fit without horizontal
   overflow at 320px after the responsive adjustment. This is not authenticated
   production-admin or physical-device proof.
-- Frontend publication: Netlify deployment `6acb3e4be7e622444e54098c`.
+- Frontend publication: Netlify deployment `6acb3f77a3371be660fa430e`.
   The GitHub Actions run and production smoke results are checked at handoff.
 
 ## Shared database ownership
