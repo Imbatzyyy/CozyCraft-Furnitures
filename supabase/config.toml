@@ -39,6 +39,10 @@ verify_jwt = true
 [functions.send-transactional-email]
 verify_jwt = true
 
+[functions.transactional-email-worker]
+# Service-only claim RPC verifies the supplied worker credential.
+verify_jwt = false
+
 [functions.dispatch-admin-push]
 verify_jwt = false
 

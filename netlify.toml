@@ -1,5 +1,5 @@
 [build]
-  command = "npm run verify"
+  command = "npm run verify:release"
   publish = "dist"
 
 [build.environment]

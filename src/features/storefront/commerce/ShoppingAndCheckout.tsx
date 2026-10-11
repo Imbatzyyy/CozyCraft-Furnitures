@@ -1,4 +1,5 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { reportClientError } from "@/lib/shared/client-errors";
 import { FullTracking } from './FullTracking';
 import {
   createContext,
@@ -1601,14 +1602,7 @@ export function Checkout() {
 export function CheckoutErrorBoundary() {
   const error = useRouteError();
   useEffect(() => {
-    console.error("Checkout route error", error);
-    void supabase.rpc("report_client_error", {
-      p_message: error instanceof Error ? error.message : String(error ?? "Unknown checkout error"),
-      p_stack: error instanceof Error ? error.stack ?? "" : "",
-      p_path: window.location.pathname + window.location.search,
-      p_context: "checkout_boundary",
-      p_user_agent: window.navigator.userAgent,
-    });
+    void reportClientError(supabase, error, "checkout_boundary", window.location.pathname);
   }, [error]);
   return (
     <Layout>

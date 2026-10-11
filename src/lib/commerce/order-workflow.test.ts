@@ -3,9 +3,17 @@ import {
   allowedFulfillmentStatuses,
   canTransitionFulfillment,
   currentPaymentTransaction,
+  fulfillmentPaymentBlocked,
 } from "./order-workflow";
 
 describe("fulfillment state machine", () => {
+  it("blocks unpaid online fulfillment but not COD", () => {
+    for (const payment_method of ["card", "gcash"]) {
+      for (const payment_status of ["pending", "failed", "refunded"]) expect(fulfillmentPaymentBlocked({ payment_method, payment_status })).toBe(true);
+      expect(fulfillmentPaymentBlocked({ payment_method, payment_status: "paid" })).toBe(false);
+    }
+    expect(fulfillmentPaymentBlocked({ payment_method: "cod", payment_status: "pending" })).toBe(false);
+  });
   it("allows only forward fulfillment progress", () => {
     expect(canTransitionFulfillment("pending", "processing")).toBe(true);
     expect(canTransitionFulfillment("processing", "packed")).toBe(true);

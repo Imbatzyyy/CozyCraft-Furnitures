@@ -281,3 +281,20 @@
 .adm-toast-countdown { animation: adm-countdown linear both; }
 @keyframes adm-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 :root[data-surface="admin"][data-admin-theme="dark"] .dark-invert { filter: brightness(0) invert(1); }
+/* Reports must show complete financial values, including on narrow phones. */
+.adm-report-stats .adm-num {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+}
+@media (max-width: 479px) {
+  .adm-report-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .adm-report-stats > div {
+    border-left-width: 0;
+  }
+  .adm-report-stats > div + div {
+    border-top-width: 1px;
+  }
+}

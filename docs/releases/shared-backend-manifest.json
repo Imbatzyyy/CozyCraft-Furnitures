@@ -1,0 +1,533 @@
+{
+  "project": "gwjsivqksyimuabbdyqq",
+  "migrations": [
+    {
+      "file": "20260729050350_initialize_cozycraft_commerce.sql",
+      "sha256": "3ddac2ec96c50f5e05e46d058d7b3cd6f6624b7d7d4bd6472330ee43ba5de8db"
+    },
+    {
+      "file": "20260729051327_add_commerce_storage.sql",
+      "sha256": "f8aebbff5aa5e9c180a88b3c2b00207d34047ce12fa14269bf13b79e03d59fac"
+    },
+    {
+      "file": "20260729052829_harden_commerce_security.sql",
+      "sha256": "7d5423b881d0aedb7141fdde8a5197454bb3539e7b2a69dc6a35eb9871feae9a"
+    },
+    {
+      "file": "20260729053052_separate_public_read_policies.sql",
+      "sha256": "ae29bf93abcd693f0453449f6bbaba8a1317d8c1651ce5c0e753da237aa73b38"
+    },
+    {
+      "file": "20260729055437_add_team_roles_and_permissions.sql",
+      "sha256": "b4fb94f5b66c58baa4659a944a10d0e1e0d95ac07ab1f1c8e1017b0dfe4888ef"
+    },
+    {
+      "file": "20260730004729_enable_cod_order_demo.sql",
+      "sha256": "8f5736c6c1e30482bf4b6772d58ecfc3f883f007b2175a4841d6a8be02b4efed"
+    },
+    {
+      "file": "20260730093000_complete_customer_profiles.sql",
+      "sha256": "1f93398d26201edb5ece6a8ec7eaf36a400d692a8325dc5d9e924d96f61ef60c"
+    },
+    {
+      "file": "20260731050000_enable_account_collection_realtime.sql",
+      "sha256": "00950ffafb60891cb541596d66e8fe4846526b4a87f08c04a05c2a13187049bd"
+    },
+    {
+      "file": "20260731070000_connect_admin_realtime.sql",
+      "sha256": "4757d82518f044c0ceceddcc079504585438f67c8bb924a0802574c234f977e5"
+    },
+    {
+      "file": "20260731080000_add_report_schedule_setting.sql",
+      "sha256": "0faa4393059c4bdd8ad96abe98e411e81343d794f9d48e9aa490b968fdadfc03"
+    },
+    {
+      "file": "20260731081000_remove_duplicate_order_audit.sql",
+      "sha256": "3350ac51b7874d164b14e933c22cfda786d4df276fea0c1a2db2dd203c0fe870"
+    },
+    {
+      "file": "20260731090000_team_access_realtime_status.sql",
+      "sha256": "27186583fe134b30a08b9d9bb8d5924973d8bdeb51861721393bddd029c77d83"
+    },
+    {
+      "file": "20260731093000_admin_notification_center.sql",
+      "sha256": "bcd8c0863c4e0ece98933127749af9bdb0093afaacee5a452f689579f6046753"
+    },
+    {
+      "file": "20260731143000_verified_purchase_reviews.sql",
+      "sha256": "7e6a4ce8968096da1a0e7e682dd1e6e7c5c469fe2e9ef2b030bda46b3d512164"
+    },
+    {
+      "file": "20260731170000_complete_workspace_activity_audit.sql",
+      "sha256": "7307e2549976a0401aaf63ce45bb3c17aee788b42efc8360e06a24d54a91214d"
+    },
+    {
+      "file": "20260801071505_backfill_order_item_product_links.sql",
+      "sha256": "e6b3bacfdc104f280aceff838b1f87aa267fe1b924ea31e1d098d15a2fe35333"
+    },
+    {
+      "file": "20260801231850_add_paymongo_checkout.sql",
+      "sha256": "88d5419b31eb27b61bd2883020a2d2f34e95f69c9c33b1bffd32cd01b92a799c"
+    },
+    {
+      "file": "20260802005324_persist_cart_checkout_selection.sql",
+      "sha256": "25e1c07e89564b94bef0e2ac4290725bb8d87cbff3399f8b83cb4715f041be5c"
+    },
+    {
+      "file": "20260802074536_harden_realtime_integrations.sql",
+      "sha256": "7a4e47a6ab7e9f38e954e76b6b36c9f71b609d0fa45467e8c1c0bf0094c10ecb"
+    },
+    {
+      "file": "20260802093000_safe_paid_order_cancellation.sql",
+      "sha256": "1df721ad9f9eae44c707154948c0c5861daa4d32f3c8f621db1c08a8dca5130e"
+    },
+    {
+      "file": "20260802093727_clear_registration_dates_from_birthdays.sql",
+      "sha256": "a07f4f24041e1d48ba5015e63d64d35754f437daf085f2d1e34d804a7b104a4f"
+    },
+    {
+      "file": "20260802095000_track_refund_email_delivery.sql",
+      "sha256": "c29caa0688bcd7159272cd4043dd1bc63a184de3ce4c872a135cc47a15584a33"
+    },
+    {
+      "file": "20260802101500_add_order_status_history.sql",
+      "sha256": "8679ea1707acde2f161a8aacefe20bc527a2b147f158cde8fbca53ce81f47b73"
+    },
+    {
+      "file": "20260802113000_idempotent_checkout.sql",
+      "sha256": "f9da37565ba8bd8be5b2da722d528d2e07227dd1d77d6229c7f653a00817ea9a"
+    },
+    {
+      "file": "20260802113241_make_customer_avatars_private.sql",
+      "sha256": "a001312ce093036985f153af4329cb8bacb95d4847e84b5cf286a22079ada981"
+    },
+    {
+      "file": "20260802123000_add_return_workflow.sql",
+      "sha256": "3a68226bedef864d863efcd28d9d5fb94c9c9026c9d023fb95b9616076e39ecd"
+    },
+    {
+      "file": "20260802130000_secure_return_refunds.sql",
+      "sha256": "fadbb3e2a34066e7f479000dd8a8fa253c1f16d4d573a0a3e01644ef2d6a358d"
+    },
+    {
+      "file": "20260802143000_support_workflow.sql",
+      "sha256": "82adeab687df4347e492311ced883caba34ff0cd6dd4e4bfa567651ed73b21fd"
+    },
+    {
+      "file": "20260802150000_recently_viewed_products.sql",
+      "sha256": "f76c1db8068135ceafaaae8e78393ed334562b52c61f93d6edf4c8fcd9def157"
+    },
+    {
+      "file": "20260802153000_inventory_movement_ledger.sql",
+      "sha256": "7e0d5fdb24d1e2f75218612ef9b1cd704b781aa38ae06a6467bd7c93b0e209ab"
+    },
+    {
+      "file": "20260802160000_atomic_paymongo_settlement.sql",
+      "sha256": "5484fc5854cfeafe8b66245efc85d8a89fbc44b8851043706ae1de5afc4f6051"
+    },
+    {
+      "file": "20260802163000_client_error_monitoring.sql",
+      "sha256": "ddf4e4bfff7c88fac04876a85514d46133e6eaa91b57da758f1548c486792fdf"
+    },
+    {
+      "file": "20260802170000_weekly_report_briefing.sql",
+      "sha256": "9549afd6910d2331b487a5648c3c4fd9316015041a648c022765cb07134a78d7"
+    },
+    {
+      "file": "20260802173000_enforce_order_status_transitions.sql",
+      "sha256": "56ca0e1e916d1e68a1b50818a1e28c2c8129bb5061f461c6e72c285bff938ca1"
+    },
+    {
+      "file": "20260802180000_harden_return_workflow.sql",
+      "sha256": "0e595cbf2748063a7d87ac79e2015d00ca1e950c9474bf07d7ef6a5176226cf9"
+    },
+    {
+      "file": "20260802183000_atomic_selective_cart_checkout.sql",
+      "sha256": "36fac3d7ccc29a0c8155857bc2f142af175f2ea1c9d11d17e986022e90fbf130"
+    },
+    {
+      "file": "20260802190000_validate_customer_usernames.sql",
+      "sha256": "d1a9b18d6cfa686dd3924ef3be1c32244715b4546b892f9a103d5ae64f67a005"
+    },
+    {
+      "file": "20260802193000_harden_delivery_addresses.sql",
+      "sha256": "e4e1823fbb2903f48c0784951e42a0ff05604bdef4d1b258e91ced9ea9737856"
+    },
+    {
+      "file": "20260802200000_harden_monitoring_jobs.sql",
+      "sha256": "7bd34b875601563c186eedebf8eab8612be87eb6983e3f99fc9a089a3337cfd1"
+    },
+    {
+      "file": "20260802203000_harden_customer_support_intake.sql",
+      "sha256": "15758d302fe7a3f14f93589a206ea2bdd03cfe3dbe098c06ddbbed09310cf019"
+    },
+    {
+      "file": "20260802210000_enforce_live_cart_inventory.sql",
+      "sha256": "f16a473950ebbab407db85b96a11ffa6aeb12a5d66006abe3111b75f3ec0d4d2"
+    },
+    {
+      "file": "20260802213000_enforce_admin_financial_permissions.sql",
+      "sha256": "93edadd9bc1b867e996efbcb50a138697419937a8aac6c8f5fb95083d7399394"
+    },
+    {
+      "file": "20260802220000_harden_database_authorization.sql",
+      "sha256": "adf566bb240663e092f2708fce739331301e914df4c60947e70ef75989cee46d"
+    },
+    {
+      "file": "20260802223000_detect_customer_password_status.sql",
+      "sha256": "406debb3c4b125525a3a6172f2244eea089002502a0e2f6d4cad95ee94ff2b56"
+    },
+    {
+      "file": "20260802233000_expand_store_settings.sql",
+      "sha256": "9c6b6106996188a49371ec48d56cefe8714c605036e7295b3a098cc630587bbe"
+    },
+    {
+      "file": "20260802234500_fix_review_settings_rpc.sql",
+      "sha256": "82679b1d7c4612a3715b68f92655bacc92afdbdea47927f10efcd0065ec6d490"
+    },
+    {
+      "file": "20260803000000_enforce_customer_operations_settings.sql",
+      "sha256": "ea4c7977d798ed24b54bdd8ff9aefefff0104f8d209a942da82c308442b8dcc2"
+    },
+    {
+      "file": "20260803003000_retry_failed_checkouts.sql",
+      "sha256": "0c194d5f1e4bf6548e4c3983bce5bb3967aa4a698cf39b3438436787feb04059"
+    },
+    {
+      "file": "20260804093000_customer_communication_preferences.sql",
+      "sha256": "14e576870adea6d03882c48df1b944dff572b2e8113452216aaa8fa392f4a1a0"
+    },
+    {
+      "file": "20260804111500_customer_payment_preferences.sql",
+      "sha256": "300d4ee3e0147d693bd55bc305885e35beba92c31093d5994dd567f49fa5f16a"
+    },
+    {
+      "file": "20260804123000_mobile_push_tokens.sql",
+      "sha256": "725f1f9876ce1c7f7d23baf0ba133df54789b1a0d88847d87e7132098fdaa659"
+    },
+    {
+      "file": "20260804133000_notify_order_status_changes.sql",
+      "sha256": "82aa4e6b0f0a8541e7891a35d003e4bb72d61c315675b697391f6713d1d02749"
+    },
+    {
+      "file": "20260805105000_reconcile_product_review_summaries.sql",
+      "sha256": "b2b720d6bf477492bac9dc57f32e2a9ea129d99da44401a96e73ade3a8f5e443"
+    },
+    {
+      "file": "20260805143000_mobile_home_circle_rewards.sql",
+      "sha256": "67e4056d6685f52e39790dd4f3608e53886f48adc4b45913ebe49a2e4314c8ff"
+    },
+    {
+      "file": "20260805170000_apply_mobile_rewards_to_orders.sql",
+      "sha256": "2ecbcd74de6b81d99db8dc4d26f085bd4a88fb1130e8532af8dfc3fb4557144a"
+    },
+    {
+      "file": "20260806141000_enrich_activity_log_sources.sql",
+      "sha256": "8c9c731fface5f482d600d0686db8abb159178ccc4141e6d8839ee56b30cf577"
+    },
+    {
+      "file": "20260808090000_restore_lino_wooden_tv_stand.sql",
+      "sha256": "49eb3ae2d70427bee58ddb230a048032f7b317b797a1920d6e94e0c4f116adb3"
+    },
+    {
+      "file": "20260809010000_restore_lino_original_catalog_timestamp.sql",
+      "sha256": "41ae21a68241520e066decbf2d5b45820e81f8763dbbff39b044c9b9f0730f40"
+    },
+    {
+      "file": "20260809013000_restore_angela_tonstad_bedroom_classification.sql",
+      "sha256": "77dbf160388f9d2a6243db82534891c9a74d68076d2e1634852643730ba948a0"
+    },
+    {
+      "file": "20260809014000_separate_tonstad_tv_stand_and_angela_nightstand.sql",
+      "sha256": "5c5720e2d7d666039c3161165333bb2c0da5aa6dd7571454c7759143746b99af"
+    },
+    {
+      "file": "20260809023000_prevent_same_product_name_in_catalog_slot.sql",
+      "sha256": "38651881c1a51feb386d812283d2ccd0cec0d26edb7ef72ed1349ff4f75fe10c"
+    },
+    {
+      "file": "20260809024159_mobile_delivered_product_reviews.sql",
+      "sha256": "a7b8d3a0880d4b1ea747463b80637461358bb84fdd2f552a526c372050559d2f"
+    },
+    {
+      "file": "20260809025707_link_reviews_to_order_items.sql",
+      "sha256": "0849cc0943894241085a008c8df277b7d2c2e012de874206b97cf41b1a8e7666"
+    },
+    {
+      "file": "20260809025932_keep_product_review_rpc_order_aware.sql",
+      "sha256": "84070118e6df9fc4a682d69d16dc2a9893748cb231300599e2f911679fea9632"
+    },
+    {
+      "file": "20260809032244_limit_review_photos_to_two.sql",
+      "sha256": "f2ffa2b377f4fa150a18baac4c0c631e61c12d90529257968f33dc3d4f332de2"
+    },
+    {
+      "file": "20260809035958_add_safe_reviewer_display_names.sql",
+      "sha256": "9baa8c6a83726fb37cc004daa9169bcd0140b76cf767f91eba6b68f118cfad99"
+    },
+    {
+      "file": "20260809043000_audit_authentication_events.sql",
+      "sha256": "c14e9bbf29815e3fe7ec944620c862c5acdae0216ee4afd30a961ddf5b703cba"
+    },
+    {
+      "file": "20260810022738_add_order_cancellation_approval_workflow.sql",
+      "sha256": "8f7fb7f076115e39275db74be62173baf985cfdc1af25e3bb08e05294463319a"
+    },
+    {
+      "file": "20260810022920_allow_customer_cancellation_rpc_protected_write.sql",
+      "sha256": "c087f5d3db534e7ecfcddada1734f95b7ea0a5c622367abb935fd15d065d0cf5"
+    },
+    {
+      "file": "20260810023043_index_cancellation_reviewer.sql",
+      "sha256": "aba2828bb32a4f0796ee6b7b6296c31a6dbfee85439596e36b9cb0cc05beab5e"
+    },
+    {
+      "file": "20260812143000_harden_admin_mobile_operations.sql",
+      "sha256": "d5853d49eb6f63b979b17f452c2cba2e6afea1c3b2654112c3f9b904bada8335"
+    },
+    {
+      "file": "20260814054651_admin_member_tier_monitoring.sql",
+      "sha256": "029a1cbf22cb1b336bbda8189f0f0674b85b1cfedd96d9a4d7997a19dfde8f3e"
+    },
+    {
+      "file": "20260814055247_optimize_member_tier_monitoring_rls.sql",
+      "sha256": "46ea86aa9c780b5ffded29d4c531534bbe899a23da33ed5f26fcd07a310765a0"
+    },
+    {
+      "file": "20260814151454_add_storefront_experience_controls.sql",
+      "sha256": "5b2516c61ae1f3a04bd0268a3e7f98377dabe3f5ef2635bdebdb588450d8f3a8"
+    },
+    {
+      "file": "20260814153729_optimize_experience_and_rls_paths.sql",
+      "sha256": "e6c806568d6f1c99a88f6ba741ebc6779680481036f34ac292f40d5d5335fdb4"
+    },
+    {
+      "file": "20260814155800_fix_public_experience_config_policies.sql",
+      "sha256": "57a447c215584fbacb089e94616cace18400e73a51caa073c934ef0991b8630b"
+    },
+    {
+      "file": "20260814164357_align_delivery_fees_with_service_areas.sql",
+      "sha256": "2c162ef1003f6d08ca37d1e3c7dfc95dc1d4570425f4436bebd68180ab84a08f"
+    },
+    {
+      "file": "20260815000500_consolidate_search_event_read_policy.sql",
+      "sha256": "08a24dfe4369ec7b9266c17bb7478a11c1432acb977619d02223e4e2adc9df79"
+    },
+    {
+      "file": "20260815092220_complete_sections_i_iii_checklist.sql",
+      "sha256": "30558407707f7cc4d5188ede3d955057550ed5f069fcf6e2477ecbe7de8d9d67"
+    },
+    {
+      "file": "20260815104246_fill_cozycraft_business_details.sql",
+      "sha256": "b1f6f6448bfe32f785149c481836fadd281a2d92a554a3fdd7ecc5ef176b875f"
+    },
+    {
+      "file": "20260815104427_fill_cozycraft_business_details.sql",
+      "sha256": "637621b7ddcc74126f052fad28ed0490df7522aa3874860d52ae4d1dc629e4dd"
+    },
+    {
+      "file": "20260816233000_record_customer_policy_acceptance.sql",
+      "sha256": "1f2577f052aa256a9e5879da7f97445b205273ad01069a4951b23c18911d5ee0"
+    },
+    {
+      "file": "20260818131500_admin_mobile_pin_security.sql",
+      "sha256": "d8a957038679125d4840554fc43375697e662283121561afdefc2c3fbecaf729"
+    },
+    {
+      "file": "20260820074751_restore_team_member_role_mutation.sql",
+      "sha256": "ccb4a96b9a4e78a6fcbe2220a18f1bc5b3f6c5b197f84127ebe4535f543baf8e"
+    },
+    {
+      "file": "20260821090000_paymongo_payment_recovery_window.sql",
+      "sha256": "91637157029c5f68afdd10b851c61b646fd27b9cf1036b5d80f687f594bfa748"
+    },
+    {
+      "file": "20260821110000_expire_paymongo_sessions_before_orders.sql",
+      "sha256": "d2ab618b694cf27a6d43213a1b76437b09ac3878118542423a3ca500fb97d53f"
+    },
+    {
+      "file": "20260823030032_restore_admin_customer_primary_delivery.sql",
+      "sha256": "641ec6b048616ec42cc8a6258823501ae97969effde13c96b7c1d6372dd332be"
+    },
+    {
+      "file": "20260823102119_add_newsletter_subscribers.sql",
+      "sha256": "353edd7d4b1dac174fd0675e8df4c23a8638878f33c24e5c776561ffc5017661"
+    },
+    {
+      "file": "20260823141000_add_newsletter_campaigns.sql",
+      "sha256": "55e55b1e5784c7693f23eb8fe6f807faf008dbdb6fffb58ff4dc9a02193a4388"
+    },
+    {
+      "file": "20260824033000_connect_admin_mobile_notifications.sql",
+      "sha256": "c18a6e1d6de303b109abd4762fe72284ab41e7aeb301478c871a0df9526c8f27"
+    },
+    {
+      "file": "20260824125009_complete_mobile_customer_checklist.sql",
+      "sha256": "0fdffec15dd7a6b6584629fe61f48cfb5c205ec36aa1b47a0108c27ea2fc7784"
+    },
+    {
+      "file": "20260824131500_confirm_paid_online_orders_only.sql",
+      "sha256": "7570235d2938e1ae7279b0414fab604430e64da5d4c4cee8baad6d5e88add72a"
+    },
+    {
+      "file": "20260824133000_fix_cancellation_payment_status_enum.sql",
+      "sha256": "3a2ce3d92e667b9a9ba22b4d3e3100904bcd306858f690bc3ffddaa0fc4ea19d"
+    },
+    {
+      "file": "20260825103000_add_public_product_availability_signal.sql",
+      "sha256": "b584f51ec1c6c4c03560b805f4a51b110ffaf9fed661358d58b5df1082003d98"
+    },
+    {
+      "file": "20260825114500_index_product_availability_updates.sql",
+      "sha256": "cee82bda8ab0125e4e7915d8d4f97f107068449f703b183db1650b5ed3656a9f"
+    },
+    {
+      "file": "20260825121000_settle_delivered_cod_orders.sql",
+      "sha256": "b948e171ffc75a84226cfe40044bbf0d6f15ef15aff6519b89c93c6a0db79391"
+    },
+    {
+      "file": "20260827100000_secure_customer_phone_verification.sql",
+      "sha256": "576cb88bbc88179ac616039b8e7694360826c5a3360a5c3f350bc7bfff71115a"
+    },
+    {
+      "file": "20260827113000_enforce_opted_in_customer_mfa.sql",
+      "sha256": "da2f8485415bf433a2b49ce2f9fc131985d97be09db24105b6783787fe052678"
+    },
+    {
+      "file": "20260827130000_customer_device_session_management.sql",
+      "sha256": "a22177f98d1d9e309e1e35593d48ff5dd75b0e5d36609ef5bd14149bc11927f4"
+    },
+    {
+      "file": "20260903073707_mobile_assistant_feedback.sql",
+      "sha256": "4e9e059028b7cdf44f3e384ec6bc5f6e4ba39d432457e8e1bb0ce42c6f335556"
+    },
+    {
+      "file": "20260904033043_auto_publish_customer_reviews.sql",
+      "sha256": "070deefad816de2505deb5960e31ae260c94f8b6ef7ad0e0fa065c4e6fd99cf9"
+    },
+    {
+      "file": "20260904150000_mobile_payment_email_authorization.sql",
+      "sha256": "2d0c39b143502c77fd2907f7a00a0028896134504a7f7b6ae1134fdca0bb1bf9"
+    },
+    {
+      "file": "20260904170000_atomic_mobile_payment_challenge_reservation.sql",
+      "sha256": "131c80f8ead58990b61c75d559ea786f9f3390136b85aec540e07d99d4141137"
+    },
+    {
+      "file": "20260904190000_mobile_google_customer_onboarding.sql",
+      "sha256": "9f57d03a43f73a0a0e1895f9ea83c9bcfdd4b9c0c3886b582ee661b5c0f073f5"
+    },
+    {
+      "file": "20260905140000_admin_workspace_read_models.sql",
+      "sha256": "0f6cbb6985f904066c518749ac2e3e386710e9d1d572eb18b865658750576dfb"
+    },
+    {
+      "file": "20260905141000_private_support_handover_notes.sql",
+      "sha256": "4866b57978b04ef485fedb2f3143b89b0f87d2a34f2941ef11e98ca973c359f3"
+    },
+    {
+      "file": "20260906020220_harden_concurrent_operations.sql",
+      "sha256": "15808cffadee01ce538e9ad1b4677f7309bb65551c684c37eaef40b16bc6bf64"
+    },
+    {
+      "file": "20260906060000_security_access_boundaries.sql",
+      "sha256": "e5d95e67da24bb2ce38e9b37bfe21e19efe5ac8a63342e60987987938aa40fd2"
+    },
+    {
+      "file": "20260906061000_private_review_upload_limits.sql",
+      "sha256": "a4383c26c2592c09706f704f4becbf0898de5ca4e514d4e4ec45daab7760a5b3"
+    },
+    {
+      "file": "20260906062000_review_photo_link_compatibility.sql",
+      "sha256": "5adc3506b1d0d6fc1380c0e2ed2c49d0ec3bcbc641d45b22b3ac06ba7c5416a3"
+    },
+    {
+      "file": "20260906070000_verified_product_measurements.sql",
+      "sha256": "27881f40cf1d8cdfd969295b0fe1388418706655eb2ec9542c3c394658983b7d"
+    },
+    {
+      "file": "20260906073850_mobile_atomic_cod_checkout.sql",
+      "sha256": "2e666fe2e12e86d5a27e159237b8e579a762a95f42ccf5161ea2658736820b0b"
+    },
+    {
+      "file": "20260906074408_mobile_checkout_reference_indexes.sql",
+      "sha256": "52ed04960eb9e9ab949875b0d2ca557a5027accf5ecbe47379c124e97bfc8d9d"
+    },
+    {
+      "file": "20260906192919_home_circle_tier_labels.sql",
+      "sha256": "31d37b9d9eec9c826b0049d40bd6342d683d165eee0cbc1b9b94c1d1553fdbcc"
+    },
+    {
+      "file": "20260908010000_web_vouchers_and_claim_email.sql",
+      "sha256": "e810595039c3dcc375adc94b39f2a98ec69243f6e532012afecc56d6298c72a6"
+    },
+    {
+      "file": "20260908011000_guard_reward_payment_boundary.sql",
+      "sha256": "b76a0e42b5bd0b62d9af42cfe7db835e50b004b98cf85825d07ace1fe2b51688"
+    },
+    {
+      "file": "20260908043530_immediate_voucher_email_dispatch.sql",
+      "sha256": "9b98809c89c52a51d03c99f3c80d21a0f9d2ca3f6396f2d0e268dd4ce032e536"
+    },
+    {
+      "file": "20260910100000_mobile_manual_signup_welcome_voucher.sql",
+      "sha256": "b577f9f4aed2ddea1d49c8d0146066e38ce79734f3e84dc2ea79ffd618910245"
+    },
+    {
+      "file": "20260910110000_atomic_mobile_delivery_addresses.sql",
+      "sha256": "9d931b3ff117e6d0881930f12e148e810fdbfc05796e5846a8bf752212f66593"
+    },
+    {
+      "file": "20260922090000_ai_forecast_read_model.sql",
+      "sha256": "96f451bb3df1728e8208b5aa6f7168f789e0ac6b47c691c66949d7b9c2d33435"
+    },
+    {
+      "file": "20260923090000_furniture_visual_discovery.sql",
+      "sha256": "f8b4561a8af5fdaa5f19707c81a526a3ca21d69b9315cfe8bb09dd5ab1f22f88"
+    },
+    {
+      "file": "20260923093000_furniture_photo_index_queue.sql",
+      "sha256": "5958024bceb32a6b5fcd2dded48115070ad4d7690649ef77851805aeb26dd5d1"
+    },
+    {
+      "file": "20260924090000_mobile_shopping_notifications.sql",
+      "sha256": "bc816b36d12bca592ae97ff26ebe2ffc52e2c7f4a1e9c3a8be41681133a64c1a"
+    },
+    {
+      "file": "20260925100000_low_egress_read_models.sql",
+      "sha256": "b22455c695bccf5e9c07dd2d4649521848367bdc8acae1bbc6427d9a861eb9ce"
+    },
+    {
+      "file": "20260925110000_customer_history_pages.sql",
+      "sha256": "429716a86719b10bd0db0440876a9a36ef5cb4d18b5dce16cf7993a026c0b086"
+    },
+    {
+      "file": "20260925120000_operations_summary_pages.sql",
+      "sha256": "28de3847078aca5918f2169071c3a4f099b4776d17f0baa88b78e548ff711beb"
+    },
+    {
+      "file": "20260925130000_staff_job_health.sql",
+      "sha256": "6ac5ff836d475096f45db5a29c71439cf68ef79c68a57cf294ab188ea1a334b7"
+    },
+    {
+      "file": "20260927090000_live_forecast_inputs.sql",
+      "sha256": "56c3a1e4c27f911277cbf7d958597cbdced382ef3e234c9a5f50d81d8518e7df"
+    },
+    {
+      "file": "20261004090000_mobile_bounded_reads_and_recovery.sql",
+      "sha256": "e30895cc58b9831bef4e8ccafca6b73364503418c039bde31f036a89fb692d48"
+    },
+    {
+      "file": "20261011090000_fulfillment_payment_guard.sql",
+      "sha256": "f7e996acd28b4d0d4f864a67c995089a8fc5e758e84e878ad9c9da41f4303cee"
+    },
+    {
+      "file": "20261011091000_transactional_email_outbox.sql",
+      "sha256": "bbf31eecf017caea7cc6eda83cdc0f6c4b442fc766b4b886c4aa250c1396012e"
+    },
+    {
+      "file": "20261011092000_reporting_environments.sql",
+      "sha256": "b5e26f45eede60da25393967c26081e0179bfcee9b691e0273d554262d41546e"
+    }
+  ]
+}

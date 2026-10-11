@@ -7,14 +7,14 @@
 - Privileged user-facing Edge Functions use the caller's JWT for a database authorization check before service-role access. Resource ownership checks remain mandatory inside handlers.
 - Device management rejects revoked sessions. The browser idle timer is backed by a server activity record updated at most once per minute during interaction.
 - Newsletter budgets: 200 requests per day globally, 10 per source per hour, one destination reservation per two minutes. Destination/source identifiers are keyed hashes, not stored addresses/IPs.
-- Transactional sends: one entity/event reservation per two minutes, 30 per actor per hour, 1,000 globally per day. Staff resend does not bypass these limits.
+- Transactional emails use a commit-safe outbox with event-version deduplication, leased retries and a 1,000-attempt global daily budget. Admin saves do not wait for provider delivery. See `releases/readiness-2026-10-11.md`.
 - Review media is private. Published reviews receive visibility-checked URLs with a 60-second signed redirect. Previously issued links and already downloaded copies cannot be recalled instantly. Admin preview links last five minutes.
 - Stored review URLs are rewritten for older clients. Physical iOS/Android validation remains required after a shared-backend release.
 - Customer storage policies cap uploads at 20 objects per bucket per day and 200 total objects per account across customer buckets. Review uploads require a delivered order item and at most three objects per item. Existing bucket size and MIME restrictions remain.
 
 ## Explicit remaining work / owner decisions
 
-- `security-workflow.yml` is a ready-to-activate workflow template, now including isolated architecture read-model checks. The connected GitHub OAuth credential lacks workflow permission (rechecked for this release), so CI installation is not represented as active. See `low-egress-architecture.md` for the rollout and remaining operational boundaries.
+- Netlify builds run `npm run verify:release` (application, isolated database, backend contracts, migration manifest and production dependency audit). `.github/workflows/readiness.yml` runs the same checks and a full dependency audit on main pushes and pull requests. The owner authorized workflow publishing; require a passing run before treating a pushed revision as verified.
 
 - Supabase Free does not provide the available paid leaked-password protection toggle. Upgrade approval and activation must be completed by the owner; no purchase is automated.
 - Configure a real CAPTCHA provider before enabling CAPTCHA on production authentication or newsletter endpoints. Both client token handling and server verification must ship together; enabling only the dashboard switch breaks legitimate login. Current shared limits are not a CAPTCHA substitute.

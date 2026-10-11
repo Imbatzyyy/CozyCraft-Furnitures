@@ -343,10 +343,25 @@ export async function handleDiscovery(request: Request) {
       ),
       (b) => b.toString(16).padStart(2, "0"),
     ).join("");
-    const budget = await service.rpc("reserve_discovery_request", {
-      p_key: hash,
-      p_index: false,
-    });
+    // A caller cannot nominate another customer's budget. Validate the bearer
+    // through Auth and the existing revocation/MFA gate before using its ID.
+    let userId: string | null = null;
+    const authorization = request.headers.get("Authorization");
+    const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+    if (authorization && anon && authorization !== `Bearer ${anon}`) {
+      const caller = createClient(url, anon, {
+        global: { headers: { Authorization: authorization }, fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(8000) }) },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const [{ data: identity, error: authError }, gate] = await Promise.all([
+        caller.auth.getUser(), caller.rpc("security_action_allowed"),
+      ]);
+      if (authError || !identity.user || gate.error || gate.data !== true) {
+        return reply({ error: "Please sign in again to use your personal search allowance." }, 401);
+      }
+      userId = identity.user.id;
+    }
+    const budget = await service.rpc("reserve_discovery_search", { p_ip: hash, p_user: userId });
     if (budget.error || budget.data !== true)
       return reply(
         {

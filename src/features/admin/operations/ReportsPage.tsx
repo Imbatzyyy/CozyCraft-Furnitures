@@ -12,6 +12,8 @@ import { RevenueArea } from "@/components/admin/charts";
 import { BusyBar, Card, CardHeader, EmptyState, PageHeader, Segmented, Skeleton, StatStrip, Switch, useNotice } from "@/components/admin/ui";
 
 type ReportSummary = {
+  scope: "live" | "test" | "all";
+  basis: string;
   start: string;
   generatedAt: string;
   grossSales: number;
@@ -38,8 +40,9 @@ export function ReportsPage() {
   const { adminProducts, storeSettings } = useStore();
   const { userId, workspaceReady } = useAdminSession();
   const [range, setRange] = useState<AdminReportRange>("This month");
+  const [scope, setScope] = useState<"live" | "test" | "all">("live");
   const rangeChosen = useRef(false);
-  const summary = useAdminQuery<ReportSummary>("admin_reports_summary", { p_range: range }, workspaceReady, userId, { keepPrevious: true });
+  const summary = useAdminQuery<ReportSummary>("admin_reports_summary_scoped", { p_range: range, p_scope: scope }, workspaceReady, userId);
   const [exporting, setExporting] = useState<string | null>(null);
   const [reportSchedule, setReportSchedule] = useState({ frequency: "weekly", timezone: "Asia/Manila" });
   const { notice, notify, clear } = useNotice();
@@ -111,7 +114,7 @@ export function ReportsPage() {
     try {
       const rows: Array<Array<string | number | null>> = [];
       for (let page = 1; page <= 200; page++) {
-        const { data: exportData, error } = await supabase.rpc("admin_report_export", { p_report: reportName, p_range: range, p_page: page }).abortSignal(controller.signal);
+        const { data: exportData, error } = await supabase.rpc("admin_report_export_scoped", { p_report: reportName, p_range: range, p_page: page, p_scope: scope }).abortSignal(controller.signal);
         if (error || !Array.isArray(exportData?.rows)) throw new Error("Report download failed. Please retry.");
         if (controller.signal.aborted || reportOwner.current !== owner) return;
         if (page === 1) rows.push(exportData.headers);
@@ -120,8 +123,8 @@ export function ReportsPage() {
         if (page === 200) throw new Error("This export is too large. Choose a smaller report period.");
       }
       if (reportOwner.current === owner && !controller.signal.aborted) {
-        downloadCsv("cozycraft-" + reportName.toLowerCase().replace(/\s/g, "-") + "-" + range.toLowerCase().replace(/\s/g, "-") + ".csv", rows);
-        notify(`${reportName} downloaded from live data.`);
+        downloadCsv("cozycraft-" + scope + "-" + reportName.toLowerCase().replace(/\s/g, "-") + "-" + range.toLowerCase().replace(/\s/g, "-") + ".csv", rows);
+        notify(`${reportName} downloaded (${scope === "live" ? "live payments and COD" : scope === "test" ? "PayMongo test payments" : "all records"}).`);
       }
     } catch (issue) {
       if (reportOwner.current === owner) notify(issue instanceof Error ? issue.message : "Export failed.", "error");
@@ -136,7 +139,7 @@ export function ReportsPage() {
   const exportActionReport = () => {
     if (!data) return;
     const priorityProducts = adminProducts.filter((product) => product.status === "active" && (product.stockQuantity ?? 0) <= lowStockThreshold).sort((a, b) => (a.stockQuantity ?? 0) - (b.stockQuantity ?? 0));
-    downloadCsv("cozycraft-inventory-action.csv", [
+    downloadCsv(`cozycraft-${scope}-inventory-action.csv`, [
       ["Product", "Category", "Current stock", "Paid non-cancelled units in range", "Suggested review"],
       ...priorityProducts.map((product) => [product.name, product.category, product.stockQuantity ?? 0, data.soldByProduct[product.id] ?? 0, (product.stockQuantity ?? 0) === 0 ? "Review stock availability" : "Review reorder needs"]),
     ]);
@@ -162,21 +165,33 @@ export function ReportsPage() {
         description={`How the collection is selling, moving, and returning to customers · ${formatDate(rangeStart)} – ${formatDate(reportNow)}`}
         actions={
           <>
+            <label className="adm-label">Payment data
+              <select value={scope} onChange={event => setScope(event.target.value as typeof scope)} disabled={Boolean(exporting)} className="adm-input h-10 font-normal">
+                <option value="live">Live payments &amp; COD</option>
+                <option value="test">PayMongo test payments</option>
+                <option value="all">All records</option>
+              </select>
+            </label>
             <Segmented label="Report period" value={range} onChange={(value) => { rangeChosen.current = true; setRange(value); }} items={(["This week", "This month", "Quarter"] as AdminReportRange[]).map((item) => ({ value: item, label: item }))} />
             <button onClick={() => void exportReport()} disabled={Boolean(exporting) || !data} className="adm-btn adm-btn-primary"><Download size={14} /> {exporting === "Sales performance" ? "Preparing…" : "Export CSV"}</button>
           </>
         }
       >
         <StatStrip
+          className="adm-report-stats"
           loading={!data}
           items={[
-            { label: "Gross sales", value: data ? grossSales : null, format: (value) => money(Math.round(value)), note: `${plural(paidCount, "settled order")}`, icon: CircleDollarSign, tone: "success" },
+            { label: "Gross sales", value: data ? grossSales : null, format: (value) => money(Math.round(value)), note: `${plural(paidCount, "paid order")} · ${scope === "live" ? "Live / COD" : scope === "test" ? "TEST" : "Mixed environments"}`, icon: CircleDollarSign, tone: "success" },
             { label: "Orders fulfilled", value: data?.fulfilled, note: `of ${plural(orderCount, "order")} this period`, icon: PackageCheck },
             { label: "Average order value", value: data ? averageOrderValue : null, format: (value) => money(Math.round(value)), note: `${leadingCategory} leads demand`, icon: BarChart3 },
             { label: "Repeat customers", value: data?.repeatCustomers, note: `All time · ${plural(data?.customerCount ?? 0, "registered customer")}`, icon: Repeat2 },
           ]}
         />
       </PageHeader>
+      <aside className={`mb-5 rounded-2xl border border-border px-4 py-3 text-sm leading-6 ${scope === "live" ? "bg-subtle text-muted-foreground" : "bg-warning-soft text-warning-ink"}`}>
+        {scope === "live" ? "Live payment and COD figures exclude PayMongo test payments and unverified online sessions." : scope === "test" ? "Test environment: these PayMongo payments did not collect real money." : "Mixed environments: these figures include test transactions and are not real-business revenue."}
+        {" "}Reports use the order-created date in Philippine time. Forecasts use eligible settlement dates. COD has no automatic test flag; use a separate environment for classroom orders.
+      </aside>
       {summary.error && (
         <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-warning-soft px-4 py-3 text-sm text-warning-ink">
           <span>{data ? "Showing the last loaded figures." : "Figures are unavailable, not zero."} {summary.error}</span>
@@ -239,7 +254,7 @@ export function ReportsPage() {
       </div>
       <div className="mt-5 grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
         <Card className="overflow-hidden">
-          <CardHeader eyebrow="Report library" title="Ready-made analysis" description={`CSV exports for ${range.toLowerCase()}, generated from live data`} />
+          <CardHeader eyebrow="Report library" title="Ready-made analysis" description={`CSV exports for ${range.toLowerCase()} · ${scope === "live" ? "live payments and COD" : scope === "test" ? "PayMongo test payments" : "all environments"}`} />
           <ul className="divide-y divide-border">
             {reports.map((report) => (
               <li key={report.name} className="flex items-center gap-4 px-5 py-3.5">
@@ -266,7 +281,7 @@ export function ReportsPage() {
       <div className="mt-5">
         <ForecastPanel />
       </div>
-      <p className="mt-4 text-[11px] leading-5 text-muted-foreground">Historical reports use order-created dates and include recorded test transactions. The forecast uses stricter settlement eligibility and excludes test-mode payments.</p>
+      <p className="mt-4 text-[11px] leading-5 text-muted-foreground">The selected payment-data scope applies to report figures and CSV exports. Forecasts independently use eligible settlement history and always exclude PayMongo test payments.</p>
       {notice && <Toast message={notice.message} tone={notice.tone} close={clear} action={notice.action} />}
     </AdminShell>
   );

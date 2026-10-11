@@ -42,7 +42,7 @@ import {
 import { useAdminQuery } from "@/services/admin/use-admin-query";
 import { buildPackingListData } from "@/lib/admin/packing-list";
 import { primaryProductImage } from "@/lib/catalog/product-images";
-import { allowedFulfillmentStatuses, currentPaymentTransaction } from "@/lib/commerce/order-workflow";
+import { allowedFulfillmentStatuses, currentPaymentTransaction, fulfillmentPaymentBlocked } from "@/lib/commerce/order-workflow";
 import { allowedReturnStatuses, type ReturnStatus } from "@/lib/commerce/return-workflow";
 import { ageLabel, formatDate, formatDateTime, formatTime, hoursSince, humanize, plural } from "@/lib/admin/format";
 import { money, useAdminSession, useStore, Status, Toast } from "@/app/core";
@@ -545,7 +545,7 @@ export function OrdersWorkspacePage() {
   }, [orders]);
   const bulkAdvance = async () => {
     const plan = [...bulk.values()]
-      .map((order) => ({ order, next: order.cancellation_status === "pending" ? null : nextStepFor(order.status) }))
+      .map((order) => ({ order, next: order.cancellation_status === "pending" || fulfillmentPaymentBlocked(order) ? null : nextStepFor(order.status) }))
       .filter((item): item is { order: DbOrder; next: DbOrder["status"] } => Boolean(item.next));
     if (!plan.length) {
       notify("None of the selected orders can move to a next step.", "info");
@@ -815,7 +815,7 @@ export function OrdersWorkspacePage() {
           title={`Order #${selected.order_number}`}
           width="max-w-3xl"
           footer={
-            nextStepFor(selected.status) && selected.cancellation_status !== "pending" ? (
+            nextStepFor(selected.status) && selected.cancellation_status !== "pending" && !fulfillmentPaymentBlocked(selected) ? (
               <div className="flex gap-2">
                 <button type="button" onClick={() => print([selected])} className="adm-btn adm-btn-icon" aria-label="Print packing list"><Printer size={16} /></button>
                 <button type="button" onClick={() => { const next = nextStepFor(selected.status); if (next) void update(next); }} disabled={orderUpdating} className="adm-btn adm-btn-primary h-11 flex-1">{orderUpdating ? "Updating…" : nextStepLabel[selected.status]}</button>
@@ -930,7 +930,8 @@ function OrderDetail({
   onReturnStatus: (status: string) => void;
   onEvidence: (path: string) => void;
 }) {
-  const next = nextStepFor(order.status);
+  const paymentBlocked = fulfillmentPaymentBlocked(order);
+  const next = paymentBlocked ? null : nextStepFor(order.status);
   const currentIndex = fulfillmentSteps.indexOf(order.status);
   const cancelled = order.status === "cancelled";
   const name = customerName(order);
@@ -938,7 +939,7 @@ function OrderDetail({
   const phone = order.shipping_address.mobile || order.profiles?.phone || "";
   const address = addressText(order);
   const units = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
-  const moveOptions = allowedFulfillmentStatuses(order.status).filter((status) => status !== order.status && (canManageFinancials || status !== "cancelled"));
+  const moveOptions = allowedFulfillmentStatuses(order.status).filter((status) => status !== order.status && (canManageFinancials || status !== "cancelled") && (!paymentBlocked || status === "cancelled"));
   const waiting = ["pending", "processing", "packed"].includes(order.status) ? hoursSince(order.created_at, now) : 0;
   const section = (title: string, children: ReactNode, action?: ReactNode) => (
     <section className="border-t border-border px-4 py-4 first:border-t-0 sm:px-5">
@@ -978,6 +979,11 @@ function OrderDetail({
         </div>
       </div>
 
+      {paymentBlocked && (
+        <div role="status" className="border-b border-border bg-warning-soft px-4 py-3 text-sm text-warning-ink sm:px-5">
+          Online payment is not confirmed. Fulfillment is locked until PayMongo confirms payment. If an older order already shows delivered, review its payment history; do not mark it paid manually.
+        </div>
+      )}
       {order.cancellation_status && (
         <div className={`border-b border-border px-4 py-4 sm:px-5 ${order.cancellation_status === "pending" ? "bg-warning-soft text-warning-ink" : order.cancellation_status === "approved" ? "bg-success-soft text-success-ink" : "bg-secondary text-muted-foreground"}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">

@@ -43,6 +43,8 @@ export { ReportsPage } from "./ReportsPage";
 
 
 type OverviewSnapshot = {
+  excludedTestPaidOrders: number;
+  paymentAnomalies: number;
   sales: number;
   monthCount: number;
   pending: number;
@@ -116,13 +118,18 @@ export function AdminOverview() {
         <StatStrip
           loading={!data}
           items={[
-            { label: "Total sales", value: data?.sales, format: (value) => money(Math.round(value)), note: "Paid, non-cancelled orders", icon: CircleDollarSign, tone: "success", to: "/admin/reports" },
-            { label: "Orders this month", value: data?.monthCount, note: "Live storefront orders", icon: ShoppingBag, to: "/admin/orders?range=last_30_days" },
+            { label: "Total sales", value: data?.sales, format: (value) => money(Math.round(value)), note: "Paid live / COD · excludes PayMongo tests", icon: CircleDollarSign, tone: "success", to: "/admin/reports" },
+            { label: "Orders this month", value: data?.monthCount, note: "Operational count · all environments", icon: ShoppingBag, to: "/admin/orders?range=last_30_days" },
             { label: "Pending orders", value: data?.pending, note: data?.pending ? "Waiting to be processed" : "Nothing waiting", icon: Clock, tone: data?.pending ? "warning" : "neutral", to: "/admin/orders?status=pending&range=all" },
             { label: "Low-stock products", value: data?.lowStock, note: `At or below ${lowStockThreshold} units`, icon: Warehouse, tone: data?.lowStock ? "warning" : "neutral", to: "/admin/inventory?filter=low" },
           ]}
         />
       </PageHeader>
+
+      {Boolean(data?.paymentAnomalies) && <div role="alert" className="mb-5 rounded-2xl bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-ink">
+        {data!.paymentAnomalies} older online order(s) reached fulfillment without confirmed payment. Review their provider history; these records have not been silently changed.
+        <Link to="/admin/orders?range=all&payment=pending" className="ml-2 font-semibold underline">Review orders</Link>
+      </div>}
 
       {snapshot.error && (
         <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-warning-soft px-4 py-3 text-sm text-warning-ink">
@@ -321,7 +328,7 @@ export function SystemHealthPage() {
     { label: "48-hour backlog", value: String(data?.overdueFulfillment ?? 0), note: "Pending, processing, or packed orders older than 48 hours.", route: "/admin/orders?view=needs_fulfillment&range=all&sort=longest_waiting", attention: (data?.overdueFulfillment ?? 0) > 0, icon: Clock },
     { label: "Priority support", value: String(data?.priorityTickets ?? 0), note: "Open high and urgent customer tickets.", route: "/admin/support", attention: (data?.priorityTickets ?? 0) > 0, icon: MessageCircle },
     { label: "Out of stock", value: String(data?.outOfStockProducts ?? 0), note: "Visible or draft products at zero units.", route: "/admin/inventory?filter=out", attention: (data?.outOfStockProducts ?? 0) > 0, icon: Warehouse },
-    { label: "Browser errors · 24h", value: String(data?.recentClientErrors ?? 0), note: "Exceptions in the last 24 hours; the latest are grouped below.", route: "/admin/activity-logs", attention: (data?.recentClientErrors ?? 0) > 0, icon: AlertTriangle },
+    { label: "Reported browser errors · 24h", value: String(data?.recentClientErrors ?? 0), note: "Signed-in reports only. Zero reports does not prove every browser is healthy; offline and guest failures may be absent.", route: "/admin/activity-logs", attention: (data?.recentClientErrors ?? 0) > 0, icon: AlertTriangle },
   ];
   const statusPill =
     overall === "checking" ? <Pill tone="neutral" dot>Checking services…</Pill>

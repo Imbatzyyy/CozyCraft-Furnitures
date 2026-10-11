@@ -106,10 +106,27 @@ Deno.test("search rate exhaustion never calls the provider", async () => {
       );
     },
     async (input) => {
-      assert.ok(String(input).includes("reserve_discovery_request"));
+      assert.ok(String(input).includes("reserve_discovery_search"));
       return json(false);
     },
   );
+});
+Deno.test("verified identities on the same network use separate budgets; spoofed identity is ignored", async () => {
+  const budgets: Array<{p_ip:string;p_user:string|null}> = [];
+  await mocked(async () => {
+    for (const identity of ["account-a", "account-b"]) {
+      const response=await handleDiscovery(req({action:"interpret",text:`white sofa shared Wi-Fi ${identity}`,userId:"spoofed"}, {Authorization:`Bearer ${identity}`,"x-forwarded-for":"192.0.2.1"}));
+      assert.equal(response.status,429);
+    }
+    assert.equal(budgets[0].p_ip,budgets[1].p_ip);
+    assert.deepEqual(budgets.map(b=>b.p_user),["account-a","account-b"]);
+  }, async (input,init) => {
+    const url=String(input);
+    if(url.includes('/auth/v1/user')) return json({id:new Headers(init?.headers).get('Authorization')!.replace('Bearer ','')});
+    if(url.includes('security_action_allowed')) return json(true);
+    if(url.includes('reserve_discovery_search')) {budgets.push(JSON.parse(String(init?.body)));return json(false);}
+    throw new Error('Provider must not be called');
+  });
 });
 Deno.test(
   "provider output is validated and unknown requirements require clarification",
@@ -125,7 +142,7 @@ Deno.test(
         assert.deepEqual(data.intent.features, []);
       },
       async (input) =>
-        String(input).includes("reserve_discovery_request")
+        String(input).includes("reserve_discovery_search")
           ? json(true)
           : json({
               choices: [
@@ -154,7 +171,7 @@ Deno.test(
         assert.ok(!(await response.text()).includes("SECRET"));
       },
       async (input) =>
-        String(input).includes("reserve_discovery_request")
+        String(input).includes("reserve_discovery_search")
           ? json(true)
           : json(
               { error: { message: "SECRET prompt provider-test-key" } },

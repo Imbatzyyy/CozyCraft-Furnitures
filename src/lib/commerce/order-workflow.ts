@@ -19,6 +19,10 @@ export function allowedFulfillmentStatuses(current: FulfillmentStatus) {
   return [current, ...transitions[current]];
 }
 
+export function fulfillmentPaymentBlocked(order: { payment_method: string; payment_status: string }) {
+  return ["card", "gcash"].includes(order.payment_method.toLowerCase()) && order.payment_status !== "paid";
+}
+
 export function canTransitionFulfillment(
   current: FulfillmentStatus,
   next: FulfillmentStatus,

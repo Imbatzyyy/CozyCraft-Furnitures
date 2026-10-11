@@ -1,4 +1,6 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { reportClientError } from "@/lib/shared/client-errors";
+import { fulfillmentPaymentBlocked } from "@/lib/commerce/order-workflow";
 import { readOfflineCatalog, saveOfflineCatalog, setCatalogStale } from "@/lib/catalog/offline-catalog";
 import { isOffline, OFFLINE_MESSAGE } from "@/lib/shared/network";
 import { createReadCoordinator, createSerialReadQueue } from "@/lib/shared/read-coordinator";
@@ -1843,11 +1845,7 @@ function App() {
     void Promise.all([refreshOrders(), refreshProducts()]).catch(
       () => undefined,
     );
-    void supabase.functions
-      .invoke("send-transactional-email", {
-        body: { eventType: "order_confirmation", orderId },
-      })
-      .catch(() => undefined);
+    // The committed order trigger queues confirmation even if this tab closes.
     return {
       id: orderId,
       orderNumber: createdOrder?.order_number ?? null,
@@ -1863,6 +1861,7 @@ function App() {
     }
     const payload: Record<string, string> = { status };
     const order = orders.find((item) => item.id === id);
+    if (order && fulfillmentPaymentBlocked(order)) return "Confirm online payment before progressing fulfillment.";
     if (status === "delivered" && order?.payment_method === "cod") {
       payload.payment_status = "paid";
     }
@@ -1880,12 +1879,7 @@ function App() {
     }
     if (!error) {
       await refreshOrders();
-      await adminSupabase.functions.invoke("send-transactional-email", {
-        body: {
-          eventType: status === "delivered" ? "delivered" : "fulfillment_update",
-          orderId: id,
-        },
-      });
+      // Delivery is queued atomically by the database, not awaited in the UI.
     }
     return error?.message ?? null;
   };
@@ -2078,9 +2072,7 @@ function App() {
       .eq("id", id);
     if (!error) {
       await Promise.all([refreshTickets(), refreshCustomers()]);
-      await adminSupabase.functions.invoke("send-transactional-email", {
-        body: { eventType: "support_reply", ticketId: id },
-      });
+      // The support reply trigger owns its durable notification.
     }
     return error?.message ?? null;
   };
@@ -2522,13 +2514,8 @@ function RouteErrorBoundary() {
   const error = useRouteError();
   const message = error instanceof Error ? error.message : String(error ?? "");
   useEffect(() => {
-    void supabase.rpc("report_client_error", {
-      p_message: message || "Unknown route error",
-      p_stack: error instanceof Error ? error.stack ?? "" : "",
-      p_path: window.location.pathname + window.location.search,
-      p_context: "route_boundary",
-      p_user_agent: window.navigator.userAgent,
-    });
+    void reportClientError(window.location.pathname.startsWith("/admin") ? adminSupabase : supabase,
+      error, "route_boundary", window.location.pathname);
   }, [error, message]);
   const isDeploymentUpdate =
     /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk .* failed/i.test(
