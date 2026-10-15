@@ -858,7 +858,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const tucked = headerTucked && !menu && !searchOpen && !notificationOpen;
   const surface = overHero
     ? "border-b border-white/20 bg-gradient-to-b from-black/40 via-black/15 to-transparent text-white"
-    : `border-b border-border/70 bg-[#f7f5f1]/85 text-foreground backdrop-blur-xl backdrop-saturate-150 ${scrolled ? "shadow-[0_10px_30px_rgba(35,31,27,.06)]" : ""}`;
+    : `border-b border-border/70 bg-[#f7f5f1] text-foreground ${scrolled ? "shadow-[0_10px_30px_rgba(35,31,27,.06)]" : ""}`;
   const navClass = `cc-header ${immersive ? "fixed inset-x-0 top-0" : "sticky top-0"} ${headerLayer} ${surface}`;
   const iconButton = `cc-press relative grid h-11 w-11 place-items-center rounded-full md:h-10 md:w-10 ${overHero ? "hover:bg-white/15" : "hover:bg-black/[.05]"}`;
   const badgeClass = `absolute right-0.5 top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[10px] font-bold tabular-nums ${overHero ? "bg-white text-foreground" : "bg-foreground text-background"}`;
@@ -1619,6 +1619,7 @@ export function Layout({
   immersive?: boolean;
 }) {
   const store = useStore();
+  const connectionStatus = useShoppingConnection();
   const { storeSettings, role } = store;
   const staffBypass = role === "staff" || role === "admin" || role === "superadmin";
   if (storeSettings.maintenance_mode && !staffBypass) {
@@ -1629,7 +1630,9 @@ export function Layout({
       <CustomerMfaGate />
       <RevealObserver />
       <a href="#page-content" className="skip-link">Skip to main content</a>
-      <Header immersive={immersive} />
+      {/* A notice needs normal document flow, not a transparent hero overlay.
+          Use the same snapshot for both so async failures cannot overlap nav. */}
+      <Header immersive={immersive && connectionStatus === "connected"} />
       <div id="page-content" tabIndex={-1} className={immersive ? "bg-background" : "bg-[#e9e5de] md:px-5 md:pt-5"}>
         <div
           className={
@@ -1638,7 +1641,7 @@ export function Layout({
               : "bg-background md:overflow-clip md:rounded-t-[1.75rem] md:shadow-[0_18px_60px_rgba(49,41,31,0.10)]"
           }
         >
-          <ShoppingConnection />
+          <ShoppingConnection status={connectionStatus} />
           <div className="cc-page">{children}</div>
           <StorefrontServiceStrip />
           <StorefrontFooter />
@@ -2429,4 +2432,4 @@ export function ShopSignInPrompt({ close }: { close: () => void }) {
     </div>
   );
 }
-import { ShoppingConnection } from "@/components/ShoppingConnection";
+import { ShoppingConnection, useShoppingConnection } from "@/components/ShoppingConnection";
