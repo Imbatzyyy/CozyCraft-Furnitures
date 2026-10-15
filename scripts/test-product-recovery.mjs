@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser=await chromium.launch({channel:'chrome',headless:true});
+const browser=await chromium.launch({headless:true});
 const base=process.env.TEST_BASE_URL || 'http://127.0.0.1:5173';
 try {
   for(const width of [390,1440]) {
     const context=await browser.newContext({viewport:{width,height:900}});
+    await context.routeWebSocket(/supabase\.co/, socket => socket.close());
     let failed=true;
     await context.route('**/*',async route=>{
       const url=new URL(route.request().url());
@@ -22,12 +23,12 @@ try {
     });
     const page=await context.newPage();
     await page.goto(`${base}/products/recovery-table`);
-    await page.getByRole('button',{name:'Try again',exact:true}).waitFor({timeout:11000});
+    await page.locator('main').getByRole('button',{name:'Try again',exact:true}).waitFor({timeout:11000});
     assert.equal(await page.getByText('Checking this piece…',{exact:true}).isVisible(),false);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     await page.screenshot({path:`/tmp/cozy-recovery-${width}.png`});
     failed=false;
-    await page.getByRole('button',{name:'Try again',exact:true}).click();
+    await page.locator('main').getByRole('button',{name:'Try again',exact:true}).click();
     await page.getByRole('heading',{name:'Recovery Table',exact:true}).waitFor();
     console.log(`PASS ${width}px: bounded failure, responsive retry, successful recovery`);
     await context.close();

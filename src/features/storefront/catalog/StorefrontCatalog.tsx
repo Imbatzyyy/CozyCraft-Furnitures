@@ -2798,6 +2798,11 @@ function ProductPageContent({
         )}
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,.88fr)] lg:gap-12 xl:gap-16">
           <section ref={galleryHold.ref} aria-label={`${product.name} photos`} className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+            {!images.length ? (
+              <div className="grid aspect-[4/5] place-items-center rounded-[1.75rem] bg-secondary p-8 text-center text-sm text-muted-foreground sm:aspect-[5/4]">
+                <p>Photos are not available for this piece yet.</p>
+              </div>
+            ) : <>
             {/* Phones and tablets: swipeable gallery */}
             <div className="relative lg:hidden">
               <div
@@ -2895,6 +2900,7 @@ function ProductPageContent({
                 </span>
               </button>
             </div>
+            </>}
           </section>
 
           <section className="min-w-0 lg:pt-2">

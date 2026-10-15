@@ -19,7 +19,7 @@ const json = (request: Request, body: unknown, status = 200) =>
     headers: { ...corsHeaders(request), "Content-Type": "application/json" },
   });
 
-serveProtected(async (request) => {
+export async function handlePaymentSync(request: Request) {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") return json(request, { error: "Method not allowed." }, 405);
   const authorization = request.headers.get("Authorization");
@@ -86,11 +86,11 @@ serveProtected(async (request) => {
       });
       if (!settlementError) synchronized += 1;
     } else if (session?.attributes?.status === "expired") {
-      await adminClient.rpc("fail_paymongo_order", {
+      const { error: failureError } = await adminClient.rpc("fail_paymongo_order", {
         p_order_id: order.id,
         p_reason: "PayMongo checkout session expired",
       });
-      synchronized += 1;
+      if (!failureError) synchronized += 1;
     } else {
       await adminClient
         .from("payment_transactions")
@@ -105,4 +105,6 @@ serveProtected(async (request) => {
   }
 
   return json(request, { checked: visibleOrders?.length ?? 0, synchronized });
-});
+}
+
+if (import.meta.main) serveProtected(handlePaymentSync);

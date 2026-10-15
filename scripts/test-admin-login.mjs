@@ -2,7 +2,7 @@
 // PLAYWRIGHT_MODULE may point to an installed Playwright module when it is not local.
 import assert from "node:assert/strict";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
-const browser = await chromium.launch({ headless: true, channel: "chrome" });
+const browser = await chromium.launch({ headless: true });
 const baseUrl = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
 const adminId = "00000000-0000-4000-8000-000000000001";
 const customerId = "00000000-0000-4000-8000-000000000002";
@@ -10,6 +10,7 @@ const date = new Date().toISOString();
 
 async function runScenario(mfa, width, requireMfa = true) {
   const context = await browser.newContext({ viewport: { width, height: 900 } });
+  await context.routeWebSocket(/supabase\.co/, socket => socket.close());
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
   const errors = [];
@@ -76,9 +77,9 @@ async function runScenario(mfa, width, requireMfa = true) {
       await page.getByRole("button", { name: "Verify and enter" }).click();
     }
     await page.getByText("Total sales", { exact: true }).waitFor();
-    const sales = page.getByText("Total sales", { exact: true }).locator("..");
+    const sales = page.getByRole("link", { name: /Total sales/ });
     await sales.getByText(/12,500/).waitFor({ timeout: 10000 });
-    const month = page.getByText("Orders this month", { exact: true }).locator("..");
+    const month = page.getByRole("link", { name: /Orders this month/ });
     assert.match(await month.innerText(), /\b1\b/);
     assert.equal(requests.filter((r) => r.path.endsWith("/orders")).length, 0, "Overview must not download full order graphs");
     assert.equal(requests.filter((r) => r.path.endsWith("/admin_overview_snapshot")).length, 1, "One compact summary per verified login");
@@ -87,20 +88,21 @@ async function runScenario(mfa, width, requireMfa = true) {
     assert.equal(requests.filter(r=>r.path.endsWith('/profiles')&&!r.search.includes('id=')).length,0,'Overview must not download the customer directory');
     await page.getByRole("link",{name:"View all",exact:true}).click();
     await page.getByText("CC-TEST-1",{exact:false}).first().waitFor();
-    assert.equal(await page.getByRole("button",{name:/Queue position/}).count(),5,"Five orders per page");
-    await page.getByRole("button",{name:"Next",exact:true}).click();
+    assert.equal(await page.locator("[data-order-row]").count(),5,"Five orders per page");
+    await page.getByRole("button",{name:"Next page",exact:true}).click();
     await page.getByText("CC-TEST-6",{exact:false}).first().waitFor();
-    assert.equal(await page.getByRole("button",{name:/Queue position/}).count(),3,"Remaining orders on page two");
+    assert.equal(await page.locator("[data-order-row]").count(),3,"Remaining orders on page two");
     await page.evaluate(()=>window.dispatchEvent(new Event("cozycraft:admin-data-changed")));
     await page.waitForTimeout(900);
-    assert.equal(new URL(page.url()).searchParams.get("range"),null,"Realtime must not switch Today to All");
-    assert.match(await page.locator("body").innerText(),/Page 2 of 2/);
-    await page.getByRole("button",{name:"Mark as packed",exact:true}).click();
+    assert.equal(new URL(page.url()).searchParams.get("range"),"all","Realtime must preserve the selected range");
+    assert.match(await page.getByRole("navigation",{name:"Order queue pages"}).innerText(),/6–8 of 8/);
+    await page.locator('[data-order-row="test-order-6"] button').click();
+    await page.getByRole("button",{name:"Mark as packed",exact:true}).filter({visible:true}).click();
     await page.getByText(/Another administrator updated this order/).waitFor();
     const change=requests.find(r=>r.path.endsWith("/orders")&&r.method==="PATCH");
     assert.match(change?.search||"",/status=eq.processing/,"Status writes must guard the version the admin saw");
     assert.equal(requests.filter(r=>r.path.includes("send-transactional-email")).length,0,"Conflicting status must not send an email");
-    await page.getByLabel('Delivery status for order CC-TEST-6').selectOption('cancelled');
+    await page.getByLabel('Move order CC-TEST-6 to another status').selectOption('cancelled');
     await page.getByRole('dialog',{name:'Cancel order #CC-TEST-6?'}).waitFor();
     replaceSelectedOrder=true;
     await page.evaluate(()=>window.dispatchEvent(new Event('cozycraft:admin-data-changed')));
@@ -110,14 +112,14 @@ async function runScenario(mfa, width, requireMfa = true) {
     await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({path:`/tmp/cozycraft-admin-qa-${width}.png`,fullPage:true});
     await page.goto(`${baseUrl}/admin/customers`);
-    await page.getByRole('heading',{name:'Customer 1',exact:true}).waitFor();
-    await page.getByRole('button',{name:'Next',exact:true}).click();
-    await page.getByRole('heading',{name:'Customer 11',exact:true}).waitFor();
+    await page.getByText('Customer 1',{exact:true}).first().waitFor();
+    await page.getByRole('button',{name:'Next page',exact:true}).click();
+    await page.getByText('Customer 11',{exact:true}).first().waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Customer directory fits viewport');
     await page.screenshot({path:`/tmp/cozy-customer-directory-${width}.png`});
     if(width===1440 && mfa && requireMfa) {
       await page.goto(`${baseUrl}/admin/support`);
-      await page.getByText("Staff handover · internal only").click();
+      await page.locator("summary").filter({hasText:"Staff handover"}).click();
       const draft=page.getByLabel("Add a handover note");
       await draft.fill("Checked delivery. Next shift should confirm the customer time.");
       await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
@@ -130,19 +132,19 @@ async function runScenario(mfa, width, requireMfa = true) {
       await page.screenshot({path:"/tmp/cozycraft-support-qa.png",fullPage:true});
       await page.goto(`${baseUrl}/admin/products`);
       await page.getByRole('button',{name:'Actions for Test Table'}).first().click();
-      await page.getByRole('button',{name:'Edit product',exact:true}).click();
-      assert.equal(await page.getByLabel(/Stock quantity/).isDisabled(),true,'Existing stock is managed only in Inventory');
-      await page.getByLabel(/^Product description/).fill('Updated description while another customer purchases this table.');
+      await page.getByRole('menuitem',{name:'Edit product',exact:true}).click();
+      assert.equal(await page.getByLabel(/Stock on hand/).isDisabled(),true,'Existing stock is managed only in Inventory');
+      await page.getByRole('textbox',{name:/^Description/}).fill('Updated description while another customer purchases this table.');
       await page.getByRole('button',{name:'Save changes',exact:true}).click();
       await page.getByText(/This product changed while you were editing/).waitFor();
       const productWrite=requests.find(r=>r.path.endsWith('/products')&&r.method==='PATCH');
       assert.ok(productWrite);
       assert.match(productWrite.search,/updated_at=eq\./);
       assert.equal('stock_quantity' in JSON.parse(productWrite.body),false,'Content edits cannot overwrite live stock');
-      assert.match(await page.getByLabel(/^Product description/).inputValue(),/Updated description/,'Stale edit keeps the draft');
+      assert.match(await page.getByRole('textbox',{name:/^Description/}).inputValue(),/Updated description/,'Stale edit keeps the draft');
     }
     assert.deepEqual(errors,[]);
-    console.log(`PASS fresh ${mfa ? "MFA" : "password-only"} login at ${width}px (store MFA policy ${requireMfa}): compact overview, database pages and stable Today view`);
+    console.log(`PASS fresh ${mfa ? "MFA" : "password-only"} login at ${width}px (store MFA policy ${requireMfa}): shared compact overview, database pages, guarded writes and stable filters`);
   } catch (error) {
     console.error((await page.locator("body").innerText()).slice(0, 1800));
     console.error("Request summary:", requests.filter((r) => !r.path.includes("realtime")));

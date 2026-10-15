@@ -25,6 +25,7 @@ import { primaryProductImage } from "@/lib/catalog/product-images";
 import { type DbOrder } from "@/services/supabase/client";
 import { useAdminTableInvalidation } from "@/services/admin/use-table-invalidation";
 import { useAdminQuery } from "@/services/admin/use-admin-query";
+import { useAdminOverview } from "@/services/admin/use-admin-overview";
 import { buildAdminAttentionItems } from "@/lib/admin/operations-attention";
 import { type ClientErrorSummary } from "@/lib/admin/operations-health";
 import { formatDateTime, formatTime, plural, relativeTime } from "@/lib/admin/format";
@@ -69,7 +70,7 @@ const attentionIcons: Record<string, LucideIcon> = {
 export function AdminOverview() {
   const { adminProducts, supportTickets, storeSettings } = useStore();
   const { user, role, userId, workspaceReady } = useAdminSession();
-  const snapshot = useAdminQuery<OverviewSnapshot>("admin_overview_snapshot", {}, workspaceReady, userId);
+  const snapshot = useAdminOverview<OverviewSnapshot>(userId, workspaceReady);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
