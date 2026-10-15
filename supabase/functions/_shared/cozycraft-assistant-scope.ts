@@ -1,3 +1,5 @@
+import { basicCozyCraftReply } from "./cozycraft-assistant-conversation.ts";
+
 export type AssistantScopeMessage = {
   role: "user" | "assistant";
   content: string;
@@ -32,7 +34,7 @@ export function classifyAssistantRequest(
   if (safetyConcern.test(text)) return { allowed: false, reason: "safety" };
   if (securityProbe.test(text)) return { allowed: false, reason: "security_probe" };
   if (clearlyUnrelated.test(text) || unrelatedFollowup.test(text)) return { allowed: false, reason: "off_topic" };
-  if (politeConversation.test(text) || localShoppingSignal.test(text) || hasCozyCraftSignal(text)) {
+  if (basicCozyCraftReply(text) || politeConversation.test(text) || localShoppingSignal.test(text) || hasCozyCraftSignal(text)) {
     return { allowed: true, reason: "cozycraft" };
   }
 
