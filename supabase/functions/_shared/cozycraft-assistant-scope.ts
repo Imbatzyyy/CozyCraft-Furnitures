@@ -34,7 +34,7 @@ export function classifyAssistantRequest(
   if (safetyConcern.test(text)) return { allowed: false, reason: "safety" };
   if (securityProbe.test(text)) return { allowed: false, reason: "security_probe" };
   if (clearlyUnrelated.test(text) || unrelatedFollowup.test(text)) return { allowed: false, reason: "off_topic" };
-  if (basicCozyCraftReply(text) || politeConversation.test(text) || localShoppingSignal.test(text) || hasCozyCraftSignal(text)) {
+  if (basicCozyCraftReply(text) || politeConversation.test(text) || localShoppingSignal.test(text) || hasCozyCraftSignal(text) || /\b(developers?|company history|app tour|tutorial|navigation menu|app pages|app screens)\b|\b(pages|screens|sections)\b.*\bapp\b/i.test(text)) {
     return { allowed: true, reason: "cozycraft" };
   }
 

@@ -61,6 +61,22 @@ Deno.test("assistant handler contracts with isolated data/provider fixtures", as
       assert(!calls.some(call => /profiles|addresses|notifications|cart_items/.test(call.url.pathname)), "unrelated private data queried");
       assert(body.messages[0].content.includes("not a page-routing tutorial"), "provider still forces every answer into navigation");
     });
+    await t.step("mobile questions receive the actual app navigation reference, not website-only steps", async () => {
+      calls.length = 0;
+      const overview = await (await handleAssistant(request({ message: "What pages are available in the app?", client: "mobile" }))).json();
+      assert(overview.model === "cozycraft-mobile-pages" && overview.reply.includes("Company History"), "missing app overview");
+      assert(calls.length === 0, "static page overview used database or AI");
+      await handleAssistant(request({ message: "Who are the app developers?", client: "mobile" }));
+      const provider = calls.find(call => call.url.hostname === "api.groq.com");
+      assert(provider, "missing mobile provider context");
+      const messages = JSON.parse(String(provider?.init?.body)).messages;
+      const context = JSON.parse(messages[1].content.split("REFERENCE DATA ONLY:\n")[1]);
+      assert(context.clientNavigation.platform === "CozyCraft mobile app", "lost client type");
+      assert(context.clientNavigation.pages.length === 30, "incomplete page reference");
+      assert(context.clientNavigation.team.includes("Sammuel Guill Concepcion"), "stale app team");
+      const invoice = await (await handleAssistant(request({ message: "How do I request an invoice?", client: "mobile" }))).json();
+      assert(invoice.reply.includes("Request an invoice") && !invoice.reply.includes("download receipt"), "website invoice steps leaked into app");
+    });
     await t.step("authenticated exact orders are owner-scoped and payment remains separate", async () => {
       account = true; calls.length = 0;
       const data = await (await handleAssistant(request({ message: "Track CC-00123" }, "fixture-token"))).json();
