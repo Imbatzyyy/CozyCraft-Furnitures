@@ -12,6 +12,8 @@ let root:Root, host:HTMLDivElement;
 beforeEach(()=>{vi.stubGlobal("Worker",undefined);mocks.session={workspaceReady:true,userId:"admin-a"};mocks.rpc.mockReset();mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data,error:null})});host=document.createElement("div");document.body.append(host);root=createRoot(host);});
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals();vi.restoreAllMocks();});
 const render=()=>act(async()=>root.render(<ForecastPanel/>));
+const selectClassroom=()=>act(async()=>[...host.querySelectorAll("button")].find(b=>b.textContent?.includes("Classroom data"))!.click());
+const classroom={...data,version:3,dataset:{kind:"synthetic",id:"classroom-v1",label:"Classroom"}};
 describe("forecast live loading lifecycle",()=>{
   it("loads a bounded authenticated summary on fresh admin entry without a refresh",async()=>{
     await render();expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("admin_forecast_inputs");
@@ -39,5 +41,38 @@ describe("forecast live loading lifecycle",()=>{
     await act(async()=>window.dispatchEvent(new Event("online")));
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
     expect(mocks.rpc.mock.calls.every(call=>call.length===1&&call[0]==="admin_forecast_inputs")).toBe(true);
+  });
+  it("only loads the classroom dataset after an explicit source selection",async()=>{
+    await render();expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("admin_forecast_inputs");
+    mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:classroom,error:null})});
+    await selectClassroom();
+    expect(mocks.rpc).toHaveBeenLastCalledWith("admin_classroom_forecast_inputs");
+    expect(host.textContent).toContain("Classroom dataset · not actual sales");
+    expect(host.textContent).not.toContain("76 test payments excluded");
+  });
+  it("does not show a late real-data response under the synthetic source",async()=>{
+    let resolve!: (v:unknown)=>void;
+    mocks.rpc.mockReturnValueOnce({abortSignal:()=>new Promise(r=>{resolve=r;})});await render();
+    mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:classroom,error:null})});await selectClassroom();
+    await act(async()=>resolve({data:{...data,excludedTestPayments:999},error:null}));
+    expect(host.textContent).not.toContain("999");
+    expect(host.textContent).toContain("Classroom dataset · not actual sales");
+  });
+  it("fails visibly instead of falling back to the other source",async()=>{
+    await render();mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:null,error:{message:"unavailable"}})});
+    await selectClassroom();expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    expect(host.textContent).not.toContain("76 test payments excluded");
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+  it("resets to real data when the administrator identity changes",async()=>{
+    await render();mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:classroom,error:null})});await selectClassroom();
+    mocks.session={workspaceReady:true,userId:"admin-b"};mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data,error:null})});await render();
+    expect(mocks.rpc).toHaveBeenLastCalledWith("admin_forecast_inputs");
+    expect(host.textContent).toContain("Actual store data only");
+    expect(host.textContent).not.toContain("Classroom dataset · not actual sales");
+  });
+  it("rejects a server source mismatch",async()=>{
+    mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:classroom,error:null})});await render();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("incomplete");
   });
 });

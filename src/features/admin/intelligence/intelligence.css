@@ -20,8 +20,6 @@
 .forecast-summary strong{display:block;font-family:var(--font-serif);font-weight:400;font-variant-numeric:lining-nums tabular-nums;font-size:clamp(1.35rem,3vw,1.9rem);line-height:1.2}
 .forecast-summary b{font-size:.85rem}
 .forecast-chart{height:280px;margin:1rem 0;min-width:0}
-.forecast-demo{background:var(--adm-warning-soft);border:1px solid var(--border);padding:1rem;border-radius:.9rem;color:var(--adm-warning-ink);font-size:.8rem;line-height:1.65}
-.forecast-demo strong{display:block}
 .forecast-error{color:var(--adm-danger-ink);background:var(--adm-danger-soft);padding:.9rem 1rem;border-radius:.9rem;font-size:.8rem}
 .forecast-error button{text-decoration:underline;font-weight:600}
 .forecast-evaluation{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;padding:1rem;background:var(--adm-subtle);border:1px solid var(--border);border-radius:.9rem;margin:1rem 0;font-size:.75rem}
@@ -43,4 +41,8 @@
 .forecast-summary .forecast-evidence{margin-top:.5rem;font-weight:600}
 .forecast-details .forecast-table-scroll{max-height:320px;overscroll-behavior:contain}
 .forecast-details thead th{position:sticky;top:0;background:var(--card)}
+.forecast-source-controls{display:flex;align-items:center;flex-wrap:wrap;gap:.75rem;margin-bottom:.9rem;font-size:.8rem;color:var(--muted-foreground)}
+.forecast-source-controls button:focus-visible{outline:3px solid var(--ring);outline-offset:3px}
+.forecast-source-controls button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:480px){.forecast-source-controls>.forecast-tabs{width:100%;display:grid;grid-template-columns:1fr}.forecast-source-controls button{min-height:44px}}
 .forecast-summary>div{min-width:0;overflow-wrap:anywhere}

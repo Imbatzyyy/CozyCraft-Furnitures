@@ -528,6 +528,10 @@
     {
       "file": "20261011092000_reporting_environments.sql",
       "sha256": "b5e26f45eede60da25393967c26081e0179bfcee9b691e0273d554262d41546e"
+    },
+    {
+      "file": "20261015090000_classroom_forecast_dataset.sql",
+      "sha256": "5bb6fbf081a620ff04f0efc52b54daa0259ad2bca89dc1e185b72da6d1933a17"
     }
   ]
 }

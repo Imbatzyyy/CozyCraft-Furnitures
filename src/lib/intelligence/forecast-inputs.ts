@@ -1,19 +1,25 @@
 import { nextDate, type DailyObservation } from "./forecast";
 
+export type ForecastSource = "live" | "classroom";
 export type ForecastInputs = {
   version: number; generatedAt: string; through: string; timezone: string; basis: string;
   series: DailyObservation[]; excludedTestPayments: number; undatedSettlements: number; eligibleOrders: number;
   historyStart?: string | null; lastSettlementAt?: string | null;
   sourceCounts?: { recordedOrders: number; unpaidOrders: number; cancelledOrders: number; refundedOrders: number; invalidAmounts: number };
+  dataset?: { kind: "synthetic"; id: string; label: string };
 };
 
 /** Reject incomplete RPC responses instead of manufacturing zero days. */
-export function parseForecastInputs(input: unknown): ForecastInputs {
+export function parseForecastInputs(input: unknown, source: ForecastSource = "live"): ForecastInputs {
   const data = input as ForecastInputs | null;
   const dateIsValid = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
   const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-  if (!data || ![1, 2].includes(data.version) || !dateIsValid(data.through) || !Number.isFinite(Date.parse(data.generatedAt))
+  const correctSource = source === "classroom"
+    ? data?.version === 3 && data.dataset?.kind === "synthetic" && typeof data.dataset.id === "string" && data.dataset.id.length > 0
+      && typeof data.dataset.label === "string" && data.dataset.label.length > 0
+    : data && [1, 2].includes(data.version) && data.dataset === undefined;
+  if (!data || !correctSource || !dateIsValid(data.through) || !Number.isFinite(Date.parse(data.generatedAt))
     || data.timezone !== "Asia/Manila" || typeof data.basis !== "string" || !Array.isArray(data.series) || data.series.length > 180
     || ![data.eligibleOrders, data.excludedTestPayments, data.undatedSettlements].every(count)
     || data.series.some((row, i) => !row || !dateIsValid(row.date) || !count(row.orders) || !Number.isFinite(row.sales) || row.sales < 0

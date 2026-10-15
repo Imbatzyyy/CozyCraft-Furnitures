@@ -1,0 +1,44 @@
+// Isolated PostgreSQL (WASM). No production credentials, email or payments.
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const db=new PGlite();
+try {
+  await db.exec(`create role anon; create role authenticated;
+    create schema private;
+    create function private.is_staff() returns boolean language sql as $$select coalesce(current_setting('qa.staff',true),'false')='true'$$;
+    create function private.customer_mfa_satisfied() returns boolean language sql as $$select coalesce(current_setting('qa.mfa',true),'false')='true'$$;
+    create function private.admin_mfa_satisfied() returns boolean language sql as $$select coalesce(current_setting('qa.mfa',true),'false')='true'$$;
+    create table public.orders(id integer); insert into public.orders values(1);
+    create table public.payment_transactions(id integer); create table public.email_delivery_logs(id integer);
+    create table public.products(id text,stock_quantity integer); insert into products values('unchanged',0);
+  `);
+  await db.exec(readFileSync('supabase/migrations/20261015090000_classroom_forecast_dataset.sql','utf8'));
+  const q=async text=>(await db.query(text)).rows;
+  assert.equal((await q("select has_function_privilege('anon','public.admin_classroom_forecast_inputs()','execute') allowed"))[0].allowed,false);
+  assert.equal((await q("select has_table_privilege('authenticated','private.classroom_forecast_datasets','select') allowed"))[0].allowed,false);
+  assert.equal((await q("select relrowsecurity from pg_class where oid='private.classroom_forecast_datasets'::regclass"))[0].relrowsecurity,true);
+  await db.exec('set role authenticated');
+  await assert.rejects(()=>q('select public.admin_classroom_forecast_inputs()'),/Verified administrator/);
+  await db.exec("select set_config('qa.staff','true',false)");
+  await assert.rejects(()=>q('select public.admin_classroom_forecast_inputs()'),/Verified administrator/);
+  await db.exec("select set_config('qa.mfa','true',false)");
+  const data=(await q('select public.admin_classroom_forecast_inputs() as data'))[0].data;
+  assert.equal(data.version,3); assert.equal(data.dataset.kind,'synthetic');
+  assert.equal(data.series.length,112);
+  assert.equal(data.eligibleOrders,data.series.reduce((sum,r)=>sum+r.orders,0));
+  assert.equal(data.series.at(-1).date,data.through);
+  assert.ok(data.series.every(r=>Number.isInteger(r.orders)&&r.orders>=0&&r.sales>=0));
+  assert.ok(data.series.some(r=>r.orders===0));
+  for(let i=1;i<data.series.length;i++) assert.equal(Date.parse(data.series[i].date)-Date.parse(data.series[i-1].date),86400000);
+  assert.deepEqual((await q('select public.admin_classroom_forecast_inputs() as data'))[0].data,data,'refresh cannot regenerate or move the scenario');
+  await db.exec("select set_config('qa.staff','false',false)");
+  await assert.rejects(()=>q('select public.admin_classroom_forecast_inputs()'),/Verified administrator/);
+  await db.exec('reset role');
+  assert.equal((await q('select count(*)::int n from orders'))[0].n,1);
+  assert.equal((await q('select count(*)::int n from payment_transactions'))[0].n,0);
+  assert.equal((await q('select count(*)::int n from email_delivery_logs'))[0].n,0);
+  assert.equal((await q('select stock_quantity from products'))[0].stock_quantity,0);
+  assert.ok(Buffer.byteLength(JSON.stringify(data))<12000);
+  console.log(`PASS: 112 bounded synthetic days; ${data.eligibleOrders} simulated orders; admin/MFA isolation; no commerce writes; stable refresh; ${Buffer.byteLength(JSON.stringify(data))} bytes.`);
+} finally { await db.close(); }
