@@ -1547,6 +1547,7 @@ const productSorts: Array<[ProductSort, string]> = [
   ["featured", "Featured"],
   ["newest", "Newest"],
   ["popular", "Most popular"],
+  ["liked", "Most liked (saved)"],
   ["rating", "Highest rated"],
   ["price-low", "Price: low to high"],
   ["price-high", "Price: high to low"],
@@ -1864,6 +1865,7 @@ export function CollectionPage() {
               </div>
             </div>
 
+            {(filters.sort === "popular" || filters.sort === "liked") && <p className="mt-3 text-xs leading-5 text-muted-foreground">{filters.sort === "popular" ? "Based on unique signed-in product viewers across CozyCraft. Repeated visits do not increase a product’s rank." : "Based on customers who currently have a product saved in their wishlist."}</p>}
             {children.length > 0 && (
               <div className="cc-no-scrollbar cc-fade-x -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:[mask-image:none]" aria-label={`${group} types`}>
                 {["", ...children].map((child) => (
@@ -2456,7 +2458,7 @@ function ProductPageContent({
     typeof product.stockQuantity === "number"
       ? Math.max(0, product.stockQuantity)
       : null;
-  const atStockLimit = stockLimit !== null && quantity >= stockLimit;
+  const atStockLimit = quantity >= Math.min(10, stockLimit ?? 10);
   const outOfStock = stockLimit === 0;
   const lowStock = stockLimit !== null && stockLimit > 0 && stockLimit <= 8;
   const stockAvailability = exactStockAvailability(product.stockQuantity, product.stock);
@@ -2947,16 +2949,14 @@ function ProductPageContent({
                 <button
                   onClick={() =>
                     setQuantity(
-                      stockLimit === null
-                        ? quantity + 1
-                        : Math.min(stockLimit, quantity + 1),
+                      current => Math.min(10, stockLimit ?? 10, current + 1),
                     )
                   }
                   disabled={!liveAvailable || atStockLimit}
                   className="grid h-full w-11 place-items-center rounded-r-2xl hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label={
                     atStockLimit && stockLimit !== null
-                      ? `Maximum available stock is ${stockLimit}`
+                      ? `Maximum checkout quantity is ${Math.min(10, stockLimit ?? 10)}`
                       : `Increase ${product.name} quantity`
                   }
                 >

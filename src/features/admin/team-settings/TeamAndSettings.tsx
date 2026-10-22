@@ -547,7 +547,8 @@ export function StoreSettingsPage() {
                     {numberInput("Standard delivery fee", settings.checkout_settings.standard_delivery_fee, (value) => updateNested("checkout_settings", "standard_delivery_fee", value), "PHP")}
                     {numberInput("Free delivery minimum", settings.checkout_settings.free_delivery_minimum, (value) => updateNested("checkout_settings", "free_delivery_minimum", value), "PHP")}
                     {numberInput("Minimum order", settings.checkout_settings.minimum_order_amount, (value) => updateNested("checkout_settings", "minimum_order_amount", value), "PHP")}
-                    {numberInput("Maximum order", settings.checkout_settings.maximum_order_amount, (value) => updateNested("checkout_settings", "maximum_order_amount", value), "PHP", "0 means unlimited.")}
+                    {numberInput("Maximum order", settings.checkout_settings.maximum_order_amount, (value) => updateNested("checkout_settings", "maximum_order_amount", value), "PHP", "Optional subtotal limit. 0 disables this setting; the shared ₱500,000 final-total ceiling and payment-method limits still apply.")}
+                    <p className="text-xs leading-6 text-muted-foreground">Shared checkout protection: 10 different products, 10 pieces per product, 20 pieces total. COD up to ₱20,000 including outstanding unpaid COD; GCash up to ₱100,000; online checkout up to ₱500,000. Larger purchases require a reviewed bulk order.</p>
                   </>
                 )}
                 {section === "Delivery & orders" && (

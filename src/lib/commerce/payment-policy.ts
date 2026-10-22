@@ -1,6 +1,7 @@
 export type PaymentMethod = "cod" | "gcash" | "card";
 export const COD_LIMIT = 20_000;
 export const GCASH_LIMIT = 100_000;
+export const CHECKOUT_TOTAL_LIMIT = 500_000;
 export const CARD_LIMIT_EXCLUSIVE = 10_000_000;
 export const effectiveCodLimit = (configured: unknown) => {
   const value = Number(configured);
@@ -17,6 +18,7 @@ export function paymentUnavailableReason(
   if (!["cod", "gcash", "card"].includes(method)) return "Choose a payment method.";
   if (settings[method + "_enabled"] === false) return "Temporarily unavailable. Please choose another payment method.";
   if (!Number.isFinite(total) || total < 1) return "The final payable total must be at least ₱1.";
+  if (cents(total) > cents(CHECKOUT_TOTAL_LIMIT)) return "Online checkout is available up to ₱500,000, including delivery and after discounts. Contact CozyCraft for a bulk order.";
   if (method === "cod") {
     const limit = Math.min(effectiveCodLimit(settings.cod_maximum_order), effectiveCodLimit(serverCodLimit));
     if (cents(total) > cents(limit)) return `Cash on delivery is available up to ${pesos(limit)}, including delivery and after discounts. Choose GCash or card.`;

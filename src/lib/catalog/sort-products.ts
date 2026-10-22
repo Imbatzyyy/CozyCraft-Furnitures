@@ -8,7 +8,8 @@ export type ProductSort =
   | "name-asc"
   | "name-desc"
   | "newest"
-  | "popular";
+  | "popular"
+  | "liked";
 
 export function sortProducts(products: Product[], sort: ProductSort) {
   return [...products].sort((a, b) => {
@@ -21,8 +22,9 @@ export function sortProducts(products: Product[], sort: ProductSort) {
       return Date.parse(b.createdAt ?? "") - Date.parse(a.createdAt ?? "");
     }
     if (sort === "popular") {
-      return b.reviews - a.reviews || Number(b.rating) - Number(a.rating);
+      return (b.popularity ?? 0) - (a.popularity ?? 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     }
+    if (sort === "liked") return (b.saves ?? 0) - (a.saves ?? 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     return 0;
   });
 }

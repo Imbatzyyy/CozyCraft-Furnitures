@@ -88,8 +88,8 @@ const validateIntent = (intent: PaymentVerificationIntent) => {
   if (!uuidPattern.test(intent.addressId) || !checkoutKeyPattern.test(intent.checkoutKey)) {
     throw new PaymentEmailVerificationError("Refresh checkout and try again before requesting a payment code.")
   }
-  if (!intent.items.length || intent.items.length > 50 || intent.items.some((item) =>
-    !item.product_id || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99)) {
+  if (!intent.items.length || intent.items.length > 10 || intent.items.reduce((sum,item)=>sum+item.quantity,0)>20 || intent.items.some((item) =>
+    !item.product_id || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10)) {
     throw new PaymentEmailVerificationError("Your checkout selection has changed. Return to your bag and try again.")
   }
 }

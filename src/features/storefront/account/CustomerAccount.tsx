@@ -2094,7 +2094,7 @@ function CustomerProfile() {
                 orders={orders}
                 orderCount={customerOrderPagination?.counts.all ?? orders.length}
                 savedProducts={products.filter((product) => saved.includes(product.id))}
-                cartCount={cart.reduce((sum, line) => sum + line.quantity, 0)}
+                cartCount={new Set(cart.filter(line => line.quantity > 0).map(line => line.id)).size}
                 addressCount={addresses.length}
                 money={money}
                 openTab={(next) => setTab(next)}

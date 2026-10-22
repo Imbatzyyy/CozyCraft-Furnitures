@@ -133,6 +133,8 @@ import {
 
 
 export type Product = {
+  popularity?: number;
+  saves?: number;
   id: string;
   name: string;
   category: string;
@@ -364,6 +366,9 @@ export type Store = {
   closeMiniCart?: () => void;
   adminProducts: Product[];
   cart: CartLine[];
+  cartBusy?: boolean;
+  cartError?: string;
+  retryCart?: () => void;
   saved: string[];
   userId: string | null;
   user: string | null;
@@ -394,7 +399,7 @@ export type Store = {
   setDefaultAddress: (id: string) => Promise<void>;
   add: (id: string, amount?: number) => void;
   remove: (id: string) => void;
-  qty: (id: string, value: number) => void;
+  qty: (id: string, value: number | ((current: number) => number)) => void;
   setCartSelection: (id: string, selected: boolean) => void;
   setAllCartSelection: (selected: boolean) => void;
   toggle: (id: string) => void;
@@ -410,6 +415,7 @@ export type Store = {
     productIds?: string[],
     redemptionId?: string | null,
     onPaymentAuthorized?: () => void,
+    expectedTotal?: number,
   ) => Promise<{
     id: string | null;
     orderNumber: string | null;
@@ -514,7 +520,8 @@ export const money = (value: number) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: activeCurrency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value);
 
 export const materialFor = (id: string) =>
@@ -600,7 +607,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const searchPresence = usePresence(searchOpen, 220);
   const notificationPresence = usePresence(notificationOpen, 160);
   const [paymentClock, setPaymentClock] = useState(() => Date.now());
-  const cartQty = cart.reduce((n, x) => n + x.quantity, 0);
+  const cartQty = new Set(cart.filter(line => line.quantity > 0).map(line => line.id)).size;
   const profileDisplayName =
     profileUsername.trim() || user?.trim().split(/\s+/)[0] || "Member";
   const loadedRecoverablePayment = userId
@@ -1834,7 +1841,7 @@ function MobileStoreNav() {
   const location = useLocation();
   const { cart, saved, user } = useStore();
   const [editing, setEditing] = useState(false);
-  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartCount = new Set(cart.filter(line => line.quantity > 0).map(line => line.id)).size;
   const bump = useNavBump(cartCount);
   const entries = [
     [House, "Home", "/home", 0, null],

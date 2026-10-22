@@ -141,6 +141,9 @@ import {
   setMoneyCurrency,
 } from "./core";
 import { checkoutSignature, selectCheckoutLines } from "@/lib/commerce/checkout";
+import { createCartSync, type CartSyncState } from "@/lib/commerce/cart-sync";
+import { getCatalogPopularity, cachedProductPopularity } from "@/services/catalog/popularity.service";
+import { CHECKOUT_LIMITS, checkoutQuantityError } from "@/lib/commerce/checkout-limits";
 import {
   functionErrorMessage,
   isHandledFunctionResponse,
@@ -221,6 +224,35 @@ function App() {
   const catalogRef = useRef(adminProducts);
   catalogRef.current = adminProducts;
   const [cart, setCart] = useState<CartLine[]>([]);
+  const cartRef = useRef(cart);
+  const replaceCart = (next: CartLine[]) => { cartRef.current = next; setCart(next); };
+  const [cartSyncState, setCartSyncState] = useState<CartSyncState>({ busy: false, error: "" });
+  const checkoutInFlight = useRef(false);
+  const refreshCartAfterWrite = useRef(() => {});
+  const [cartSync] = useState(() => createCartSync(async (owner, changes) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+    try {
+    const removed = changes.filter(change => !change.line).map(change => change.id);
+    const updates = changes.flatMap(change => change.line ? [{ user_id: owner, product_id: change.id, quantity: change.line.quantity, selected_for_checkout: change.line.selectedForCheckout }] : []);
+    if (removed.length) {
+      const { error } = await supabase.from("cart_items").delete().eq("user_id", owner).in("product_id", removed).abortSignal(controller.signal);
+      if (error) throw error;
+    }
+    if (updates.length) {
+      const { error } = await supabase.from("cart_items").upsert(updates, { onConflict: "user_id,product_id" }).abortSignal(controller.signal);
+      if (error) throw error;
+    }
+    } finally { clearTimeout(timeout); }
+  }, setCartSyncState, () => refreshCartAfterWrite.current()));
+  useEffect(() => {
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (!cartSync.hasPending()) return;
+      event.preventDefault(); event.returnValue = "";
+    };
+    window.addEventListener("beforeunload",warnUnsaved);
+    return () => window.removeEventListener("beforeunload",warnUnsaved);
+  }, [cartSync]);
   const [saved, setSaved] = useState<string[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [user, setUser] = useState<string | null>(null);
@@ -342,6 +374,7 @@ function App() {
   };
 
   const mapProduct = useCallback((row: DbProduct, lowStockThreshold = 8): Product => ({
+    ...cachedProductPopularity(row.id),
     id: row.id,
     name: row.name.trim(),
     category: row.category.trim().replace(/\s+/g, " "),
@@ -438,6 +471,21 @@ function App() {
     }));
   }, [mapProduct, portalSupabase, productsScope]);
 
+  useEffect(() => {
+    let active = true;
+    const refreshPopularity = () => {
+      if (document.visibilityState === "hidden") return;
+      void getCatalogPopularity().then(counts => {
+        if (!active) return;
+        const merge = (items: Product[]) => items.map(item => ({...item,...counts.get(item.id)}));
+        setProducts(merge); setAdminProducts(merge);
+      });
+    };
+    refreshPopularity();
+    window.addEventListener("focus",refreshPopularity);
+    return () => { active=false; window.removeEventListener("focus",refreshPopularity); };
+  }, [productsScope]);
+
   const refreshProductIds = useCallback((ids: string[]) => catalogReadQueue.current(async () => {
     const requestScope = productsScope;
     if (!workspaceScopeCanLoad(requestScope) || !ids.length) return;
@@ -515,6 +563,7 @@ function App() {
   }, [ordersScope, portalSupabase]);
 
   const refreshAccountCollections = useCallback((id: string) => collectionReads.current.run(id, async () => {
+    const cartReadToken = cartSync.token();
     const [cartResult, wishlistResult] = await Promise.all([
       supabase
         .from("cart_items")
@@ -526,8 +575,8 @@ function App() {
         .eq("user_id", id),
     ]);
     if (customerUserIdRef.current !== id) return;
-    if (!cartResult.error) {
-      setCart(
+    if (!cartResult.error && cartSync.canRead(cartReadToken)) {
+      replaceCart(
         (cartResult.data ?? []).map((item) => ({
           id: item.product_id,
           quantity: item.quantity,
@@ -541,6 +590,13 @@ function App() {
       );
     }
   }), []);
+  refreshCartAfterWrite.current = () => {
+    const id = customerUserIdRef.current;
+    if (!id) return;
+    const refresh = () => { if (customerUserIdRef.current === id && !cartSync.hasPending()) void refreshAccountCollections(id); };
+    const pending = collectionReads.current.current(id);
+    if (pending) void pending.then(refresh, refresh); else refresh();
+  };
 
   const refreshCustomers = useCallback(() => {
     // Directory and reports own their bounded read models and export requests.
@@ -673,7 +729,8 @@ function App() {
     setProfileBirth("");
     setHasPassword(null);
     setProfilePaymentMethod("cod");
-    setCart([]);
+    cartSync.setOwner(null);
+    replaceCart([]);
     setSaved([]);
     setAddresses([]);
     // These collections are shared with the administrator portal. Customer
@@ -743,6 +800,7 @@ function App() {
       return "denied";
     }
 
+    const accountCartReadToken = cartSync.token();
     const [
       cartResult,
       wishlistResult,
@@ -773,6 +831,7 @@ function App() {
     if (confirmedSessionError) return "retry";
     if (confirmedSession?.user.id !== id) return "superseded";
 
+    const sameCartOwner = customerUserIdRef.current === id;
     customerUserIdRef.current = id;
     setUserId(id);
     setUserEmail(email);
@@ -794,7 +853,9 @@ function App() {
         passwordStatusResult.error,
       ),
     );
-    setCart((cartResult.data ?? []).map((item) => ({
+    // Only the initial account load can reset the writer's scope.
+    cartSync.setOwner(id);
+    if (!cartResult.error && (!sameCartOwner || cartSync.canRead(accountCartReadToken))) replaceCart((cartResult.data ?? []).map((item) => ({
       id: item.product_id,
       quantity: item.quantity,
       selectedForCheckout: item.selected_for_checkout,
@@ -1447,47 +1508,19 @@ function App() {
           : [],
       ),
     );
-    if (!stockByProduct.size) return;
-    setCart((items) => {
-      const next = items.flatMap((item) => {
-        const limit = stockByProduct.get(item.id);
-        if (limit === undefined) return [item];
-        if (limit === 0) return [];
-        return [{ ...item, quantity: Math.min(item.quantity, limit) }];
-      });
-      const changed =
-        next.length !== items.length ||
-        next.some((item, index) => item.quantity !== items[index]?.quantity);
-      if (!changed) return items;
-      const nextIds = new Set(next.map((item) => item.id));
-      void queueAccountWrite(
-        Promise.all([
-          ...items
-            .filter((item) => !nextIds.has(item.id))
-            .map((item) =>
-              supabase
-                .from("cart_items")
-                .delete()
-                .eq("user_id", userId)
-                .eq("product_id", item.id),
-            ),
-          ...next.map((item) =>
-            supabase
-              .from("cart_items")
-              .upsert(
-                {
-                  user_id: userId,
-                  product_id: item.id,
-                  quantity: item.quantity,
-                  selected_for_checkout: item.selectedForCheckout,
-                },
-                { onConflict: "user_id,product_id" },
-              ),
-          ),
-        ]),
-      );
-      return next;
+    if (!stockByProduct.size || checkoutInFlight.current) return;
+    const items = cartRef.current;
+    const next = items.flatMap(item => {
+      const limit = stockByProduct.get(item.id);
+      if (limit === undefined) return [item];
+      if (limit === 0) return [];
+      return [{ ...item, quantity: Math.min(item.quantity, limit) }];
     });
+    const changes = items.flatMap(item => {
+      const line = next.find(nextItem => nextItem.id === item.id) ?? null;
+      return !line || line.quantity !== item.quantity ? [{ id: item.id, line }] : [];
+    });
+    if (changes.length) { replaceCart(next); cartSync.enqueue(changes); }
   }, [adminProducts, queueAccountWrite, userId]);
 
   const reloadAddresses = async () => {
@@ -1529,128 +1562,40 @@ function App() {
       : null;
   };
 
-  const queueCartWrite = (
-    request: PromiseLike<{ error: { message: string } | null }>,
-  ) => {
-    void queueAccountWrite(
-      Promise.resolve(request).then(async ({ error }) => {
-        if (error && userId) await refreshAccountCollections(userId);
-      }),
-    );
-  };
-
-  const add = (id: string, amount = 1) => {
-    if (!authReady) return;
-    if (!userId) {
-      setShopPrompt(true);
-      return;
-    }
-    const stockLimit = stockLimitFor(id);
-    const current = cart.find((item) => item.id === id)?.quantity ?? 0;
-    if (stockLimit === 0 || (stockLimit !== null && current >= stockLimit)) {
-      return;
-    }
-    setMiniCart({ open: true, highlight: id });
-    setCart((items) => {
-      const currentLine = items.find((item) => item.id === id);
-      const currentQuantity = currentLine?.quantity ?? 0;
-      const selectedForCheckout = currentLine?.selectedForCheckout ?? true;
-      const requested = currentQuantity + Math.max(1, Math.floor(amount));
-      const quantity =
-        stockLimit === null ? requested : Math.min(requested, stockLimit);
-      if (quantity === currentQuantity) return items;
-      const next = currentQuantity
-        ? items.map((item) =>
-            item.id === id ? { ...item, quantity } : item,
-          )
-        : [...items, { id, quantity, selectedForCheckout }];
-      queueCartWrite(
-        supabase
-          .from("cart_items")
-          .upsert(
-            {
-              user_id: userId,
-              product_id: id,
-              quantity,
-              selected_for_checkout: selectedForCheckout,
-            },
-            { onConflict: "user_id,product_id" },
-          ),
-      );
-      return next;
+  const changeCart = (next: CartLine[]) => {
+    if (checkoutInFlight.current) return;
+    const previous = cartRef.current;
+    const ids = new Set([...previous, ...next].map(line => line.id));
+    const changes = [...ids].flatMap(id => {
+      const before = previous.find(line => line.id === id);
+      const line = next.find(line => line.id === id) ?? null;
+      return before?.quantity !== line?.quantity || before?.selectedForCheckout !== line?.selectedForCheckout ? [{id, line}] : [];
     });
+    replaceCart(next);
+    cartSync.enqueue(changes);
   };
-  const remove = (id: string) => {
-    setCart((items) => items.filter((x) => x.id !== id));
-    if (userId) {
-      queueCartWrite(
-        supabase
-          .from("cart_items")
-          .delete()
-          .eq("user_id", userId)
-          .eq("product_id", id),
-      );
-    }
+  const add = (id: string, amount = 1) => {
+    if (!authReady || !Number.isFinite(amount)) return;
+    if (!userId) { setShopPrompt(true); return; }
+    const previous = cartRef.current.find(line => line.id === id);
+    const limit = Math.min(stockLimitFor(id) ?? CHECKOUT_LIMITS.perProduct, CHECKOUT_LIMITS.perProduct);
+    if (!limit) return;
+    const quantity = Math.min(limit, (previous?.quantity ?? 0) + Math.max(1, Math.floor(amount)));
+    const line = {id, quantity, selectedForCheckout: previous?.selectedForCheckout ?? true};
+    setMiniCart({open:true, highlight:id});
+    changeCart(previous ? cartRef.current.map(item => item.id === id ? line : item) : [...cartRef.current, line]);
   };
-  const qty = (id: string, value: number) => {
-    if (value < 1) { remove(id); return; }
-    const stockLimit = stockLimitFor(id);
-    if (stockLimit === 0) { remove(id); return; }
-    const requested = Math.max(1, Math.floor(value));
-    const quantity =
-      stockLimit === null ? requested : Math.min(requested, stockLimit);
-    const selectedForCheckout =
-      cart.find((item) => item.id === id)?.selectedForCheckout ?? true;
-    setCart((items) =>
-      items.map((item) =>
-        item.id === id ? { ...item, quantity } : item,
-      ),
-    );
-    if (userId) {
-      queueCartWrite(
-        supabase
-          .from("cart_items")
-          .upsert(
-            {
-              user_id: userId,
-              product_id: id,
-              quantity,
-              selected_for_checkout: selectedForCheckout,
-            },
-            { onConflict: "user_id,product_id" },
-          ),
-      );
-    }
+  const remove = (id: string) => changeCart(cartRef.current.filter(line => line.id !== id));
+  const qty = (id: string, requested: number | ((current: number) => number)) => {
+    const value = typeof requested === "function" ? requested(cartRef.current.find(line => line.id === id)?.quantity ?? 0) : requested;
+    if (!Number.isFinite(value)) return;
+    const limit = Math.min(stockLimitFor(id) ?? CHECKOUT_LIMITS.perProduct, CHECKOUT_LIMITS.perProduct);
+    if (value < 1 || limit === 0) { remove(id); return; }
+    const quantity = Math.min(limit, Math.max(1, Math.floor(value)));
+    changeCart(cartRef.current.map(line => line.id === id ? {...line, quantity} : line));
   };
-  const setCartSelection = (id: string, selected: boolean) => {
-    setCart((items) =>
-      items.map((item) =>
-        item.id === id ? { ...item, selectedForCheckout: selected } : item,
-      ),
-    );
-    if (userId) {
-      queueCartWrite(
-        supabase
-          .from("cart_items")
-          .update({ selected_for_checkout: selected })
-          .eq("user_id", userId)
-          .eq("product_id", id),
-      );
-    }
-  };
-  const setAllCartSelection = (selected: boolean) => {
-    setCart((items) =>
-      items.map((item) => ({ ...item, selectedForCheckout: selected })),
-    );
-    if (userId) {
-      queueCartWrite(
-        supabase
-          .from("cart_items")
-          .update({ selected_for_checkout: selected })
-          .eq("user_id", userId),
-      );
-    }
-  };
+  const setCartSelection = (id: string, selected: boolean) => changeCart(cartRef.current.map(line => line.id === id ? {...line, selectedForCheckout:selected} : line));
+  const setAllCartSelection = (selected: boolean) => changeCart(cartRef.current.map(line => ({...line, selectedForCheckout:selected})));
   const toggle = (id: string) => {
     if (!authReady) return;
     if (!userId) {
@@ -1677,31 +1622,13 @@ function App() {
     return exists ? items.filter((x) => x !== id) : [...items, id];
     });
   };
-  const clearCart = () => {
-    setCart([]);
-    if (userId) {
-      void queueAccountWrite(
-        supabase.from("cart_items").delete().eq("user_id", userId),
-      );
-    }
-  };
+  const clearCart = () => changeCart([]);
   const signOut = async () => {
+    await cartSync.flush();
     await Promise.allSettled([...pendingAccountWrites.current]);
     if (userId) {
       const reconciliations: PromiseLike<unknown>[] = [];
-      if (cart.length) {
-        reconciliations.push(
-          supabase.from("cart_items").upsert(
-            cart.map((item) => ({
-              user_id: userId,
-              product_id: item.id,
-              quantity: item.quantity,
-              selected_for_checkout: item.selectedForCheckout,
-            })),
-            { onConflict: "user_id,product_id" },
-          ),
-        );
-      }
+
       if (saved.length) {
         reconciliations.push(
           supabase.from("wishlist_items").upsert(
@@ -1731,15 +1658,22 @@ function App() {
     await adminSupabase.auth.signOut({ scope: "local" });
   }, []);
 
-  const placeOrder = async (
+  const submitOrder = async (
     addressId: string,
     paymentMethod: string,
     productIds?: string[],
     redemptionId?: string | null,
     onPaymentAuthorized?: () => void,
+    expectedTotal?: number,
   ) => {
     if (isOffline()) return { id: null, orderNumber: null, checkoutUrl: null, expiresAt: null, error: OFFLINE_MESSAGE };
-    const { selected: orderCart, remaining: remainingCart } = selectCheckoutLines(cart, productIds);
+    const cartVersion = checkoutSignature(cartRef.current);
+    if (!await cartSync.flush()) throw new Error("Save your bag changes before checking out.");
+    if (!userId || customerUserIdRef.current !== userId) throw new Error("Your account changed. Sign in and review your bag again.");
+    if (cartVersion !== checkoutSignature(cartRef.current)) throw new Error("Your bag changed. Please review the quantities and total before continuing.");
+    const { selected: orderCart, remaining: remainingCart } = selectCheckoutLines(cartRef.current, productIds);
+    const quantityIssue = checkoutQuantityError(orderCart);
+    if (quantityIssue) throw new Error(quantityIssue);
     const signature = checkoutSignature(orderCart);
     const checkoutStorageKey = `cozycraft-checkout:${userId ?? "guest"}:${addressId}:${paymentMethod}:${signature}:${redemptionId || "none"}`;
     let checkoutKey = readSessionItem(checkoutStorageKey);
@@ -1757,6 +1691,8 @@ function App() {
         if(verified)paymentEmailApprovals.current.set(checkoutStorageKey,verified);
       }
       if(!verified) return {id:null,orderNumber:null,checkoutUrl:null,expiresAt:null,error:'Payment verification cancelled. Your bag has not been changed.'};
+      if (customerUserIdRef.current !== userId || checkoutSignature(cartRef.current) !== cartVersion) throw new Error("Your account or bag changed during verification. Review checkout before continuing.");
+      cartSync.invalidateReads();
       onPaymentAuthorized?.();
       const { data, error } = await supabase.functions.invoke(
         "create-paymongo-checkout",
@@ -1764,6 +1700,7 @@ function App() {
           body: {
             addressId,
             paymentMethod,
+            expectedTotal,
             checkoutKey,
             paymentAuthorizationId: verified.id,
             redemptionId: redemptionId || null,
@@ -1816,7 +1753,8 @@ function App() {
     if (paymentMethod !== "cod") {
       return { id: null, orderNumber: null, checkoutUrl: null, expiresAt: null, error: "Unsupported payment method." };
     }
-    const { data, error } = await supabase.rpc("place_order_with_reward", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })), p_checkout_key: checkoutKey, p_redemption_id: redemptionId || null });
+    cartSync.invalidateReads();
+    const { data, error } = await supabase.rpc("place_web_order", { p_address_id:addressId, p_payment_method:paymentMethod, p_items:orderCart.map((item) => ({ product_id:item.id, quantity:item.quantity })), p_checkout_key: checkoutKey, p_redemption_id: redemptionId || null, p_expected_total: expectedTotal });
     if (error) return { id:null, orderNumber:null, checkoutUrl:null, expiresAt:null, error:error.message };
     const orderId = data as string;
     const { data: createdOrder } = await supabase
@@ -1824,19 +1762,7 @@ function App() {
       .select("order_number,total")
       .eq("id", orderId)
       .single();
-    if (userId && remainingCart.length) {
-      void Promise.resolve(
-        supabase.from("cart_items").upsert(
-          remainingCart.map((item) => ({
-            user_id: userId,
-            product_id: item.id,
-            quantity: item.quantity,
-            selected_for_checkout: item.selectedForCheckout,
-          })),
-        ),
-      ).catch(() => undefined);
-    }
-    setCart(remainingCart);
+    replaceCart(remainingCart);
     removeSessionItem(checkoutStorageKey);
     // Order creation is already complete and atomic at this point. Realtime
     // will reconcile the stores, while refreshes and the confirmation email
@@ -1855,6 +1781,13 @@ function App() {
       error: null,
     };
   };
+  const placeOrder: Store["placeOrder"] = async (...args) => {
+    if (checkoutInFlight.current) throw new Error("Your checkout is already being prepared. Please wait.");
+    checkoutInFlight.current = true;
+    try { return await submitOrder(...args); }
+    finally { checkoutInFlight.current = false; }
+  };
+
   const updateOrderStatus = async (id: string, status: DbOrder["status"], expectedStatus?: DbOrder["status"]) => {
     if (status === "cancelled") {
       return "Use the protected cancellation workflow and provide a reason.";
@@ -2290,6 +2223,9 @@ function App() {
     closeMiniCart: () => setMiniCart((current) => current.open ? { ...current, open: false } : current),
     adminProducts,
     cart,
+    cartBusy: cartSyncState.busy,
+    cartError: cartSyncState.error,
+    retryCart: () => { void cartSync.flush(); },
     saved,
     userId,
     user,

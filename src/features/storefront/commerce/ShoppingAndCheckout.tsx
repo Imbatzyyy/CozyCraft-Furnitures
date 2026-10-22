@@ -1,4 +1,5 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { CHECKOUT_LIMITS, checkoutQuantityError } from "@/lib/commerce/checkout-limits";
 import { effectiveCodLimit, paymentUnavailableReason } from "@/lib/commerce/payment-policy";
 import { useCheckoutPaymentPolicy } from "@/lib/commerce/use-checkout-payment-policy";
 import { reportClientError } from "@/lib/shared/client-errors";
@@ -78,7 +79,7 @@ import {
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
-import { collapseElement, useCountUp, useInView } from "@/components/storefront/motion";
+import { collapseElement, useInView } from "@/components/storefront/motion";
 import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
@@ -288,6 +289,7 @@ export function Cart() {
     add,
     products,
     addresses,
+    cartBusy, cartError, retryCart,
     setCartSelection,
     setAllCartSelection,
     authReady,
@@ -339,8 +341,7 @@ export function Cart() {
     ? deliveryFeeFor(deliveryArea, subtotal)
     : null;
   const total = subtotal + (deliveryFee ?? 0);
-  const animatedSubtotal = useCountUp(subtotal);
-  const animatedTotal = useCountUp(total);
+  const cartBlocked = Boolean(cartBusy || cartError || checkoutQuantityError(selectedLines.map(line => ({ id: line.item.id, quantity: line.quantity }))));
   const freeMinimum = deliveryArea?.free_delivery_minimum ?? null;
   const freeProgress = freeMinimum ? Math.min(100, (subtotal / freeMinimum) * 100) : 0;
   const allSelected =
@@ -388,6 +389,9 @@ export function Cart() {
   return (
     <Layout>
       <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-5 lg:py-14">
+        <p className="mb-4 text-xs leading-5 text-muted-foreground">Checkout: up to 10 different products, 10 pieces per product and 20 pieces in total. Larger orders? <Link to="/profile?tab=support" className="underline">Contact CozyCraft</Link>.</p>
+        {(cartBusy || cartError) && <div role="status" className="mb-4 rounded-xl border border-border bg-secondary p-3 text-sm">{cartError || "Saving your bag changes…"}{cartError && <button type="button" onClick={retryCart} className="ml-3 min-h-11 font-semibold underline">Retry saving</button>}</div>}
+        {checkoutQuantityError(selectedLines.map(line => ({id:line.item.id, quantity:line.quantity}))) && <p role="alert" className="mb-4 rounded-xl bg-secondary p-3 text-sm">{checkoutQuantityError(selectedLines.map(line => ({id:line.item.id, quantity:line.quantity})))}</p>}
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-[11px] font-bold tracking-[.2em] text-muted-foreground">
@@ -463,7 +467,7 @@ export function Cart() {
             <section className="overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-[var(--shadow-soft)]">
               <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
                 <p className="text-sm font-semibold">
-                  {selectedLines.length} of {lines.length} pieces selected
+                  {selectedLines.length} of {lines.length} products selected
                 </p>
                 <span className="hidden text-xs text-muted-foreground sm:inline">
                   Selection updates your total
@@ -474,8 +478,8 @@ export function Cart() {
                 const isSelected = selectedForCheckout;
                 const stockLimit =
                   typeof item.stockQuantity === "number"
-                    ? Math.max(0, item.stockQuantity)
-                    : null;
+                    ? Math.min(CHECKOUT_LIMITS.perProduct, Math.max(0, item.stockQuantity))
+                    : CHECKOUT_LIMITS.perProduct;
                 const atStockLimit =
                   stockLimit !== null && quantity >= stockLimit;
                 return (
@@ -519,7 +523,7 @@ export function Cart() {
                     <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-4">
                       <div className="flex h-10 items-center rounded-full border border-border bg-background">
                         <button
-                          onClick={() => quantity <= 1 ? void removeLine(item.id, item.name, quantity, isSelected) : qty(item.id, quantity - 1)}
+                          onClick={() => quantity <= 1 ? void removeLine(item.id, item.name, quantity, isSelected) : qty(item.id, current => current - 1)}
                           aria-label={quantity <= 1 ? `Remove ${item.name}` : `Decrease ${item.name} quantity`}
                           className="grid h-full w-10 place-items-center rounded-full hover:bg-secondary"
                         >
@@ -529,12 +533,12 @@ export function Cart() {
                           {quantity}
                         </span>
                         <button
-                          onClick={() => qty(item.id, quantity + 1)}
+                          onClick={() => qty(item.id, current => current + 1)}
                           disabled={atStockLimit}
                           className="grid h-full w-10 place-items-center rounded-full hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-30"
                           aria-label={
                             atStockLimit
-                              ? `Maximum available stock is ${stockLimit}`
+                              ? `Maximum checkout quantity is ${stockLimit}`
                               : `Increase ${item.name} quantity`
                           }
                         >
@@ -558,7 +562,7 @@ export function Cart() {
                       }`}
                     >
                       {atStockLimit
-                        ? `Maximum stock reached · ${stockLimit} available`
+                        ? `Checkout limit reached · ${stockLimit} pieces per product`
                         : stockLimit === null
                           ? "Checking live availability"
                           : stockLimit <= 8
@@ -592,8 +596,8 @@ export function Cart() {
               )}
               <div className="space-y-3 text-sm">
                 <p className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal · {selectedLines.length} {selectedLines.length === 1 ? "piece" : "pieces"}</span>
-                  <span className="tabular-nums">{money(Math.round(animatedSubtotal))}</span>
+                  <span className="text-muted-foreground">Subtotal · {selectedLines.reduce((n, line) => n + line.quantity, 0)} pieces</span>
+                  <span className="tabular-nums">{money(subtotal)}</span>
                 </p>
                 <p className="flex justify-between">
                   <span className="text-muted-foreground">
@@ -610,15 +614,16 @@ export function Cart() {
               </div>
               <p className="mt-5 flex items-baseline justify-between border-t border-border pt-5 font-semibold">
                 <span>Total</span>
-                <span className="text-2xl tabular-nums">{money(Math.round(animatedTotal))}</span>
+                <span className="text-2xl tabular-nums">{money(total)}</span>
               </p>
               <Link
                 to={
-                  selectedLines.length
+                  selectedLines.length && !cartBlocked
                     ? `/checkout?items=${selected.join(",")}`
                     : "/cart"
                 }
-                aria-disabled={!selectedLines.length}
+                aria-disabled={!selectedLines.length || cartBlocked}
+                onClick={event => { if (cartBlocked) event.preventDefault(); }}
                 className={`cc-press mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold ${
                   selectedLines.length
                     ? "bg-foreground text-background shadow-[0_10px_24px_rgba(28,27,25,.18)] hover:bg-[#35322e]"
@@ -654,11 +659,12 @@ export function Cart() {
         <div className="fixed inset-x-0 bottom-[var(--mobile-store-nav-height)] z-30 flex items-center gap-3 border-t border-border bg-[#fbfaf7]/95 px-4 py-3 shadow-[0_-12px_30px_rgba(35,31,27,.12)] backdrop-blur-xl lg:hidden">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-muted-foreground">{selectedLines.length} selected · Total</p>
-            <p className="text-base font-bold tabular-nums">{money(Math.round(animatedTotal))}</p>
+            <p className="text-base font-bold tabular-nums">{money(total)}</p>
           </div>
           <Link
-            to={selectedLines.length ? `/checkout?items=${selected.join(",")}` : "/cart"}
-            aria-disabled={!selectedLines.length}
+            to={selectedLines.length && !cartBlocked ? `/checkout?items=${selected.join(",")}` : "/cart"}
+            aria-disabled={!selectedLines.length || cartBlocked}
+                onClick={event => { if (cartBlocked) event.preventDefault(); }}
             className={`cc-press inline-flex h-12 items-center gap-2 rounded-xl px-5 text-sm font-semibold ${selectedLines.length ? "bg-foreground text-background" : "pointer-events-none bg-secondary text-muted-foreground"}`}
           >
             Checkout <ArrowRight size={15} />
@@ -831,10 +837,22 @@ export function CustomerOrders() {
 }
 
 export function Checkout() {
-  const { authReady, cart, user, userId, addresses, products, placeOrder, orders, refreshOrders, storeSettings, profilePaymentMethod } = useStore();
+  const { authReady, cart, cartBusy, cartError, retryCart, user, userId, addresses, products, placeOrder, orders, refreshOrders, storeSettings, profilePaymentMethod } = useStore();
   const location = useLocation();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
+  const [cardTestMode, setCardTestMode] = useState(false);
+  useEffect(() => {
+    if (payment !== "card" || !userId) { setCardTestMode(false); return; }
+    let active = true;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("create-paymongo-checkout", { body: { action: "configuration" }, timeout: 8000 });
+        if (active) setCardTestMode(!error && data?.testMode === true);
+      } catch { if (active) setCardTestMode(false); }
+    })();
+    return () => { active = false; };
+  }, [payment, userId]);
   const paymentPolicy = useCheckoutPaymentPolicy(userId);
   const paymentChosenByCustomer=useRef(false);
   useEffect(()=>{paymentChosenByCustomer.current=false;},[userId]);
@@ -928,8 +946,8 @@ export function Checkout() {
   const deliveryFee = deliveryArea ? deliveryFeeFor(deliveryArea, subtotal) : 0;
   const discount = voucherDiscount(selectedVoucher,subtotal,deliveryFee,voucherNow);
   const voucherError = selectedVoucher && !voucherEligible(selectedVoucher,subtotal,voucherNow) ? "Your voucher is expired or its minimum spend is not met. Choose another voucher or select No voucher." : "";
-  const total = subtotal + deliveryFee - discount;
-  const checkoutError = validateCheckoutAmount(subtotal, storeSettings.checkout_settings);
+  const total = Math.round((subtotal + deliveryFee - discount + Number.EPSILON) * 100) / 100;
+  const checkoutError = (cartBusy ? "Saving your bag changes…" : cartError || "") || checkoutQuantityError(checkoutCart) || validateCheckoutAmount(subtotal, storeSettings.checkout_settings);
   const methods = [
     {
       id: "cod",
@@ -946,7 +964,7 @@ export function Checkout() {
     {
       id: "gcash",
       name: "GCash",
-      detail: "Up to ₱100,000 · Your wallet limits also apply",
+      detail: "Up to ₱100,000 · Provider and wallet limits apply",
       icon: <Wallet size={18} />,
     },
   ].map(method => {
@@ -1367,6 +1385,7 @@ export function Checkout() {
                 03 · PAYMENT METHOD
               </p>
               <h2 className="mt-2 text-xl font-semibold">Choose how to pay.</h2>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">Up to 10 products, 10 pieces per product and 20 pieces total. Online checkout maximum: ₱500,000 after discounts and delivery. Payment-provider limits may be lower.</p>
               <div className="mt-5 grid gap-3">
                 {methods.map((method) => (
                   <button
@@ -1397,6 +1416,10 @@ export function Checkout() {
                   </button>
                 ))}
               </div>
+              {payment === "card" && <div className="mt-4 rounded-xl bg-secondary p-4 text-xs leading-6">
+                <p>Complete all steps on PayMongo, including bank verification when requested. Your payment window is 15 minutes. An unfinished checkout is not a successful payment.</p>
+                {cardTestMode && <details className="mt-2"><summary className="cursor-pointer font-semibold">Sandbox card test instructions · no real charge</summary><p className="mt-2">Use test Visa <span className="font-mono">4343 4343 4343 4345</span>, a future expiry date, and any three-digit CVC. For 3-D Secure testing, use <span className="font-mono">4120 0000 0000 0007</span> and authorize the test prompt. Do not enter a real card in this test checkout.</p></details>}
+              </div>}
             </section>
             {!payment && <p role="status" className="text-sm">Please choose an available payment method. We won’t switch it for you.</p>}
             {paymentPolicy.error && <button className="rounded-xl border p-3 text-sm" onClick={paymentPolicy.retry}>Retry COD availability</button>}
@@ -1481,6 +1504,7 @@ export function Checkout() {
                       requestedIds,
                       selectedVoucher?.id,
                       usesPayMongo ? () => setPaymentHandoff("preparing") : undefined,
+                      total,
                     );
                   } catch (error) {
                     paymentPolicy.retry();
@@ -1577,6 +1601,7 @@ export function Checkout() {
                   {notice}
                 </div>
               )}
+              {cartError && <button type="button" onClick={retryCart} className="mt-3 min-h-11 underline">Retry saving bag</button>}
               {!notice && checkoutError && <div className="mt-4 rounded-xl bg-[#f3e5d4] p-3 text-xs font-semibold text-[#8b5c46]">{checkoutError}</div>}
               <p className="mt-4 flex gap-2 text-[11px] leading-4 text-muted-foreground">
                 <ShieldCheck size={14} />

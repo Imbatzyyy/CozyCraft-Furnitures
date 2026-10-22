@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { effectiveCodLimit, paymentUnavailableReason as reason } from "./payment-policy";
 describe("final payable payment limits", () => {
   it.each([[19999.99, true], [20000, true], [20000.01, false]])("COD %s eligible %s", (total, eligible) => expect(!reason("cod", total, {})).toBe(eligible));
-  it.each([[100000, true], [100000.01, false]])("GCash %s eligible %s", (total, eligible) => expect(!reason("gcash", total, {})).toBe(eligible));
+  it.each([[1,true],[100000,true],[100000.01,false],[1000000,false]])("GCash %s eligible %s", (total,eligible) => expect(!reason("gcash", total as number, {})).toBe(eligible));
   it("includes delivery and subtracts a valid voucher before testing", () => {
     expect(reason("cod", 19850 + 650, {})).not.toBe("");
     expect(reason("cod", 19850 + 650 - 500, {})).toBe("");
@@ -22,7 +22,8 @@ describe("final payable payment limits", () => {
     for (const method of ["cod","card","gcash"]) expect(reason(method, 100, {[method+"_enabled"]:false})).toContain("Temporarily unavailable");
   });
   it("rejects invalid totals/methods and the exclusive card cap", () => {
-    expect(reason("card", 9999999.99, {})).toBe("");
+    expect(reason("card", 500000, {})).toBe("");
+    expect(reason("card", 500000.01, {})).toContain("₱500,000");
     expect(reason("card", 10000000, {})).not.toBe("");
     for (const total of [NaN, Infinity, -1, 0]) expect(reason("card", total, {})).not.toBe("");
     expect(reason("unknown", 100, {})).not.toBe("");

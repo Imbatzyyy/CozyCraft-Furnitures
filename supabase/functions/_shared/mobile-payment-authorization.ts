@@ -65,9 +65,9 @@ export const normalizeMobilePaymentIntent = (
       "The selected reward is invalid. Refresh checkout and try again.",
     );
   }
-  if (inputItems.length === 0 || inputItems.length > 50) {
+  if (inputItems.length === 0 || inputItems.length > 10) {
     throw new MobilePaymentIntentError(
-      "Your checkout selection is empty or too large.",
+      "Choose between 1 and 10 different products per checkout.",
     );
   }
 
@@ -82,10 +82,10 @@ export const normalizeMobilePaymentIntent = (
     const quantity = Number(item["quantity"]);
     if (
       !productId || productId.length > 200 || !Number.isInteger(quantity) ||
-      quantity < 1 || quantity > 99
+      quantity < 1 || quantity > 10
     ) {
       throw new MobilePaymentIntentError(
-        "One or more checkout quantities are invalid.",
+        "Choose a whole-number quantity from 1 to 10 for each product.",
       );
     }
     if (seen.has(productId)) {
@@ -96,6 +96,7 @@ export const normalizeMobilePaymentIntent = (
     seen.add(productId);
     return { product_id: productId, quantity };
   }).sort((left, right) => left.product_id.localeCompare(right.product_id));
+  if (items.reduce((sum,item)=>sum+item.quantity,0)>20) throw new MobilePaymentIntentError("Choose at most 20 pieces per checkout.");
 
   return { addressId, checkoutKey, paymentMethod, items, redemptionId };
 };

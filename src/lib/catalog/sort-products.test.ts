@@ -25,9 +25,14 @@ describe("sortProducts", () => {
     ["name-asc", ["b", "a", "c"]],
     ["name-desc", ["c", "a", "b"]],
     ["newest", ["b", "a", "c"]],
-    ["popular", ["c", "a", "b"]],
+    ["popular", ["b", "a", "c"]],
   ])("sorts %s without mutating the source", (sort, expected) => {
     expect(sortProducts(products, sort).map((item) => item.id)).toEqual(expected);
     expect(products.map((item) => item.id)).toEqual(["a", "b", "c"]);
+  });
+  it("ranks actual views and saves independently of reviews", () => {
+    const counted = products.map((p,i)=>({...p,popularity:[8,5,2][i],saves:[1,2,9][i]}));
+    expect(sortProducts(counted,"popular").map(p=>p.id)).toEqual(["a","b","c"]);
+    expect(sortProducts(counted,"liked").map(p=>p.id)).toEqual(["c","b","a"]);
   });
 });

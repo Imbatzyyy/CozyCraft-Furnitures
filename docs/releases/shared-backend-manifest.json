@@ -536,6 +536,14 @@
     {
       "file": "20261022010000_checkout_payment_limits.sql",
       "sha256": "80efd1baad41cb43dec4fac4df24375f5ed9509dd9b60f2a62c656fcb612dcb7"
+    },
+    {
+      "file": "20261022020000_mobile_signed_updates.sql",
+      "sha256": "e5650b6b4689075e9d7e3d02608d2041a72bd64f3fe634ae888d93b750b5fea0"
+    },
+    {
+      "file": "20261022150000_checkout_consistency_and_popularity.sql",
+      "sha256": "0894892df42fa04b2f319e757adc5617fc3c7295f107f65b809924e77984cdc3"
     }
   ]
 }

@@ -122,7 +122,7 @@ export function QuickView({ product, open, onClose, saved, onToggleSaved, onAdd,
               <div className="flex h-12 items-center rounded-xl border border-border bg-white">
                 <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1 || soldOut} aria-label={`Decrease ${product.name} quantity`} className="grid h-full w-11 place-items-center disabled:opacity-30"><Minus size={15} /></button>
                 <span className="w-7 text-center text-sm font-semibold tabular-nums">{quantity}</span>
-                <button type="button" onClick={() => setQuantity((value) => stockLimit === null ? value + 1 : Math.min(stockLimit, value + 1))} disabled={soldOut || (stockLimit !== null && quantity >= stockLimit)} aria-label={`Increase ${product.name} quantity`} className="grid h-full w-11 place-items-center disabled:opacity-30"><Plus size={15} /></button>
+                <button type="button" onClick={() => setQuantity((value) => Math.min(10, stockLimit ?? 10, value + 1))} disabled={soldOut || quantity >= Math.min(10, stockLimit ?? 10)} aria-label={`Increase ${product.name} quantity`} className="grid h-full w-11 place-items-center disabled:opacity-30"><Plus size={15} /></button>
               </div>
               <button
                 type="button"

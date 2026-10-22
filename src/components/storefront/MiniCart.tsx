@@ -5,7 +5,7 @@ import { ArrowRight, Check, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-r
 import type { Product, Store } from "@/app/core";
 import { ResilientImage } from "@/components/media/ResilientImage";
 import { primaryProductImage } from "@/lib/catalog/product-images";
-import { usePresence, useCountUp } from "./motion";
+import { usePresence } from "./motion";
 
 type MiniCartProps = {
   store: Store;
@@ -46,7 +46,7 @@ export function MiniCart({ store, money }: MiniCartProps) {
   }, [lines, miniCartHighlight]);
   const selected = lines.filter((line) => line.selected);
   const subtotal = selected.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
-  const animatedSubtotal = useCountUp(subtotal);
+
   const count = lines.reduce((sum, line) => sum + line.quantity, 0);
   const pairings = useMemo(() => {
     const inBag = new Set(lines.map((line) => line.product.id));
@@ -112,7 +112,7 @@ export function MiniCart({ store, money }: MiniCartProps) {
             <ul className="cc-stagger grid gap-3">
               {ordered.map(({ product, quantity, selected: isSelected }) => {
                 const highlighted = product.id === miniCartHighlight;
-                const atLimit = typeof product.stockQuantity === "number" && quantity >= product.stockQuantity;
+                const atLimit = quantity >= Math.min(10, product.stockQuantity ?? 10);
                 return (
                   <li
                     key={product.id}
@@ -135,7 +135,7 @@ export function MiniCart({ store, money }: MiniCartProps) {
                         <div className="flex h-9 items-center rounded-full border border-border bg-white">
                           <button
                             type="button"
-                            onClick={() => (quantity <= 1 ? remove(product.id) : qty(product.id, quantity - 1))}
+                            onClick={() => (quantity <= 1 ? remove(product.id) : qty(product.id, current => current - 1))}
                             aria-label={quantity <= 1 ? `Remove ${product.name}` : `Decrease ${product.name} quantity`}
                             className="grid h-full w-9 place-items-center rounded-full hover:bg-secondary"
                           >
@@ -144,9 +144,9 @@ export function MiniCart({ store, money }: MiniCartProps) {
                           <span className="w-6 text-center text-xs font-semibold tabular-nums" aria-live="polite">{quantity}</span>
                           <button
                             type="button"
-                            onClick={() => qty(product.id, quantity + 1)}
+                            onClick={() => qty(product.id, current => current + 1)}
                             disabled={atLimit}
-                            aria-label={atLimit ? `Maximum available stock reached for ${product.name}` : `Increase ${product.name} quantity`}
+                            aria-label={atLimit ? `Maximum checkout quantity reached for ${product.name}` : `Increase ${product.name} quantity`}
                             className="grid h-full w-9 place-items-center rounded-full hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             <Plus size={13} />
@@ -185,9 +185,10 @@ export function MiniCart({ store, money }: MiniCartProps) {
         </div>
 
         <footer className="border-t border-border bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 md:px-7 md:pb-7">
+          {(store.cartBusy || store.cartError) && <p role="status" className="mb-3 text-xs leading-5">{store.cartError || "Saving your bag changes…"}{store.cartError && <button type="button" onClick={store.retryCart} className="ml-2 min-h-11 underline">Retry saving</button>}</p>}
           <div className="flex items-baseline justify-between">
             <span className="text-sm text-muted-foreground">Selected subtotal</span>
-            <span className="text-xl font-semibold tabular-nums">{money(Math.round(animatedSubtotal))}</span>
+            <span className="text-xl font-semibold tabular-nums">{money(subtotal)}</span>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">Delivery is calculated from your saved address at checkout.</p>
           <div className="mt-4 grid grid-cols-2 gap-2.5">

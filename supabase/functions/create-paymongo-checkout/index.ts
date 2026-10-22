@@ -71,11 +71,17 @@ serveProtected(async (request) => {
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json(request, { error: "Your session has expired. Please sign in again." }, 401);
 
-  let payload: { addressId?: string; paymentMethod?: string; mobileReturn?: boolean; returnOrigin?: string; checkoutKey?: string; paymentAuthorizationId?: string; redemptionId?: string | null; items?: Array<{ product_id: string; quantity: number }> };
+  let payload: { expectedTotal?: number; addressId?: string; paymentMethod?: string; mobileReturn?: boolean; returnOrigin?: string; checkoutKey?: string; paymentAuthorizationId?: string; redemptionId?: string | null; items?: Array<{ product_id: string; quantity: number }> };
   try {
     payload = await request.json();
   } catch {
     return json(request, { error: "Invalid checkout request." }, 400);
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json(request, { error: "Invalid checkout request." }, 400);
+  // Expose only the environment, never API keys. This read creates no order,
+  // reserves no inventory, sends no OTP, and never contacts the provider.
+  if ((payload as { action?: string }).action === "configuration") {
+    return json(request, { testMode: paymongoSecretKey.startsWith("sk_test_") });
   }
 
   const paymentMethod = payload.paymentMethod;
@@ -107,12 +113,14 @@ serveProtected(async (request) => {
   if(valid!==true)return json(request,{error:'The payment code expired or checkout details changed. Request a new code.',paymentVerificationRequired:true},403);
   let providerRequestStarted = false;
   try {
-    const { data, error } = await userClient.rpc("place_order_with_reward", {
+    const hasExpectedTotal = "expectedTotal" in payload;
+    const { data, error } = await userClient.rpc(hasExpectedTotal ? "place_web_order" : "place_order_with_reward", {
       p_address_id: payload.addressId,
       p_payment_method: paymentMethod,
       p_items: items,
       p_checkout_key: payload.checkoutKey,
       p_redemption_id: payload.redemptionId || null,
+      ...(hasExpectedTotal ? { p_expected_total: payload.expectedTotal } : {}),
     });
     if (error) return json(request, { error: error.message }, 400);
     orderId = data as string;

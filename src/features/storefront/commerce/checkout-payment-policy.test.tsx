@@ -124,7 +124,24 @@ describe("website checkout uses the mobile final-total payment policy", () => {
     mocks.placeOrder.mockResolvedValue({ error: "Fixture: no real order was created" });
     await render();
     await act(async () => submit().click());
-    expect(mocks.placeOrder).toHaveBeenCalledWith("test-address", "cod", undefined, undefined, undefined);
+    expect(mocks.placeOrder).toHaveBeenCalledWith("test-address", "cod", undefined, undefined, undefined, expect.any(Number));
     expect(host.textContent).toContain("Fixture: no real order was created");
+  });
+  it("blocks all methods above the store ceiling before payment authorization", async () => {
+    mocks.store.products = [product(1_250_000)];
+    mocks.placeOrder.mockResolvedValue({ error: "Fixture: provider approval is still required" });
+    await render();
+    expect(method("Cash on delivery").disabled).toBe(true);
+    expect(method("GCash").disabled).toBe(true);
+    expect(method("Debit or credit card").disabled).toBe(true);
+    expect(host.textContent).toContain("₱500,000");
+    expect(submit().disabled).toBe(true);
+    expect(mocks.placeOrder).not.toHaveBeenCalled();
+  });
+  it("blocks payment while a bag update is pending or failed", async () => {
+    mocks.store.cartBusy = true;
+    await render();
+    expect(submit().disabled).toBe(true);
+    expect(host.textContent).toContain("Saving your bag changes");
   });
 });
