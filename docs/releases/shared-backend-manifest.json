@@ -542,6 +542,10 @@
       "sha256": "e5650b6b4689075e9d7e3d02608d2041a72bd64f3fe634ae888d93b750b5fea0"
     },
     {
+      "file": "20261022120000_admin_commerce_exports.sql",
+      "sha256": "9bcd9e11df14e02103535eed1aa6ac70a5d10f7d0e9ce09c25afb0f2df92a84b"
+    },
+    {
       "file": "20261022150000_checkout_consistency_and_popularity.sql",
       "sha256": "0894892df42fa04b2f319e757adc5617fc3c7295f107f65b809924e77984cdc3"
     }

@@ -21,7 +21,7 @@ try {
     if (ready) break;
   }
   if (!ready) throw new Error("Fixture server did not become ready");
-  for (const script of ["test-admin-login.mjs", "test-product-recovery.mjs", "test-storefront-quality.mjs", "test-cart-consistency.mjs"]) {
+  for (const script of ["test-admin-login.mjs", "test-product-recovery.mjs", "test-storefront-quality.mjs", "test-cart-consistency.mjs", "test-admin-report-exports.mjs"]) {
     await run([`scripts/${script}`], { ...process.env, TEST_BASE_URL: base });
   }
 } finally { server.kill("SIGTERM"); }

@@ -66,3 +66,18 @@ again by this release. Unrelated local security/Pro plan notes are excluded.
 - Existing admin and storefront browser regression suites.
 - No physical iPhone/Android or real bank/wallet charge proof; do not describe
   fixture/provider event tests as a live payment or multi-user database load test.
+
+## Integration verification - 23 October 2026
+
+A concurrent main-branch admin PDF/CSV export release was merged without a force
+push. Both browser suites and both migration records are preserved. Combined
+checks passed: 110 test files / 766 tests, all database suites, 22 Edge Function
+tests with 10 nested checks, 137 migration manifest entries, and zero reported
+dependency vulnerabilities. Responsive cart fixtures cover 320/390/768/1440px;
+admin report downloads cover 320/390/1440px.
+
+The checkout migration and both payment functions were deployed. Read-only live
+verification found 91 product counters with zero source mismatches, active
+counter triggers, no anonymous checkout/raw-table access, and a public compact
+count endpoint with no identity fields. Production shell/header checks passed
+for 19 routes. Provider settlement still needs the sandbox check noted above.
