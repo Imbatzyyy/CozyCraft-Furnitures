@@ -573,7 +573,7 @@ export function StoreSettingsPage() {
                     {toggle("Cash on delivery", "Let eligible customers pay when furniture arrives.", settings.checkout_settings.cod_enabled, (value) => updateNested("checkout_settings", "cod_enabled", value))}
                     {toggle("Cards via PayMongo", "Offer the secure hosted PayMongo card checkout.", settings.checkout_settings.card_enabled, (value) => updateNested("checkout_settings", "card_enabled", value))}
                     {toggle("GCash via PayMongo", "Offer the secure hosted PayMongo GCash checkout.", settings.checkout_settings.gcash_enabled, (value) => updateNested("checkout_settings", "gcash_enabled", value))}
-                    {numberInput("COD maximum order", settings.checkout_settings.cod_maximum_order, (value) => updateNested("checkout_settings", "cod_maximum_order", value), "PHP", "0 means unlimited.")}
+                    {numberInput("COD payable limit", settings.checkout_settings.cod_maximum_order, (value) => updateNested("checkout_settings", "cod_maximum_order", Math.min(20000, Math.max(0, value))), "PHP", "Final total after discounts, including delivery. Maximum ₱20,000; 0 uses ₱20,000. Unpaid COD orders share this limit.")}
                     {settings.currency_code !== "PHP" && <p className="rounded-xl bg-warning-soft p-4 text-xs leading-5 text-warning-ink md:col-span-2">PayMongo accepts Philippine peso amounts for this store. Switch the currency back to PHP before enabling card or GCash checkout.</p>}
                   </>
                 )}

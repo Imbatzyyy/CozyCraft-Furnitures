@@ -1,4 +1,6 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { effectiveCodLimit, paymentUnavailableReason } from "@/lib/commerce/payment-policy";
+import { useCheckoutPaymentPolicy } from "@/lib/commerce/use-checkout-payment-policy";
 import { reportClientError } from "@/lib/shared/client-errors";
 import { FullTracking } from './FullTracking';
 import {
@@ -90,7 +92,6 @@ import {
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import {
-  isPaymentMethodAvailable,
   validateCheckoutAmount,
 } from "@/lib/settings/store-settings";
 import { primaryProductImage } from "@/lib/catalog/product-images";
@@ -834,6 +835,7 @@ export function Checkout() {
   const location = useLocation();
   const [address, setAddress] = useState("");
   const [payment, setPayment] = useState("cod");
+  const paymentPolicy = useCheckoutPaymentPolicy(userId);
   const paymentChosenByCustomer=useRef(false);
   useEffect(()=>{paymentChosenByCustomer.current=false;},[userId]);
   useEffect(()=>{if(!paymentChosenByCustomer.current)setPayment(profilePaymentMethod);},[profilePaymentMethod,userId]);
@@ -932,31 +934,31 @@ export function Checkout() {
     {
       id: "cod",
       name: "Cash on delivery",
-      detail: storeSettings.checkout_settings.cod_maximum_order > 0
-        ? `Available up to ${money(storeSettings.checkout_settings.cod_maximum_order)}`
-        : "Pay when your delivery arrives",
+      detail: `Up to ${money(effectiveCodLimit(storeSettings.checkout_settings.cod_maximum_order))}, including delivery and after discounts`,
       icon: <Banknote size={18} />,
-      available: isPaymentMethodAvailable("cod", subtotal, storeSettings.checkout_settings),
     },
     {
       id: "card",
       name: "Debit or credit card",
       detail: "Secure PayMongo checkout",
       icon: <CreditCard size={18} />,
-      available: isPaymentMethodAvailable("card", subtotal, storeSettings.checkout_settings),
     },
     {
       id: "gcash",
       name: "GCash",
-      detail: "Secure PayMongo checkout",
+      detail: "Up to ₱100,000 · Your wallet limits also apply",
       icon: <Wallet size={18} />,
-      available: isPaymentMethodAvailable("gcash", subtotal, storeSettings.checkout_settings),
     },
-  ];
+  ].map(method => {
+    const reason = paymentUnavailableReason(method.id, total, storeSettings.checkout_settings, paymentPolicy.outstandingCod, paymentPolicy.codLimit)
+      || (method.id === "cod" ? (paymentPolicy.loading ? "Checking COD availability…" : paymentPolicy.error) : "");
+    return { ...method, detail: reason || method.detail, available: !reason };
+  });
+  const selectedPaymentAvailable = methods.some(method => method.id === payment && method.available);
   useEffect(() => {
-    if (methods.some((method) => method.id === payment && method.available)) return;
-    setPayment(methods.find((method) => method.available)?.id ?? "");
-  }, [payment, subtotal, storeSettings.checkout_settings.card_enabled, storeSettings.checkout_settings.cod_enabled, storeSettings.checkout_settings.cod_maximum_order, storeSettings.checkout_settings.gcash_enabled]);
+    if (!payment || selectedPaymentAvailable || (payment === "cod" && paymentPolicy.loading)) return;
+    setPayment("");
+  }, [payment, selectedPaymentAvailable, paymentPolicy.loading]);
   const checkoutSteps = ["Bag", "Delivery", "Payment", "Review"];
   const currentStep = !chosen ? 1 : !payment ? 2 : 3;
   const [summaryRef, summaryInView] = useInView<HTMLElement>({ threshold: 0.15 }, false);
@@ -1370,9 +1372,11 @@ export function Checkout() {
                   <button
                     key={method.id}
                     disabled={!method.available}
+                    aria-label={method.name}
+                    aria-describedby={`checkout-payment-${method.id}-detail`}
                     onClick={() => {if(method.available){paymentChosenByCustomer.current=true;setPayment(method.id);}}}
                     aria-pressed={payment === method.id}
-                    className={`cc-press flex items-center gap-3 rounded-2xl border p-4 text-left transition-colors duration-300 disabled:cursor-not-allowed disabled:opacity-45 ${payment === method.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border hover:border-foreground/40 hover:bg-secondary/40"}`}
+                    className={`cc-press flex items-center gap-3 rounded-2xl border p-4 text-left transition-colors duration-300 disabled:cursor-not-allowed disabled:bg-secondary/50 ${payment === method.id ? "border-foreground bg-[#f4f0e9] ring-1 ring-foreground" : "border-border hover:border-foreground/40 hover:bg-secondary/40"}`}
                   >
                     <span
                       className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl transition-colors duration-300 ${payment === method.id ? "bg-foreground text-background" : "bg-secondary"}`}
@@ -1382,7 +1386,7 @@ export function Checkout() {
                     <span className="flex-1">
                       <b className="block text-sm">{method.name}</b>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {method.detail}
+                        <span id={`checkout-payment-${method.id}-detail`}>{method.detail}</span>
                       </span>
                     </span>
                     <span
@@ -1394,6 +1398,8 @@ export function Checkout() {
                 ))}
               </div>
             </section>
+            {!payment && <p role="status" className="text-sm">Please choose an available payment method. We won’t switch it for you.</p>}
+            {paymentPolicy.error && <button className="rounded-xl border p-3 text-sm" onClick={paymentPolicy.retry}>Retry COD availability</button>}
             {userId && <div className="rounded-2xl border border-border bg-card p-4 sm:rounded-3xl sm:p-6"><CheckoutVouchers key={userId} userId={userId} requestedId={searchParams.get("voucher")} subtotal={subtotal} selected={selectedVoucher} onSelect={setSelectedVoucher} disabled={placing} revision={voucherRevision}/></div>}
           </div>
           <aside ref={summaryRef} id="checkout-summary" className="h-fit scroll-mt-24 overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-[var(--shadow-soft)] xl:sticky xl:top-24">
@@ -1446,7 +1452,7 @@ export function Checkout() {
                 {voucherError && <p className="circle-error" role="alert">{voucherError}</p>}
               </div>
               <button
-                disabled={placing || !chosen || !payment || Boolean(checkoutError) || Boolean(voucherError)}
+                disabled={placing || !chosen || !selectedPaymentAvailable || Boolean(checkoutError) || Boolean(voucherError)}
                 onClick={async () => {
                   if (!chosen) {
                     setNotice(
@@ -1458,8 +1464,8 @@ export function Checkout() {
                     setNotice(checkoutError);
                     return;
                   }
-                  if (!payment) {
-                    setNotice("No payment method is currently available for this order.");
+                  if (!selectedPaymentAvailable) {
+                    setNotice("Choose an available payment method to continue.");
                     return;
                   }
                   const usesPayMongo = payment === "card" || payment === "gcash";
@@ -1477,6 +1483,7 @@ export function Checkout() {
                       usesPayMongo ? () => setPaymentHandoff("preparing") : undefined,
                     );
                   } catch (error) {
+                    paymentPolicy.retry();
                     setPaymentHandoff(null);
                     setPlacingPaymentMethod("");
                     setPlacing(false);
@@ -1488,6 +1495,7 @@ export function Checkout() {
                     return;
                   }
                   if (result.error) {
+                    paymentPolicy.retry();
                     setVoucherRevision(n=>n+1);
                     setPaymentHandoff(null);
                     setPlacingPaymentMethod("");
@@ -1557,7 +1565,9 @@ export function Checkout() {
                     : checkoutError
                       ? checkoutError
                       : !payment
-                        ? "No payment method available"
+                        ? methods.some((method) => method.available)
+                          ? "Choose a payment method"
+                          : "No payment method available"
                     : payment === "cod"
                       ? `Place COD order · ${money(total)}`
                       : `Pay securely · ${money(total)}`}

@@ -1,3 +1,5 @@
+import { paymentUnavailableReason } from "@/lib/commerce/payment-policy";
+
 export type CheckoutSettings = {
   standard_delivery_fee: number;
   free_delivery_minimum: number;
@@ -118,7 +120,7 @@ export const defaultStoreSettings: PublicStoreSettings = {
     cod_enabled: true,
     card_enabled: true,
     gcash_enabled: true,
-    cod_maximum_order: 0,
+    cod_maximum_order: 20_000,
   },
   fulfillment_settings: {
     estimated_delivery_days_min: 5,
@@ -240,16 +242,10 @@ export const calculateDeliveryFee = (
 
 export const isPaymentMethodAvailable = (
   method: string,
-  subtotal: number,
+  finalTotal: number,
   settings: CheckoutSettings,
 ) => {
-  if (method === "cod") {
-    const maximum = Math.max(0, Number(settings.cod_maximum_order) || 0);
-    return settings.cod_enabled && (maximum === 0 || subtotal <= maximum);
-  }
-  if (method === "card") return settings.card_enabled;
-  if (method === "gcash") return settings.gcash_enabled;
-  return false;
+  return !paymentUnavailableReason(method, finalTotal, settings);
 };
 
 export const validateCheckoutAmount = (

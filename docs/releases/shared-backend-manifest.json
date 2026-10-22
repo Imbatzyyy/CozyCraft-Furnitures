@@ -532,6 +532,10 @@
     {
       "file": "20261015090000_classroom_forecast_dataset.sql",
       "sha256": "5bb6fbf081a620ff04f0efc52b54daa0259ad2bca89dc1e185b72da6d1933a17"
+    },
+    {
+      "file": "20261022010000_checkout_payment_limits.sql",
+      "sha256": "80efd1baad41cb43dec4fac4df24375f5ed9509dd9b60f2a62c656fcb612dcb7"
     }
   ]
 }
