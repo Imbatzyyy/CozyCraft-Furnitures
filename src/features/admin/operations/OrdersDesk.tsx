@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
 import { ResilientImage } from "@/components/media/ResilientImage";
+import { CommerceExportDialog } from "@/components/admin/CommerceExportDialog";
+import { filtersFromOrderDesk } from "@/lib/admin/commerce-report";
 import { adminSupabase as supabase, type DbBillingProfile, type DbOrder, type DbPaymentTransaction } from "@/services/supabase/client";
 import { canManageFinancialOperations } from "@/lib/admin/access";
 import {
@@ -211,6 +213,7 @@ export function OrdersWorkspacePage() {
   const [printedAt, setPrintedAt] = useState(() => new Date());
   const [deskNow, setDeskNow] = useState(() => new Date());
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [bulk, setBulk] = useState<Map<string, DbOrder>>(() => new Map());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
@@ -658,6 +661,7 @@ export function OrdersWorkspacePage() {
         meta={<LiveBadge live={ordersRealtimeConnected} liveLabel="Live order updates" />}
         actions={
           <>
+            <button type="button" onClick={() => setExportOpen(true)} disabled={!workspaceReady} className="adm-btn adm-btn-primary"><Download size={14} /> Export report</button>
             <button type="button" onClick={() => { queue.reload(); void refreshOrders(); }} className="adm-btn" aria-label="Refresh orders"><RefreshCw size={14} className={queue.loading ? "animate-spin" : ""} /> <span className="hidden sm:inline">Refresh</span></button>
             {selected && <button type="button" onClick={() => print([selected])} className="adm-btn"><Printer size={14} /> <span className="hidden sm:inline">Print packing list</span></button>}
           </>
@@ -673,6 +677,7 @@ export function OrdersWorkspacePage() {
           ]}
         />
       </PageHeader>
+      {exportOpen && <CommerceExportDialog kind="orders" userId={adminUserId} initialFilters={filtersFromOrderDesk(filters)} onClose={() => setExportOpen(false)} onSuccess={message => notify(message)} />}
 
       <Card className="overflow-hidden">
         <div className="flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center">

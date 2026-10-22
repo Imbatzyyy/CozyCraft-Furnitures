@@ -536,6 +536,10 @@
     {
       "file": "20261022010000_checkout_payment_limits.sql",
       "sha256": "80efd1baad41cb43dec4fac4df24375f5ed9509dd9b60f2a62c656fcb612dcb7"
+    },
+    {
+      "file": "20261022120000_admin_commerce_exports.sql",
+      "sha256": "9bcd9e11df14e02103535eed1aa6ac70a5d10f7d0e9ce09c25afb0f2df92a84b"
     }
   ]
 }

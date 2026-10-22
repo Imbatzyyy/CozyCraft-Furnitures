@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Banknote, CircleDollarSign, CreditCard, Download, Receipt, Wallet } from "lucide-react";
-import { adminSupabase as supabase, type DbOrder } from "@/services/supabase/client";
-import { reportCsv } from "@/lib/intelligence/report-export";
+import { adminSupabase as supabase } from "@/services/supabase/client";
+import { CommerceExportDialog } from "@/components/admin/CommerceExportDialog";
+import { ALL_COMMERCE_FILTERS, ORDER_STATUS_OPTIONS, PAYMENT_STATUS_OPTIONS, reportLabel, type CommerceReportFilters, type CommerceReportPage, type CommerceReportRow } from "@/lib/admin/commerce-report";
 import { useAdminQuery } from "@/services/admin/use-admin-query";
 import { formatDateTime, plural } from "@/lib/admin/format";
 import { money, useAdminSession, Status, Toast } from "@/app/core";
@@ -17,16 +18,17 @@ export function PaymentsPage() {
   const { userId, workspaceReady } = useAdminSession();
   const [page, setPage] = useState(1);
   const { notice, notify, clear } = useNotice();
-  const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [filters, setFilters] = useState<CommerceReportFilters>({ ...ALL_COMMERCE_FILTERS });
   const [marking, setMarking] = useState<string | null>(null);
-  const result = useAdminQuery<{ rows: DbOrder[]; total: number; collected: number; paidCount: number; asOf: string }>("admin_payment_page", { p_page: page }, workspaceReady, userId, { keepPrevious: true });
+  const result = useAdminQuery<CommerceReportPage>("admin_commerce_report_page", { p_kind: "payments", p_filters: filters, p_size: 20, p_page: page }, workspaceReady, userId, { keepPrevious: true });
   const orders = result.data?.rows ?? [];
-  const exportOwner = useRef(userId);
-  exportOwner.current = userId;
-  const exportController = useRef<AbortController | null>(null);
-  useEffect(() => () => exportController.current?.abort(), [userId]);
+  useEffect(() => setPage(1), [filters]);
+  useEffect(() => {
+    if (result.data && !result.loading && page > Math.max(1, Math.ceil(result.data.total / 20))) setPage(Math.max(1, Math.ceil(result.data.total / 20)));
+  }, [result.data, result.loading, page]);
 
-  const markReceived = async (order: DbOrder) => {
+  const markReceived = async (order: CommerceReportRow) => {
     const confirmed = await confirmAction({
       title: `Mark #${order.order_number} as paid?`,
       description: `Confirm you have received ${money(Number(order.total))} in cash from ${order.shipping_address.name || "the customer"}. This records the payment as settled.`,
@@ -43,42 +45,6 @@ export function PaymentsPage() {
       result.reload();
     }
   };
-  const exportPayments = async () => {
-    if (exportController.current || !userId) return;
-    const owner = userId;
-    const controller = new AbortController();
-    exportController.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 30000);
-    setExporting(true);
-    try {
-      const rows: Array<Array<string | number>> = [["Order", "Customer", "Method", "Status", "Total", "Created"]];
-      let asOf: string | null = null;
-      for (let index = 1; index <= 200; index++) {
-        const { data, error } = await supabase.rpc("admin_payment_page", { p_page: index, p_size: 250, p_before: asOf }).abortSignal(controller.signal);
-        if (error || !data) throw new Error("The complete settlement report could not be loaded. Please retry.");
-        if (exportOwner.current !== owner || controller.signal.aborted) return;
-        asOf = data.asOf;
-        for (const order of data.rows as DbOrder[]) rows.push([order.order_number, order.shipping_address.name || "Customer", order.payment_method.toUpperCase(), order.payment_status, Number(order.total), order.created_at]);
-        if (data.rows.length < 250) break;
-        if (index === 200) throw new Error("Use a date-filtered report for exports over 50,000 transactions.");
-      }
-      const url = URL.createObjectURL(new Blob([reportCsv(rows)], { type: "text/csv;charset=utf-8" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "cozycraft-payments-" + new Date().toISOString().slice(0, 10) + ".csv";
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      notify("Complete payment report downloaded.");
-    } catch (issue) {
-      if (exportOwner.current === owner) notify(issue instanceof Error ? issue.message : "Report export failed.", "error");
-    } finally {
-      window.clearTimeout(timeout);
-      if (exportController.current === controller) {
-        exportController.current = null;
-        setExporting(false);
-      }
-    }
-  };
 
   return (
     <AdminShell title="Payments">
@@ -87,21 +53,30 @@ export function PaymentsPage() {
         title="Payments"
         description="Every recorded transaction, newest first. Online payments are settled by PayMongo; cash on delivery is confirmed here."
         actions={
-          <button onClick={() => void exportPayments()} disabled={exporting || !result.data} className="adm-btn adm-btn-primary">
-            {exporting ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Download size={14} />}
-            {exporting ? "Preparing report…" : "Settlement report (CSV)"}
+          <button onClick={() => setExportOpen(true)} disabled={!workspaceReady} className="adm-btn adm-btn-primary">
+            <Download size={14} /> Export report
           </button>
         }
       >
         <StatStrip
           loading={!result.data}
           items={[
-            { label: "Collected", value: result.data ? Number(result.data.collected) : null, format: (value) => money(Math.round(value)), note: "Settled, non-cancelled payments", icon: CircleDollarSign, tone: "success" },
-            { label: "Settled transactions", value: result.data?.paidCount, note: "Paid orders on record", icon: Receipt },
-            { label: "All transactions", value: result.data?.total, note: "Every recorded order", icon: CreditCard },
+            { label: "Collected", value: result.data ? Number(result.data.summary.settledValue) : null, format: (value) => money(value), note: "Paid, non-cancelled matching orders", icon: CircleDollarSign, tone: "success" },
+            { label: "Settled transactions", value: result.data?.summary.settledCount, note: "Paid, non-cancelled matching orders", icon: Receipt },
+            { label: "Matching payments", value: result.data?.total, note: "Current filters, across every page", icon: CreditCard },
           ]}
         />
       </PageHeader>
+      {exportOpen && <CommerceExportDialog kind="payments" userId={userId} initialFilters={filters} onClose={() => setExportOpen(false)} onSuccess={message => notify(message)} />}
+
+      <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        {([
+          ["Payment method", "paymentMethod", [["all", "All methods"], ["cod", "Cash on delivery"], ["gcash", "GCash"], ["card", "Debit / credit card"]]],
+          ["Payment status", "paymentStatus", [["all", "All payment statuses"], ...PAYMENT_STATUS_OPTIONS.map(value => [value, reportLabel(value)])]],
+          ["Order status", "status", [["all", "All order statuses"], ...ORDER_STATUS_OPTIONS.map(value => [value, reportLabel(value)])]],
+          ["Date placed", "dateRange", [["all", "All dates"], ["today", "Today"], ["last_7_days", "Last 7 days"], ["last_30_days", "Last 30 days"]]],
+        ] as Array<[string, keyof CommerceReportFilters, string[][]]>).map(([label, key, options]) => <label key={key} className="adm-label min-w-0 text-xs">{label}<select aria-label={label} className="adm-select mt-1 h-11 w-full" value={filters[key]} onChange={event => setFilters(current => ({ ...current, [key]: event.target.value }))}>{options.map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>)}
+      </Card>
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted-foreground">Filter on the order desk:</span>
