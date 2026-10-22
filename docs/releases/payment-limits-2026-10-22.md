@@ -49,3 +49,11 @@ The database fixture runs PostgreSQL in isolated PGlite, not a multi-connection 
 - Responsive fixture inspection at 320, 390 and 1440 CSS pixels found no horizontal content overflow. This used the real Checkout markup with fixture data, not a live purchase.
 - The staged release snapshot matches all 134 migration hashes. The unrelated local mobile-update migration and existing operations-document edits are intentionally excluded from this website release.
 - The shared database policy was verified already active; it was not applied again.
+
+## Final release audit follow-up
+
+- Production deploy `6ad9bb754293e9591cf34569` served the tested checkout, settings, entrypoint, and vendor assets byte-for-byte. All 19 production route/header checks passed; `/checkout` also returned the intended private/no-cache headers.
+- GitHub run `39740911102` passed release verification, browser interaction suites, and timezone regression tests, but its final full dependency audit found newly reported development-tool vulnerabilities.
+- Updated Vite from 6.4.3 to 6.4.5 and Vitest from 4.1.11 to 4.1.12, with their lockfile dependencies. These are patch upgrades; no customer-data or mobile-app change was needed.
+- Repeated typecheck, 737 tests, production build, all database suites, and 21 Edge Function tests with 10 nested steps successfully. The full dependency audit, including development dependencies, now reports zero vulnerabilities.
+- Advisory references: [Vite/launch-editor](https://github.com/advisories/GHSA-587h-7wmj-h5pm), [Vitest mocker](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8).
