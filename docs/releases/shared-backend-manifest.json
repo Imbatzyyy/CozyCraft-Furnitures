@@ -548,6 +548,10 @@
     {
       "file": "20261022150000_checkout_consistency_and_popularity.sql",
       "sha256": "0894892df42fa04b2f319e757adc5617fc3c7295f107f65b809924e77984cdc3"
+    },
+    {
+      "file": "20261025010000_catalog_guest_visits.sql",
+      "sha256": "834485519c79bb574216e990b0a037e492dec50ab5679b452c100f44a5453203"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { localStore } from "@/lib/shared/browser-storage";
+import { catalogPopularityAvailable, getCatalogPopularity, recordProductVisit, subscribeCatalogPopularity } from "@/services/catalog/popularity.service";
 import { DataPagination } from "@/components/DataPagination";
 import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
 import { watchVisibleRecovery } from "@/lib/shared/visible-recovery";
@@ -1546,8 +1547,7 @@ type CollectionFilters = {
 const productSorts: Array<[ProductSort, string]> = [
   ["featured", "Featured"],
   ["newest", "Newest"],
-  ["popular", "Most popular"],
-  ["liked", "Most liked (saved)"],
+  ["clicked", "Most clicked"],
   ["rating", "Highest rated"],
   ["price-low", "Price: low to high"],
   ["price-high", "Price: high to low"],
@@ -1571,7 +1571,8 @@ const readCollectionFilters = (search: string): CollectionFilters => {
     const parsed = Number(value);
     return value !== null && Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, STOREFRONT_MAX_PRICE)) : fallback;
   };
-  const sort = params.get("sort") as ProductSort | null;
+  const requestedSort = params.get("sort") as ProductSort | null;
+  const sort = requestedSort === "liked" || requestedSort === "popular" ? "clicked" : requestedSort;
   return {
     group: params.get("group") ?? "All",
     type: params.get("type") ?? "",
@@ -1610,6 +1611,14 @@ export function CollectionPage() {
   const collectionGroups = Object.keys(info.groups);
   const groups = info.match === "new" ? collectionGroups : ["All", ...collectionGroups];
   const [filters, setFilters] = useState<CollectionFilters>(() => readCollectionFilters(location.search));
+  const [visitCountsReady, setVisitCountsReady] = useState(catalogPopularityAvailable);
+  useEffect(() => {
+    let active = true;
+    const sync = () => { if (active) setVisitCountsReady(catalogPopularityAvailable()); };
+    const unsubscribe = subscribeCatalogPopularity(sync);
+    void getCatalogPopularity().then(sync);
+    return () => { active = false; unsubscribe(); };
+  }, [current, filters.sort]);
   const lastWrittenSearch = useRef(location.search);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterPresence = usePresence(filtersOpen, 280);
@@ -1865,7 +1874,7 @@ export function CollectionPage() {
               </div>
             </div>
 
-            {(filters.sort === "popular" || filters.sort === "liked") && <p className="mt-3 text-xs leading-5 text-muted-foreground">{filters.sort === "popular" ? "Based on unique signed-in product viewers across CozyCraft. Repeated visits do not increase a product’s rank." : "Based on customers who currently have a product saved in their wishlist."}</p>}
+            {filters.sort === "clicked" && <p className="mt-3 text-xs leading-5 text-muted-foreground" role="status">{visitCountsReady ? "Most visited first, across guests and signed-in customers. Rapid repeat visits are limited." : "Visit counts are temporarily unavailable. Products are shown by name; try again shortly."}</p>}
             {children.length > 0 && (
               <div className="cc-no-scrollbar cc-fade-x -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:[mask-image:none]" aria-label={`${group} types`}>
                 {["", ...children].map((child) => (
@@ -2526,13 +2535,15 @@ function ProductPageContent({
         return;
       }
       const key="cozycraft-recent-products";
-      const stored=JSON.parse(localStore.getItem(key)??"[]") as unknown;
+      let stored: unknown = [];
+      try { stored=JSON.parse(localStore.getItem(key)??"[]"); } catch { /* Discard malformed recent history. */ }
       const ids=Array.isArray(stored)?stored.filter((id):id is string=>typeof id==="string"):[];
       const next=[product.id,...ids.filter((id)=>id!==product.id)].slice(0,8);
       localStore.setItem(key,JSON.stringify(next));
       if(active)setRecentProductIds(next.filter((id)=>id!==product.id).slice(0,4));
     };
-    void remember();
+    void recordProductVisit(product.id);
+    void remember().catch(() => undefined);
     return()=>{active=false;};
   },[product.id,userId]);
   const recentProducts=recentProductIds.map((id)=>products.find((item)=>item.id===id)).filter((item):item is Product=>Boolean(item));

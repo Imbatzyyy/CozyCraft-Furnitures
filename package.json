@@ -14,7 +14,7 @@
     "smoke:prod": "node scripts/smoke-production.mjs",
     "verify": "npm run typecheck && npm run test && npm run build",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
-    "test:db": "node scripts/test-readiness-db.mjs && node scripts/test-classroom-forecast-db.mjs && node scripts/test-payment-limits-db.mjs && node scripts/test-commerce-reports-db.mjs",
+    "test:db": "node scripts/test-readiness-db.mjs && node scripts/test-classroom-forecast-db.mjs && node scripts/test-payment-limits-db.mjs && node scripts/test-commerce-reports-db.mjs && node scripts/test-catalog-visits-db.mjs",
     "test:edge": "npx --yes deno@2.9.6 test --no-config --no-lock --node-modules-dir=none --allow-env --allow-read supabase/functions/",
     "verify:release": "npm run verify && npm run test:db && npm run test:edge && node scripts/check-migration-manifest.mjs && npm run audit:prod",
     "release:database": "node scripts/release-readiness.mjs"

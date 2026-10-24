@@ -33,7 +33,7 @@ export function CookieConsent() {
   if (!visible) return null;
   return <section className="cookie-notice" aria-labelledby="cookie-notice-title" tabIndex={-1} ref={panel}>
     <div><h2 id="cookie-notice-title">Just the essentials.</h2>
-      <p>Essential cookies & browser storage keep your shopping secure. No optional advertising or analytics trackers.</p></div>
+      <p>Essential cookies & browser storage keep your shopping secure. No advertising or cross-site trackers.</p></div>
     <div className="cookie-actions"><button type="button" onClick={() => {
       try { localStorage.setItem(COOKIE_CHOICE_KEY, cookieChoiceRecord()); } catch { /* In-memory acknowledgement still works. */ }
       setVisible(false); returnFocus.current?.focus({ preventScroll: true });

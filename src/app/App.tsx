@@ -142,7 +142,7 @@ import {
 } from "./core";
 import { checkoutSignature, selectCheckoutLines } from "@/lib/commerce/checkout";
 import { createCartSync, type CartSyncState } from "@/lib/commerce/cart-sync";
-import { getCatalogPopularity, cachedProductPopularity } from "@/services/catalog/popularity.service";
+import { getCatalogPopularity, cachedProductPopularity, subscribeCatalogPopularity } from "@/services/catalog/popularity.service";
 import { CHECKOUT_LIMITS, checkoutQuantityError } from "@/lib/commerce/checkout-limits";
 import {
   functionErrorMessage,
@@ -473,17 +473,19 @@ function App() {
 
   useEffect(() => {
     let active = true;
+    const mergeCounts = (counts: Awaited<ReturnType<typeof getCatalogPopularity>>) => {
+      if (!active) return;
+      const merge = (items: Product[]) => items.map(item => ({...item,...counts.get(item.id)}));
+      setProducts(merge); setAdminProducts(merge);
+    };
+    const unsubscribe = subscribeCatalogPopularity(mergeCounts);
     const refreshPopularity = () => {
       if (document.visibilityState === "hidden") return;
-      void getCatalogPopularity().then(counts => {
-        if (!active) return;
-        const merge = (items: Product[]) => items.map(item => ({...item,...counts.get(item.id)}));
-        setProducts(merge); setAdminProducts(merge);
-      });
+      void getCatalogPopularity().then(mergeCounts);
     };
     refreshPopularity();
     window.addEventListener("focus",refreshPopularity);
-    return () => { active=false; window.removeEventListener("focus",refreshPopularity); };
+    return () => { active=false; unsubscribe(); window.removeEventListener("focus",refreshPopularity); };
   }, [productsScope]);
 
   const refreshProductIds = useCallback((ids: string[]) => catalogReadQueue.current(async () => {

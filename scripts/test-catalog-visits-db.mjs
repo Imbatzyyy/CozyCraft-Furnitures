@@ -1,0 +1,42 @@
+// Real PostgreSQL semantics in an isolated fixture, never live visit counts.
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import assert from 'node:assert/strict';
+const db=new PGlite(), source='a'.repeat(64);
+const migration=readFileSync('supabase/migrations/20261025010000_catalog_guest_visits.sql','utf8');
+const security=readFileSync('supabase/migrations/20260906060000_security_access_boundaries.sql','utf8');
+const popularity=readFileSync('supabase/migrations/20261022150000_checkout_consistency_and_popularity.sql','utf8');
+const query=async sql=>(await db.query(sql)).rows;
+const visit=async (product='chair',event=randomUUID(),network=source)=>(await query(`select record_catalog_visit('${product}','${event}','${network}') result`))[0].result;
+try {
+  await db.exec(`create role anon; create role authenticated; create role service_role; create schema private;
+    create table products(id text primary key,status text);
+    insert into products values('chair','active'),('table','active'),('hidden','draft');
+    create table product_views(user_id uuid,product_id text,primary key(user_id,product_id));
+    create table wishlist_items(user_id uuid,product_id text,primary key(user_id,product_id));
+    insert into product_views values(gen_random_uuid(),'chair');`);
+  await db.exec(security.slice(security.indexOf('create table private.security_request_budgets')));
+  await db.exec(popularity.slice(popularity.indexOf('create table public.product_engagement_counts'),popularity.indexOf('-- Keep the published policy snapshot')));
+  await db.exec(migration);
+  assert.equal((await query("select visits from catalog_visit_counts() where product_id='chair'"))[0].visits,1,'retain recorded baseline');
+  const event=randomUUID(); assert.equal((await visit('chair',event)).visits,2);
+  assert.equal((await visit('chair',event)).accepted,false,'duplicate delivery cannot increment twice');
+  for(let n=0;n<45;n++) assert.equal((await visit()).accepted,true,'shared Wi-Fi supports 45 people');
+  assert.equal((await visit('hidden')).accepted,false); assert.equal((await visit('missing')).accepted,false);
+  assert.equal((await visit('chair',randomUUID(),'invalid')).accepted,false);
+  const legacy=(await query("select viewers from catalog_popularity() where product_id='chair'"))[0].viewers;
+  assert.equal(legacy,1,'legacy viewer history unchanged');
+  for(let n=46;n<120;n++) assert.equal((await visit()).accepted,true);
+  assert.equal((await visit()).accepted,false,'rapid-repeat budget enforced');
+  assert.equal((await visit('chair',randomUUID(),'b'.repeat(64))).accepted,true,'other networks remain eligible');
+  assert.equal((await query('select count(*)::int n from private.catalog_visit_events'))[0].n,121,'rejected requests cannot fill the event ledger');
+  await db.exec('set role anon');
+  assert.equal((await query('select * from catalog_visit_counts()')).length,2,'public reads active aggregates only');
+  await assert.rejects(()=>db.query('select * from public.product_engagement_counts'),/permission denied/);
+  await assert.rejects(()=>db.query('select * from private.catalog_visit_events'),/permission denied/);
+  await assert.rejects(()=>visit(),/permission denied/);
+  await db.exec('reset role; set role authenticated');
+  await assert.rejects(()=>visit(),/permission denied/);
+  console.log('PASS: guest-inclusive visit counts, 45 shared-network visits, retry deduplication, budgets and access controls.');
+} finally { await db.close(); }

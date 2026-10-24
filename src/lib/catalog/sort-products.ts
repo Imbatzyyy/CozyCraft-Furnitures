@@ -8,6 +8,7 @@ export type ProductSort =
   | "name-asc"
   | "name-desc"
   | "newest"
+  | "clicked"
   | "popular"
   | "liked";
 
@@ -21,10 +22,9 @@ export function sortProducts(products: Product[], sort: ProductSort) {
     if (sort === "newest") {
       return Date.parse(b.createdAt ?? "") - Date.parse(a.createdAt ?? "");
     }
-    if (sort === "popular") {
+    if (sort === "clicked" || sort === "popular" || sort === "liked") {
       return (b.popularity ?? 0) - (a.popularity ?? 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     }
-    if (sort === "liked") return (b.saves ?? 0) - (a.saves ?? 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     return 0;
   });
 }

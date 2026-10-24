@@ -5,7 +5,7 @@ import './cookie-consent.css';
 export function Component() {
   return <Layout><article className="cookie-policy">
     <p className="cookie-eyebrow">COZYCRAFT · YOUR PRIVACY</p><h1>Cookies, with clarity.</h1>
-    <p>Cookie & browser storage policy · Updated September 12, 2026</p>
+    <p>Cookie & browser storage policy · Updated October 25, 2026</p>
     <p>CozyCraft Furnitures uses browser storage to provide the shopping and account services you request. This includes cookies, local storage (saved in your browser), and session storage (usually limited to a browser tab). This notice complements our <a href="/privacy">Privacy Policy</a>.</p>
     <h2>What we use and why</h2>
     <dl>
@@ -15,7 +15,8 @@ export function Component() {
       <dt>Requested support and staff tools</dt><dd>Recent chatbot context and unsaved admin drafts can be kept in the current tab. These records support the conversation or editing task you initiate and are not advertising profiles.</dd>
       <dt>Your cookie choice</dt><dd>The local-storage record “cozycraft-cookie-choice” remembers your essential-only choice for 180 days. It contains the policy version, choice, and timestamp—not your name, email, or order details. An expired record is treated as unset on your next visit.</dd>
     </dl>
-    <h2>No optional tracking currently</h2><p>The website currently includes no optional advertising or analytics trackers. “Keep essential only” acknowledges this notice; it is not permission for marketing, newsletters, or future tracking. If optional tracking is introduced, it must remain off until a separate choice is offered. Essential features cannot be disabled through this panel.</p>
+    <h2>Product popularity, without a tracking cookie</h2><p>“Most clicked” uses aggregate product-page visit counts from guests and signed-in customers. Counting sends the product ID and a random request token, not your account ID or email. The token stays only in page memory to limit repeat requests; it is not a persistent visitor identifier. Server-side duplicate tokens and keyed network rate-limit records are removed by an hourly cleanup after 24 hours. These records do not store raw IP addresses or account browsing histories. Product totals remain to support the ranking.</p>
+    <h2>No advertising or cross-site trackers</h2><p>“Keep essential only” acknowledges this notice; it is not permission for marketing, newsletters, or future optional tracking. If optional tracking is introduced, it must remain off until a separate choice is offered. Essential features cannot be disabled through this panel.</p>
     <h2>Third-party services</h2><p>When you choose Google sign-in or continue to PayMongo’s hosted payment page, those providers may use their own cookies and storage under their privacy notices. This panel does not manage storage on their websites. Website hosting also processes technical requests needed to deliver and secure pages.</p>
     <h2>Manage your choice</h2><p>You can reopen this panel from the footer at any time. Browser settings let you clear or block cookies and site storage, but doing so can sign you out or interrupt saved selections and payment recovery. Choices are browser-specific, not synchronized to your account. Blocking storage does not prevent browsing; this notice may reappear on a later visit.</p>
     <button onClick={openCookieSettings}>Open cookie settings</button>

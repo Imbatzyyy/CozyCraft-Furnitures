@@ -30,9 +30,14 @@ describe("sortProducts", () => {
     expect(sortProducts(products, sort).map((item) => item.id)).toEqual(expected);
     expect(products.map((item) => item.id)).toEqual(["a", "b", "c"]);
   });
-  it("ranks actual views and saves independently of reviews", () => {
+  it("ranks aggregate visits, never saves or reviews, including legacy sort links", () => {
     const counted = products.map((p,i)=>({...p,popularity:[8,5,2][i],saves:[1,2,9][i]}));
     expect(sortProducts(counted,"popular").map(p=>p.id)).toEqual(["a","b","c"]);
-    expect(sortProducts(counted,"liked").map(p=>p.id)).toEqual(["c","b","a"]);
+    expect(sortProducts(counted,"liked").map(p=>p.id)).toEqual(["a","b","c"]);
+    expect(sortProducts(counted,"clicked").map(p=>p.id)).toEqual(["a","b","c"]);
+  });
+  it("uses stable name and ID tie-breaks without requiring counts", () => {
+    const tied = [{...products[0],id:"z"},{...products[0],id:"a"},{...products[1],popularity:1}];
+    expect(sortProducts(tied,"clicked").map(p=>p.id)).toEqual(["b","a","z"]);
   });
 });
