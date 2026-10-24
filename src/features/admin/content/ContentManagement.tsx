@@ -142,11 +142,11 @@ function ContentEditor({ owner }: { owner: string | null }) {
     { value: "Email log", label: <><History size={13} />Email log</> },
   ] as const;
   return (
-    <AdminShell title="Content">
+    <AdminShell title="Pages & emails">
       <PageHeader
         eyebrow="Content & communications"
-        title="Publishing studio"
-        description="Public information, homepage campaigns, newsletters, and transactional messages in one realtime workspace."
+        title="Pages & emails"
+        description="Update website information, homepage banners, newsletters, and the emails customers receive."
         actions={view === "Homepage" && <button type="button" onClick={() => setBanners((current) => [...current, blankBanner()])} className="adm-btn adm-btn-primary"><Plus size={15}/>New banner</button>}
       />
       {dirty && <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-ink"><span>You have unsaved edits. Live updates won’t replace them, and drafts are kept in this browser tab for up to 24 hours.</span><button type="button" className="adm-btn adm-btn-sm" onClick={() => void discardDrafts()}>Discard drafts</button></div>}

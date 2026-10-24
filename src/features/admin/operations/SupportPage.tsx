@@ -253,10 +253,10 @@ export function SupportPage() {
   ];
 
   return (
-    <AdminShell title="Support">
+    <AdminShell title="Customer messages">
       <PageHeader
         eyebrow="Customer care"
-        title="Support inbox"
+        title="Customer messages"
         description="Reply to customers, hand tickets over with internal notes, and keep ownership clear."
         meta={ticketPagination && <Pill tone="neutral"><Inbox size={12} /> <span className="adm-num">{ticketPagination.total}</span> {filter.status === "all" && filter.owner === "all" && filter.priority === "all" ? "tickets" : "matching"}</Pill>}
       />

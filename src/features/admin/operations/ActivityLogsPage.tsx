@@ -112,10 +112,10 @@ export function ActivityLogsPage() {
   const now = new Date();
 
   return (
-    <AdminShell title="Activity logs">
+    <AdminShell title="Change history">
       <PageHeader
         eyebrow="Audit trail"
-        title="Activity logs"
+        title="Change history"
         description="Every recorded change across the store in the last 7 days — who did it, where, and when."
         meta={activity.data && <span className="flex items-center gap-2 text-[11px] text-muted-foreground"><span className="adm-live-dot h-1.5 w-1.5 rounded-full bg-success-ink text-success-ink" /> Live audit trail · updated {formatTime(activity.data.generatedAt)}</span>}
         actions={<button type="button" onClick={activity.reload} className="adm-btn"><RefreshCw size={14} className={activity.loading ? "animate-spin" : ""} /> Refresh</button>}

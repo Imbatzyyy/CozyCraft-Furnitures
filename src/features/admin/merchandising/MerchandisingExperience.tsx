@@ -136,11 +136,11 @@ export function MerchandisingExperiencePage() {
   const zeroResults = searchDemand.filter((item) => item.zero > 0).length;
 
   return (
-    <AdminShell title="Merchandising & experience">
+    <AdminShell title="Shopping experience">
       <PageHeader
         eyebrow="Customer experience"
-        title="Merchandising"
-        description="Manage delivery promises and search language, then use saved customer intent to make better catalog decisions."
+        title="Shopping experience"
+        description="Manage delivery areas, help customers find products, and see which items they want updates about."
         actions={<button type="button" onClick={() => void load()} disabled={loading} className="adm-btn"><RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh insights</button>}
       >
         <StatStrip

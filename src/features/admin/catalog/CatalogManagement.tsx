@@ -773,7 +773,7 @@ function ProductEditorFields({ product, setProduct, upload, uploading }: { produ
           <label className="adm-label">
             {product.id ? "Stock on hand" : "Opening stock"}
             <input disabled={Boolean(product.id)} value={product.id ? product.quantity : product.quantity || ""} onChange={(e) => setProduct({ ...product, quantity: Number(e.target.value) })} type="number" min={0} inputMode="numeric" className="adm-input adm-num font-normal" placeholder="0" />
-            {product.id && <span className="adm-hint">Use <Link to="/admin/inventory" className="font-semibold underline">Inventory</Link> to adjust stock with a recorded reason.</span>}
+            {product.id && <span className="adm-hint">Use <Link to="/admin/inventory" className="font-semibold underline">Stock levels</Link> to adjust stock with a recorded reason.</span>}
           </label>
           <div className="adm-label sm:col-span-2">
             Publishing
@@ -922,10 +922,10 @@ export function InventoryPage() {
   };
 
   return (
-    <AdminShell title="Inventory">
+    <AdminShell title="Stock levels">
       <PageHeader
         eyebrow="Live stock control"
-        title="Inventory"
+        title="Stock levels"
         description="Every adjustment updates the storefront immediately and is recorded in the ledger below."
         meta={<LiveBadge live liveLabel="Live stock" />}
       >
@@ -1177,10 +1177,10 @@ export function CategoriesPage() {
   };
 
   return (
-    <AdminShell title="Categories">
+    <AdminShell title="Product categories">
       <PageHeader
         eyebrow="Catalog architecture"
-        title="Categories"
+        title="Product categories"
         description="Shape how customers discover the collection, from room-level navigation to the smallest browse path."
         actions={<button onClick={() => void createCategory()} className="adm-btn adm-btn-primary"><Plus size={15} /> New category</button>}
       />

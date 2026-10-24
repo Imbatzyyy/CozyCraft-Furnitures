@@ -1,34 +1,17 @@
-const adminTitles: Array<[RegExp, string]> = [
-  [/^\/admin\/?$/, "Overview"],
-  [/^\/admin\/login/, "Sign in"],
-  [/^\/admin\/setup-account/, "Account setup"],
-  [/^\/admin\/team/, "Team access"],
-  [/^\/admin\/products\/new/, "New product"],
-  [/^\/admin\/products/, "Products"],
-  [/^\/admin\/categories/, "Categories"],
-  [/^\/admin\/inventory/, "Inventory"],
-  [/^\/admin\/orders/, "Orders"],
-  [/^\/admin\/payments/, "Payments"],
-  [/^\/admin\/customers/, "Customers"],
-  [/^\/admin\/member-tiers/, "Member tiers"],
-  [/^\/admin\/experience/, "Merchandising"],
-  [/^\/admin\/content/, "Content"],
-  [/^\/admin\/reviews/, "Reviews"],
-  [/^\/admin\/reports/, "Reports"],
-  [/^\/admin\/system-health/, "Operations health"],
-  [/^\/admin\/activity-logs/, "Activity logs"],
-  [/^\/admin\/support/, "Support"],
-  [/^\/admin\/settings/, "Settings"],
-];
+import { adminPages, adminPathIsActive } from "./admin-navigation";
 
 /** Short page name shown in the admin header, e.g. "Orders". */
 export function adminPageLabel(pathname: string) {
-  return adminTitles.find(([pattern]) => pattern.test(pathname))?.[1] ?? "Operations";
+  const path = pathname.replace(/\/$/, "");
+  if (adminPathIsActive(path, "/admin/login")) return "Sign in";
+  if (adminPathIsActive(path, "/admin/setup-account")) return "Account setup";
+  if (adminPathIsActive(path, "/admin/products/new")) return "New product";
+  return Object.entries(adminPages).find(([route]) => adminPathIsActive(path, route))?.[1].label ?? "Store admin";
 }
 
-/** "Orders · CozyCraft Operations" */
+/** "Orders · CozyCraft Admin" */
 export function adminTitleForPath(pathname: string, storeName = "CozyCraft") {
   const label = adminPageLabel(pathname);
   const brand = storeName.replace(/\s+Furnitures?$/i, "").trim() || "CozyCraft";
-  return `${label} · ${brand} Operations`;
+  return `${label} · ${brand} Admin`;
 }

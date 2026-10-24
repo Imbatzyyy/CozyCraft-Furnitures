@@ -337,11 +337,11 @@ export function SystemHealthPage() {
         : overall === "degraded" ? <Pill tone="danger" dot>Degraded — action required</Pill>
           : <Pill tone="warning" dot>Attention required</Pill>;
   return (
-    <AdminShell title="Operations health">
+    <AdminShell title="Website status">
       <PageHeader
-        eyebrow="Operations health"
-        title="Know what needs intervention."
-        description="A compact exception view across orders, payments, support, inventory, realtime, and browser errors."
+        eyebrow="Website checks"
+        title="Website status"
+        description="Check for problems with orders, payments, customer messages, stock updates, and website loading."
         meta={<>{statusPill}{data && <span className="text-[11px] text-muted-foreground">Checked {formatTime(data.generatedAt)}</span>}</>}
         actions={<button type="button" onClick={refreshHealth} disabled={loading} className="adm-btn"><RefreshCw size={14} className={loading ? "animate-spin" : ""} /> {loading ? "Checking…" : "Refresh now"}</button>}
       />

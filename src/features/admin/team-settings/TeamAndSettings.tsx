@@ -192,10 +192,10 @@ export function TeamAccessPage() {
   const activeCount = members?.filter((member) => member.staff_active).length ?? 0;
 
   return (
-    <AdminShell title="Team access">
+    <AdminShell title="Staff & permissions">
       <PageHeader
         eyebrow="Security & access"
-        title="Team access"
+        title="Staff & permissions"
         description="Invite each person with their own work email. Passwords stay private and every account gets only the tools its role allows."
         meta={members && <Pill tone="neutral"><Users size={12} /> {plural(activeCount, "active member")}{members.length > activeCount ? ` · ${members.length - activeCount} suspended` : ""}</Pill>}
       />
@@ -475,11 +475,11 @@ export function StoreSettingsPage() {
   const SectionIcon = sections.find(([name]) => name === section)?.[1] ?? Settings;
 
   return (
-    <AdminShell title="Settings">
+    <AdminShell title="Store settings">
       <PageHeader
         eyebrow="Store configuration"
-        title="Settings"
-        description="Validated, role-protected controls that apply across the storefront and workspace in realtime."
+        title="Store settings"
+        description="Manage store details, checkout options, and preferences. Only authorized team members can make changes."
         meta={<Pill tone={dirty ? "warning" : "success"} dot>{loading ? "Loading…" : dirty ? `${plural(changes.length, "unsaved change")}` : "All changes saved"}</Pill>}
       />
       <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">

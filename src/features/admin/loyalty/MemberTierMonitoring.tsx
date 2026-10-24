@@ -228,10 +228,10 @@ export function MemberTierMonitoringPage() {
     : null;
 
   return (
-    <AdminShell title="Member tiers">
+    <AdminShell title="Member rewards">
       <PageHeader
         eyebrow="Home Circle · live monitoring"
-        title="Member tiers"
+        title="Member rewards"
         description="Every customer’s point balance, lifetime eligible spend, tier progress, and reward activity."
         actions={
           <button

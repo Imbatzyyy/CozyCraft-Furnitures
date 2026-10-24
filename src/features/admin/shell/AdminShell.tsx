@@ -5,6 +5,7 @@ import { adminMfaGate } from "@/lib/auth/admin-mfa-gate";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -45,13 +46,13 @@ import {
   ServerCog,
   Settings,
   ShieldCheck,
-  ShoppingBag,
   Sparkles,
   Star,
   Sun,
   UserRound,
   Users,
   Warehouse,
+  Globe,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -67,6 +68,7 @@ import { ConfirmHost, confirmAction } from "@/components/admin/confirm";
 import { Avatar, BusyBar, Dialog, isTypingTarget, Segmented, useMediaQuery } from "@/components/admin/ui";
 import { resolveAdminTheme, useAdminTheme, type AdminThemePreference } from "@/lib/admin/admin-theme";
 import { adminPageLabel } from "@/lib/admin/admin-titles";
+import { adminPages, adminNavigationSections, adminPageMatches, adminPathIsActive, type AdminNavPath } from "@/lib/admin/admin-navigation";
 import { relativeTime } from "@/lib/admin/format";
 import { useAttentionCounts, type AttentionCounts } from "@/services/admin/use-attention-counts";
 
@@ -195,39 +197,17 @@ export function AdminLogin() {
 /* Navigation model                                                    */
 /* ------------------------------------------------------------------ */
 
-export const adminNav = [
-  [LayoutDashboard, "Overview", "/admin"],
-  [UserRound, "Team access", "/admin/team"],
-  [Package, "Products", "/admin/products"],
-  [Boxes, "Categories", "/admin/categories"],
-  [Warehouse, "Inventory", "/admin/inventory"],
-  [ClipboardList, "Orders", "/admin/orders"],
-  [CreditCard, "Payments", "/admin/payments"],
-  [Users, "Customers", "/admin/customers"],
-  [Award, "Member tiers", "/admin/member-tiers"],
-  [Sparkles, "Merchandising", "/admin/experience"],
-  [FileText, "Content", "/admin/content"],
-  [Star, "Reviews", "/admin/reviews"],
-  [ChartNoAxesCombined, "Reports", "/admin/reports"],
-  [ServerCog, "Operations health", "/admin/system-health"],
-  [Activity, "Activity logs", "/admin/activity-logs"],
-  [MessageCircle, "Support", "/admin/support"],
-  [Settings, "Settings", "/admin/settings"],
-] as const;
-
-export const adminNavGroups = [
-  { label: "Overview", description: "Workspace summary", icon: LayoutDashboard, paths: ["/admin"] },
-  { label: "Catalog", description: "Products and stock", icon: Package, paths: ["/admin/products", "/admin/categories", "/admin/inventory", "/admin/experience"] },
-  { label: "Commerce", description: "Orders and payments", icon: ShoppingBag, paths: ["/admin/orders", "/admin/payments"] },
-  { label: "Customer care", description: "People and service", icon: Users, paths: ["/admin/customers", "/admin/member-tiers", "/admin/reviews", "/admin/support"] },
-  { label: "Insights", description: "Reports and audit trail", icon: ChartNoAxesCombined, paths: ["/admin/reports", "/admin/system-health", "/admin/activity-logs"] },
-  { label: "Administration", description: "Team and configuration", icon: Settings, paths: ["/admin/team", "/admin/settings", "/admin/content"] },
-] as const;
-
-type NavItem = (typeof adminNav)[number];
-
-const adminPathIsActive = (pathname: string, path: string) =>
-  pathname === path || (path !== "/admin" && pathname.startsWith(`${path}/`));
+const pageIcons: Record<AdminNavPath, IconType> = {
+  "/admin": LayoutDashboard, "/admin/orders": ClipboardList, "/admin/payments": CreditCard,
+  "/admin/reports": ChartNoAxesCombined, "/admin/products": Package, "/admin/inventory": Warehouse,
+  "/admin/categories": Boxes, "/admin/customers": Users, "/admin/support": MessageCircle,
+  "/admin/reviews": Star, "/admin/member-tiers": Award, "/admin/content": FileText,
+  "/admin/experience": Sparkles, "/admin/settings": Settings, "/admin/team": UserRound,
+  "/admin/system-health": ServerCog, "/admin/activity-logs": Activity,
+};
+const sectionIcons = { daily: LayoutDashboard, products: Package, customers: Users, website: Globe, settings: Settings };
+type NavItem = readonly [IconType, string, AdminNavPath];
+export const adminNav: NavItem[] = adminNavigationSections.flatMap(group => group.paths.map(path => [pageIcons[path], adminPages[path].label, path] as const));
 
 const goShortcuts: Record<string, string> = {
   h: "/admin",
@@ -336,8 +316,8 @@ function CommandPalette({
     }
 
     const pages = visibleNav
-      .filter(([, label]) => matches(label))
-      .map(([Icon, label, route]) => ({ key: `p-${route}`, group: "Go to", title: label, Icon, run: go(route) }));
+      .filter(([, , route]) => adminPageMatches(route, term))
+      .map(([Icon, label, route]) => ({ key: `p-${route}`, group: "Go to", title: label, detail: adminPages[route].description, Icon, run: go(route) }));
     const matchingActions = actions.filter((action) => matches(action.title, action.keywords));
     const searches: PaletteItem[] = [
       ...(allowed("/admin/orders") ? [{ key: "s-orders", group: "Search everywhere", title: `Search all orders for “${query.trim()}”`, detail: "Order number, customer, email, phone or product", Icon: ClipboardList, run: go(`/admin/orders?range=all&q=${encodeURIComponent(query.trim())}`) }] : []),
@@ -462,7 +442,7 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
   const mod = isMac() ? "⌘" : "Ctrl";
   const sections: Array<[string, Array<[string[], string]>]> = [
     ["Anywhere", [[[mod, "K"], "Search and jump"], [["/"], "Search this page"], [["?"], "Show shortcuts"], [["Esc"], "Close a panel or dialog"]]],
-    ["Go to", [[["G", "H"], "Overview"], [["G", "O"], "Orders"], [["G", "P"], "Products"], [["G", "I"], "Inventory"], [["G", "C"], "Customers"], [["G", "S"], "Support"], [["G", "R"], "Reports"], [["G", "M"], "Member tiers"], [["G", "A"], "Activity logs"]]],
+    ["Go to", Object.entries(goShortcuts).map(([key, path]) => [["G", key.toUpperCase()], adminPageLabel(path)])],
     ["Order desk", [[["J"], "Next order"], [["K"], "Previous order"], [["X"], "Select for bulk actions"], [["P"], "Print packing list"]]],
   ];
   return (
@@ -571,7 +551,7 @@ function ProfileMenu({
 /* Sidebar                                                             */
 /* ------------------------------------------------------------------ */
 
-type NavGroup = { label: string; description: string; icon: IconType; items: NavItem[] };
+type NavGroup = { id: string; label: string; description: string; icon: IconType; alwaysOpen: boolean; items: NavItem[] };
 
 function SidebarNav({
   groups,
@@ -590,16 +570,17 @@ function SidebarNav({
   counts: AttentionCounts | null;
   onNavigate?: () => void;
 }) {
+  const navId = useId();
   if (collapsed) {
     return (
-      <nav aria-label="Admin navigation" className="mt-4 grid flex-1 content-start gap-1 overflow-y-auto px-2.5 pb-4 [scrollbar-width:none]">
+      <nav aria-label="Admin navigation" className="mt-4 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto overscroll-contain px-2.5 pb-4">
         {groups.map((group, groupIndex) => (
           <div key={group.label} className={`grid gap-1 ${groupIndex > 0 ? "border-t border-white/10 pt-1.5 mt-0.5" : ""}`}>
             {group.items.map(([Icon, label, path]) => {
               const active = adminPathIsActive(pathname, path);
               const badge = badgeFor(path, counts);
               return (
-                <Link key={path} to={path} title={badge ? `${label} · ${badge} need attention` : label} aria-label={label} aria-current={active ? "page" : undefined} className={`relative mx-auto grid h-10 w-10 place-items-center rounded-xl transition ${active ? "bg-brand text-brand-foreground shadow-sm" : "text-white/55 hover:bg-white/[.07] hover:text-white"}`}>
+                <Link key={path} to={path} title={badge ? `${label} · ${badge} need attention` : label} aria-label={label} aria-current={active ? "page" : undefined} className={`relative mx-auto grid h-11 w-11 place-items-center rounded-xl transition ${active ? "bg-brand text-brand-foreground shadow-sm" : "text-white/75 hover:bg-white/[.07] hover:text-white"}`}>
                   <Icon size={17} />
                   {badge > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#d08b5b] ring-2 ring-sidebar" />}
                 </Link>
@@ -611,41 +592,48 @@ function SidebarNav({
     );
   }
   return (
-    <nav aria-label="Admin navigation" className="mt-4 grid flex-1 content-start gap-0.5 overflow-y-auto px-3 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label="Admin navigation" className="mt-4 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto overscroll-contain px-3 pb-4">
       {groups.map((group) => {
         const GroupIcon = group.icon;
         const groupActive = group.items.some(([, , path]) => adminPathIsActive(pathname, path));
-        if (group.label === "Overview") {
-          const [, , path] = group.items[0];
+        if (group.alwaysOpen) {
           return (
-            <Link key={group.label} to={path} onClick={onNavigate} aria-current={groupActive ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] transition ${groupActive ? "bg-brand font-semibold text-brand-foreground shadow-sm" : "text-white/65 hover:bg-white/[.07] hover:text-white"}`}>
-              <GroupIcon size={17} />
-              Overview
-            </Link>
+            <section key={group.id} aria-label={group.label} className="mb-2 border-b border-white/10 pb-3">
+              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[.14em] text-white/65">{group.label}</p>
+              {group.items.map(([Icon, label, path]) => {
+                const active = adminPathIsActive(pathname, path);
+                const badge = badgeFor(path, counts);
+                return <Link key={path} to={path} onClick={onNavigate} title={adminPages[path].description} aria-current={active ? "page" : undefined} className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] transition ${active ? "bg-brand font-semibold text-brand-foreground shadow-sm" : "text-white/80 hover:bg-white/[.07] hover:text-white"}`}>
+                  <Icon size={17} className="shrink-0" /><span className="flex-1">{label}</span>
+                  {badge > 0 && <span className={`adm-num rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? "bg-brand-foreground/15" : "bg-[#b8764d] text-white"}`}>{badge > 99 ? "99+" : badge}</span>}
+                </Link>;
+              })}
+            </section>
           );
         }
-        const expanded = expandedGroup === group.label;
+        const expanded = expandedGroup === group.id;
+        const panelId = `${navId}-${group.id}`;
         const groupBadge = group.items.reduce((sum, [, , path]) => sum + badgeFor(path, counts), 0);
         return (
-          <div key={group.label}>
-            <button type="button" onClick={() => setExpandedGroup(expanded ? "" : group.label)} aria-expanded={expanded} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] transition ${groupActive && !expanded ? "bg-white/[.08] text-white" : "text-white/65 hover:bg-white/[.07] hover:text-white"}`}>
+          <div key={group.id}>
+            <button type="button" onClick={() => setExpandedGroup(expanded ? "" : group.id)} aria-expanded={expanded} aria-controls={panelId} title={group.description} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] transition ${groupActive && !expanded ? "bg-white/[.08] text-white" : "text-white/80 hover:bg-white/[.07] hover:text-white"}`}>
               <GroupIcon size={17} className="shrink-0" />
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold">{group.label}</span>
-                <span className="mt-0.5 block truncate text-[10px] font-normal text-white/40">{group.description}</span>
+                <span className="mt-0.5 block truncate text-[10px] font-normal text-white/65">{group.description}</span>
               </span>
               {!expanded && groupBadge > 0 && <span className="adm-num rounded-full bg-[#b8764d] px-1.5 py-0.5 text-[10px] font-bold text-white">{groupBadge > 99 ? "99+" : groupBadge}</span>}
               <ChevronDown size={14} className={`shrink-0 text-white/50 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
             </button>
-            <div className="adm-collapse" data-open={expanded} aria-hidden={!expanded}>
+            <div id={panelId} hidden={!expanded}>
               <div>
                 <div className="ml-[21px] mt-0.5 grid gap-0.5 border-l border-white/10 py-1 pl-3">
                   {group.items.map(([Icon, label, path]) => {
                     const active = adminPathIsActive(pathname, path);
                     const badge = badgeFor(path, counts);
                     return (
-                      <Link key={path} to={path} tabIndex={expanded ? undefined : -1} onClick={onNavigate} aria-current={active ? "page" : undefined} className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12.5px] transition ${active ? "bg-brand font-semibold text-brand-foreground shadow-sm" : "text-white/60 hover:bg-white/[.07] hover:text-white"}`}>
-                        <Icon size={15} />
+                      <Link key={path} to={path} tabIndex={expanded ? undefined : -1} onClick={onNavigate} title={adminPages[path].description} aria-current={active ? "page" : undefined} className={`flex min-h-11 items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12.5px] transition ${active ? "bg-brand font-semibold text-brand-foreground shadow-sm" : "text-white/80 hover:bg-white/[.07] hover:text-white"}`}>
+                        <Icon size={15} className="shrink-0" />
                         <span className="flex-1 truncate">{label}</span>
                         {badge > 0 && <span className={`adm-num rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? "bg-brand-foreground/15" : "bg-[#b8764d] text-white"}`}>{badge > 99 ? "99+" : badge}</span>}
                       </Link>
@@ -879,8 +867,8 @@ export function AdminLayout() {
   const visibleNav = useMemo(() => adminNav.filter(([, , path]) => allowedPaths.includes(path)), [allowedPaths]);
   const visibleNavGroups = useMemo<NavGroup[]>(
     () =>
-      adminNavGroups
-        .map((group) => ({ label: group.label, description: group.description, icon: group.icon, items: visibleNav.filter(([, , path]) => (group.paths as readonly string[]).includes(path)) }))
+      adminNavigationSections
+        .map((group) => ({ id: group.id, label: group.label, description: group.description, icon: sectionIcons[group.id], alwaysOpen: "alwaysOpen" in group && group.alwaysOpen, items: group.paths.flatMap(path => visibleNav.filter(([, , route]) => route === path)) }))
         .filter((group) => group.items.length > 0),
     [visibleNav],
   );
@@ -891,8 +879,8 @@ export function AdminLayout() {
   const resolvedTheme = resolveAdminTheme(themePreference, systemDark);
 
   useEffect(() => {
-    if (activeNavGroup) setExpandedNavGroup(activeNavGroup.label);
-  }, [activeNavGroup?.label]);
+    if (activeNavGroup) setExpandedNavGroup(activeNavGroup.alwaysOpen ? "" : activeNavGroup.id);
+  }, [activeNavGroup?.id, loc.pathname]);
   useEffect(() => {
     setDrawerOpen(false);
     rememberRecentPage(loc.pathname.replace(/\/new$/, ""));
@@ -1022,32 +1010,32 @@ export function AdminLayout() {
 
   const sidebar = (mode: "rail" | "full", onNavigate?: () => void) => (
     <>
-      <div className={`flex items-center ${mode === "rail" ? "justify-center px-2 pt-4" : "justify-between px-4 pt-4"}`}>
+      <div className={`flex shrink-0 items-center pt-[max(1rem,env(safe-area-inset-top))] ${mode === "rail" ? "justify-center px-2" : "justify-between px-4"}`}>
         {mode === "rail" ? (
-          <Link to="/admin" aria-label="Operations overview" className="grid h-11 w-11 place-items-center rounded-xl bg-white/[.07] font-serif text-lg text-white">C</Link>
+          <Link to="/admin" aria-label="Store dashboard" className="grid h-11 w-11 place-items-center rounded-xl bg-white/[.07] font-serif text-lg text-white">C</Link>
         ) : (
-          <Link to="/admin" aria-label="Operations overview" onClick={onNavigate} className="rounded-xl px-1.5 py-1 transition hover:bg-white/[.05]">
+          <Link to="/admin" aria-label="Store dashboard" onClick={onNavigate} className="rounded-xl px-1.5 py-1 transition hover:bg-white/[.05]">
             <AdminWordmark light className="h-11 w-28" />
           </Link>
         )}
         {mode === "full" && onNavigate && (
-          <button onClick={onNavigate} className="grid h-9 w-9 place-items-center rounded-xl text-white/70 hover:bg-white/10 hover:text-white" aria-label="Close navigation"><X size={18} /></button>
+          <button onClick={onNavigate} className="grid h-11 w-11 place-items-center rounded-xl text-white/80 hover:bg-white/10 hover:text-white" aria-label="Close navigation"><X size={18} /></button>
         )}
       </div>
       {mode === "full" && (
-        <div className="mt-5 flex items-center gap-2 px-6">
+        <div className="mt-5 flex shrink-0 items-center gap-2 px-6">
           <span className="h-1.5 w-1.5 rounded-full bg-[#9fc595]" />
-          <p className="text-[10px] font-bold uppercase tracking-[.16em] text-white/45">{role}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[.16em] text-white/65">{role}</p>
         </div>
       )}
       <SidebarNav groups={visibleNavGroups} pathname={loc.pathname} collapsed={mode === "rail"} expandedGroup={expandedNavGroup} setExpandedGroup={setExpandedNavGroup} counts={counts} onNavigate={onNavigate} />
-      <div className={`grid gap-1 border-t border-white/10 p-3 ${mode === "rail" ? "justify-items-center" : ""}`}>
+      <div className={`grid shrink-0 gap-1 border-t border-white/10 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] ${mode === "rail" ? "justify-items-center" : ""}`}>
         {!onNavigate && (
-          <button onClick={toggleCollapsed} className={`flex items-center gap-3 rounded-xl text-[12.5px] text-white/60 transition hover:bg-white/[.07] hover:text-white ${mode === "rail" ? "h-10 w-10 justify-center" : "w-full px-3 py-2"}`} aria-label={mode === "rail" ? "Expand sidebar" : "Collapse sidebar"} title={mode === "rail" ? "Expand sidebar" : "Collapse sidebar"}>
+          <button onClick={toggleCollapsed} className={`flex min-h-11 items-center gap-3 rounded-xl text-[12.5px] text-white/75 transition hover:bg-white/[.07] hover:text-white ${mode === "rail" ? "w-11 justify-center" : "w-full px-3 py-2"}`} aria-label={mode === "rail" ? "Expand sidebar" : "Collapse sidebar"} title={mode === "rail" ? "Expand sidebar" : "Collapse sidebar"}>
             {mode === "rail" ? <ChevronsRight size={17} /> : <><ChevronsLeft size={17} /> Collapse sidebar</>}
           </button>
         )}
-        <button onClick={() => setConfirmSignOut(true)} className={`flex items-center gap-3 rounded-xl text-[12.5px] text-white/75 transition hover:bg-white/[.07] hover:text-white ${mode === "rail" ? "h-10 w-10 justify-center" : "w-full px-3 py-2"}`} aria-label="Log out" title="Log out">
+        <button onClick={() => setConfirmSignOut(true)} className={`flex min-h-11 items-center gap-3 rounded-xl text-[12.5px] text-white/80 transition hover:bg-white/[.07] hover:text-white ${mode === "rail" ? "w-11 justify-center" : "w-full px-3 py-2"}`} aria-label="Log out" title="Log out">
           <LogOut size={17} />
           {mode === "full" && "Log out"}
         </button>
@@ -1055,19 +1043,19 @@ export function AdminLayout() {
     </>
   );
 
-  const groupItems = activeNavGroup && activeNavGroup.items.length > 1 ? activeNavGroup.items : null;
+  const groupItems = activeNavGroup && !activeNavGroup.alwaysOpen && activeNavGroup.items.length > 1 ? activeNavGroup.items : null;
 
   return (
     <div data-admin-shell className="min-h-dvh overflow-x-clip bg-canvas text-foreground">
       <a href="#admin-main" className="skip-link">Skip to admin content</a>
       <ConfirmHost />
-      <aside className={`fixed inset-y-0 left-0 z-[70] hidden flex-col bg-sidebar text-white transition-[width] duration-300 [transition-timing-function:var(--ease-out)] lg:flex ${collapsed ? "w-[76px]" : "w-[264px]"}`}>
+      <aside className={`fixed inset-y-0 left-0 z-[70] hidden h-dvh flex-col overflow-hidden bg-sidebar text-white transition-[width] duration-300 [transition-timing-function:var(--ease-out)] lg:flex ${collapsed ? "w-[76px]" : "w-[264px]"}`}>
         {sidebar(collapsed ? "rail" : "full")}
       </aside>
       {drawer.mounted && createPortal(
         <div className="fixed inset-0 z-[120] lg:hidden">
           <button data-state={drawer.state} onClick={() => setDrawerOpen(false)} className="cc-backdrop absolute inset-0 bg-[#161412]/55 backdrop-blur-[2px]" aria-label="Close navigation" tabIndex={-1} />
-          <aside data-state={drawer.state} role="dialog" aria-modal="true" aria-label="Admin navigation" className="adm-drawer-left absolute inset-y-0 left-0 flex w-[86vw] max-w-[300px] flex-col bg-sidebar text-white shadow-2xl">
+          <aside data-state={drawer.state} role="dialog" aria-modal="true" aria-label="Admin navigation" className="adm-drawer-left absolute inset-y-0 left-0 flex h-dvh w-[86vw] max-w-[300px] flex-col overflow-hidden bg-sidebar text-white shadow-2xl">
             {sidebar("full", () => setDrawerOpen(false))}
           </aside>
         </div>,
@@ -1078,12 +1066,12 @@ export function AdminLayout() {
           <div className="mx-auto flex h-14 max-w-[1480px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-5 lg:px-8">
             <button onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation" className="adm-btn adm-btn-icon shadow-sm lg:hidden"><Menu size={18} /></button>
             <div className="min-w-0 flex-1">
-              <p className="hidden truncate text-[11px] text-muted-foreground sm:block">{activeNavGroup && activeNavGroup.label !== "Overview" ? activeNavGroup.label : "Operations"}</p>
+              <p className="hidden truncate text-[11px] text-muted-foreground sm:block">{activeNavGroup?.label ?? "Store admin"}</p>
               <p className="truncate text-sm font-semibold sm:text-[15px]">{pageLabel}</p>
             </div>
             <button type="button" onClick={() => setPaletteOpen(true)} className="hidden h-10 w-64 items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 text-xs text-muted-foreground shadow-sm transition hover:bg-secondary md:flex xl:w-80" aria-label="Search and jump">
               <Search size={15} />
-              <span className="flex-1 text-left">Search or jump to…</span>
+              <span className="flex-1 text-left">Find a page, order or customer…</span>
               <kbd className="adm-kbd">{isMac() ? "⌘" : "Ctrl"} K</kbd>
             </button>
             <button type="button" onClick={() => setPaletteOpen(true)} className="adm-btn adm-btn-icon shadow-sm md:hidden" aria-label="Search and jump"><Search size={17} /></button>

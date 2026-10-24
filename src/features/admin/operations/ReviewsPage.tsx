@@ -130,10 +130,10 @@ export function ReviewsPage() {
   }, [gallery, galleryReview]);
 
   return (
-    <AdminShell title="Reviews">
+    <AdminShell title="Customer reviews">
       <PageHeader
         eyebrow="Customer voice"
-        title="Reviews"
+        title="Customer reviews"
         description="Reviews publish immediately. Monitor feedback here and hide content only when it breaks CozyCraft content standards."
         actions={
           result.data && (
