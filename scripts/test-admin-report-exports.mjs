@@ -17,9 +17,16 @@ try {
   for(const width of [320,390,1440]) {
     const context=await browser.newContext({viewport:{width,height:900}});
     await context.routeWebSocket(/supabase\.co/,socket=>socket.close());
-    const calls=[];
+    const calls=[]; let manifestOverride=null, templateChecks=0, downloads=0;
     await context.route('**/*',async route=>{
-      const url=new URL(route.request().url()); if(url.origin===new URL(base).origin)return route.continue();
+      const url=new URL(route.request().url());
+      if(url.origin===new URL(base).origin) {
+        if(url.pathname==='/report-template.json') {
+          templateChecks++;
+          if(manifestOverride)return route.fulfill({status:manifestOverride.status,contentType:'application/json',body:JSON.stringify(manifestOverride.body)});
+        }
+        return route.continue();
+      }
       if(!url.hostname.endsWith('supabase.co'))return route.abort();
       const path=url.pathname, headers=route.request().headers();
       const reply=(data)=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
@@ -37,7 +44,7 @@ try {
       if(path.includes('/rpc/'))return reply(null);
       return reply((headers.accept||'').includes('vnd.pgrst.object')?{}:[]);
     });
-    const page=await context.newPage(); page.setDefaultTimeout(15000); const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    const page=await context.newPage(); page.setDefaultTimeout(15000); const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('download',()=>downloads++);
     await page.goto(`${base}/admin/login`); await page.getByLabel('Work email').fill(user.email);await page.locator('input[type="password"]').fill('Fixture-password');await page.getByRole('button',{name:'Enter operations'}).click();
     try { await page.getByText('Total sales',{exact:true}).waitFor(); }
     catch(error){console.error((await page.locator('body').innerText()).slice(0,1800));throw error;}
@@ -45,6 +52,7 @@ try {
       await page.goto(`${base}/admin/${kind}`);
       await page.getByRole('button',{name:'Export report',exact:true}).click();
       const dialog=page.getByRole('dialog',{name:`Export ${kind}`,exact:true});await dialog.waitFor();
+      assert.equal(await dialog.getByText('List layout v2 - no summary cards',{exact:true}).isVisible(),true);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Dialog fits viewport');
       assert.equal(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth),false,'No horizontal dialog overflow');
       await dialog.getByLabel('Payment method',{exact:true}).selectOption('gcash');
@@ -63,10 +71,43 @@ try {
         assert.doesNotMatch(text,/TOTAL ORDER VALUE|SETTLED SALES|PENDING COLLECTION|REFUNDED VALUE/);
       }
       assert.match(download.suggestedFilename(),new RegExp(`CozyCraft-${kind}-processing-pending-gcash-.*\\.${format}$`));
+      if(format==='pdf')assert.match(download.suggestedFilename(),/-\d{6}-list-v2\.pdf$/);
       const request=calls.findLast(c=>c.p_kind===kind&&c.p_size===250);
       assert.equal(request.p_filters.paymentMethod,'gcash');assert.equal(request.p_filters.paymentStatus,'pending');assert.equal(request.p_filters.status,'processing');assert.equal(request.p_filters.from,'2026-01-01');
       await dialog.waitFor({state:'hidden'});
     }
-    assert.deepEqual(errors,[]);console.log(`PASS ${width}px: Orders and Payments PDF/CSV downloads, no aggregate PDF cards, preserved filters/data and responsive dialogs.`);await context.close();
+    assert.equal(templateChecks,2,'Only PDF downloads check layout freshness; CSV does not add requests');
+    for(const kind of ['orders','payments']) {
+      await page.goto(`${base}/admin/${kind}`);
+      await page.getByRole('button',{name:'Export report',exact:true}).click();
+      const dialog=page.getByRole('dialog',{name:`Export ${kind}`,exact:true});await dialog.waitFor();
+      const beforeCalls=calls.length,beforeDownloads=downloads;
+      manifestOverride={status:200,body:{version:'future-report-layout'}};
+      await dialog.getByRole('button',{name:'Download PDF',exact:true}).click();
+      await dialog.getByRole('alert').filter({hasText:'A newer report layout is ready'}).waitFor();
+      assert.equal(await dialog.getByRole('button',{name:'Load latest report page'}).isVisible(),true);
+      assert.equal(calls.length,beforeCalls,'Stale tabs cannot request report data');
+      assert.equal(downloads,beforeDownloads,'Stale tabs cannot download the wrong template');
+      assert.equal(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth),false,'Stale-layout recovery fits viewport');
+      if(width===390&&kind==='orders') {
+        manifestOverride=null;
+        await dialog.getByRole('button',{name:'Load latest report page'}).click();
+        await page.waitForURL(url=>url.searchParams.has('report-update'));
+        await page.getByRole('button',{name:'Export report',exact:true}).click();
+        await dialog.waitFor();
+        assert.equal(await dialog.getByRole('alert').count(),0,'Refreshing clears the outdated export without signing out');
+      }
+      manifestOverride={status:503,body:{error:'unavailable'}};
+      await dialog.getByRole('button',{name:'Download PDF',exact:true}).click();
+      await dialog.getByRole('alert').filter({hasText:'Could not confirm the latest report layout'}).waitFor();
+      assert.equal(calls.length,beforeCalls,'Unavailable layout checks do not request report data');
+      assert.equal(downloads,beforeDownloads,'Unavailable layout checks do not download a report');
+      manifestOverride=null;
+      const retryDownload=page.waitForEvent('download');
+      await dialog.getByRole('button',{name:'Download PDF',exact:true}).click();
+      assert.match((await retryDownload).suggestedFilename(),/-\d{6}-list-v2\.pdf$/);
+      await dialog.waitFor({state:'hidden'});
+    }
+    assert.deepEqual(errors,[]);console.log(`PASS ${width}px: Orders and Payments PDF/CSV downloads, no aggregate PDF cards, preserved filters/data, responsive dialogs, stale-layout/network recovery, and unique PDF filenames.`);await context.close();
   }
 } finally {await browser.close();}

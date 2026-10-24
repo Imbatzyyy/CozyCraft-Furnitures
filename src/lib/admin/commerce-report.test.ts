@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_COMMERCE_FILTERS, BASIC_REPORT_DETAILS, commerceReportCsv, reportDate, reportFilterError, type CommerceReport } from "./commerce-report";
+import { ALL_COMMERCE_FILTERS, BASIC_REPORT_DETAILS, commerceReportCsv, commerceReportFilename, reportDate, reportFilterError, type CommerceReport } from "./commerce-report";
 import { createCommerceReportPdf } from "./commerce-report-pdf";
 // Inspect the actual compressed PDF content, rather than only its file header.
 async function pdfContent(bytes: ArrayBuffer) {
@@ -21,6 +21,11 @@ const report: CommerceReport = {
   rows: [{ id: "1", order_number: "CC-1", created_at: "2026-10-21T16:01:00Z", status: "delivered", payment_status: "paid", payment_method: "cod", total: 1100, subtotal: 1000, delivery_fee: 200, discount: 100, shipping_address: { name: '=HYPERLINK("evil")' }, environment: "cod", payment_reference: "COD-CC-1", paid_at: null, email: "private@example.test", items: [{ name: "Sofa", quantity: 1, unit_price: 1000 }] }],
 };
 describe("commerce report formats", () => {
+  it("distinguishes new PDFs by Philippine generation time and layout version", () => {
+    expect(commerceReportFilename(report,"pdf")).toBe("CozyCraft-orders-all-all-all-2026-10-22-090000-list-v2.pdf");
+    expect(commerceReportFilename({...report,asOf:"2026-10-22T01:01:03Z"},"pdf")).not.toBe(commerceReportFilename(report,"pdf"));
+    expect(commerceReportFilename(report,"csv")).toBe("CozyCraft-orders-all-all-all-2026-10-22.csv");
+  });
   it("keeps monetary values numeric and neutralizes CSV formulas", () => {
     const csv = commerceReportCsv(report);
     expect(csv.startsWith("\uFEFF")).toBe(true); expect(csv).toContain("'=HYPERLINK"); expect(csv).toContain('"1100"'); expect(csv).not.toContain("private@example.test"); expect(csv).not.toContain('"Products');

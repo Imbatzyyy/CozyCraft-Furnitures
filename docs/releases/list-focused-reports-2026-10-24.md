@@ -36,3 +36,32 @@ packages; the dependency audit then reports zero vulnerabilities.
 
 Commands: `npm run verify:release`, `npm run test:browser`,
 `node scripts/preview-commerce-reports.mjs`, `npm audit --audit-level=high`.
+
+## Live-export freshness follow-up
+
+The published deployment and the fresh HTML/JavaScript served from the canonical
+domain, apex domain, Netlify domain and immutable deploy URL were verified to
+contain the new list renderer. No deployment rollback was found. A pre-deployment
+tab retaining old JavaScript, or reopening an identically named earlier download,
+can still explain an old report; the user's specific tab could not be inspected
+because local browser access was disabled.
+
+- Both export dialogs now identify the PDF as `List layout v2 - no summary cards`.
+- PDF downloads include Philippine generation time and `list-v2` in their names;
+  CSV filenames and schema are unchanged.
+- Before fetching report rows, PDF export makes one small uncached same-origin
+  version-manifest request, bounded to six seconds. No polling or Supabase query
+  is added. Offline/malformed checks fail visibly and can be retried.
+- A mismatched version blocks the old PDF and offers a user-initiated full-page
+  reload, preserving the current route. Existing pre-fix tabs still need one
+  manual reload to obtain this protection; previously downloaded PDFs cannot
+  be changed retroactively.
+- When changing the PDF template in future, update the version in both
+  `public/report-template.json` and `report-template-version.ts`. The browser
+  regression uses the actual manifest to catch accidental mismatches.
+- Browser regressions cover both exports at 320/390/1440px, stale-version and
+  unavailable-manifest rejection before any report RPC/download, retry, and the
+  reload action without losing the signed-in fixture session.
+
+This follow-up changes no order/payment records, authorization, report filters,
+financial calculations, or database schema.

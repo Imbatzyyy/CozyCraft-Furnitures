@@ -51,4 +51,9 @@ export function commerceReportCsv(report: CommerceReport) {
   return "\uFEFF" + reportCsv([header, ...report.rows.map(row => [row.order_number, reportDate(row.created_at), row.shipping_address.name, reportLabel(row.status), reportLabel(row.payment_method), reportLabel(row.payment_status), reportEnvironmentLabel(row.environment), Number(row.subtotal), Number(row.delivery_fee), Number(row.discount), Number(row.total), row.payment_reference, reportDate(row.paid_at),
     ...(report.details.contact ? [row.email ?? "", row.mobile ?? ""] : []), ...(report.details.address ? [row.address ?? ""] : []), ...(report.details.items && report.kind === "orders" ? [(row.items ?? []).map(i => `${i.name} (${i.quantity} x ${Number(i.unit_price).toFixed(2)})`).join("; ")] : [])])]);
 }
-export const commerceReportFilename = (report: CommerceReport, format: "csv" | "pdf") => `CozyCraft-${report.kind}-${report.filters.status}-${report.filters.paymentStatus}-${report.filters.paymentMethod}-${new Date(report.asOf).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })}.${format}`;
+export const commerceReportFilename = (report: CommerceReport, format: "csv" | "pdf") => {
+  const generated = new Date(report.asOf);
+  const date = generated.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+  const time = generated.toLocaleTimeString("en-GB", { timeZone: "Asia/Manila", hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(/:/g, "");
+  return `CozyCraft-${report.kind}-${report.filters.status}-${report.filters.paymentStatus}-${report.filters.paymentMethod}-${date}${format === "pdf" ? `-${time}-list-v2` : ""}.${format}`;
+};
