@@ -21,6 +21,9 @@ if (!supabaseUrl || !supabasePublishableKey) {
 }
 
 const sharedOptions = {
+  // The application owns retry/recovery. SDK retries would otherwise wait on
+  // the cooldown response and reopen reads in the background after an outage.
+  db: { retry: false },
   global: {
     fetch: resilientFetch,
     headers: { "x-cozycraft-platform": cozyCraftPlatform },

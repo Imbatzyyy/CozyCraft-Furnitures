@@ -552,6 +552,10 @@
     {
       "file": "20261025010000_catalog_guest_visits.sql",
       "sha256": "834485519c79bb574216e990b0a037e492dec50ab5679b452c100f44a5453203"
+    },
+    {
+      "file": "20261107130000_free_plan_reliability.sql",
+      "sha256": "2288c01d5f33b67a40b1839401a7f9929d287adc91fce6c325c8b933aaaae66b"
     }
   ]
 }

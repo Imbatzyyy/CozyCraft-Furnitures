@@ -15,6 +15,7 @@ export type PortalSignInResult = {
   error: string | null;
   reason:
     | "invalid_credentials"
+    | "service_unavailable"
     | "wrong_portal"
     | "suspended"
     | "profile_unavailable"
@@ -69,6 +70,9 @@ export async function signInForPortal(
     });
 
   if (authError || !data.user) {
+    if (authError && (authError.status === 402 || (authError.status ?? 0) >= 500 || authError.name === "AuthRetryableFetchError")) {
+      return { ok: false, role: null, reason: "service_unavailable", error: "Sign-in services are temporarily unavailable. Your password has not been marked incorrect. Please wait and try again." };
+    }
     return {
       ok: false,
       role: null,

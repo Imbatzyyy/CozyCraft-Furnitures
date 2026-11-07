@@ -1,4 +1,5 @@
 import { localStore } from "@/lib/shared/browser-storage";
+import { ServiceAvailabilityNotice } from "@/components/ServiceAvailabilityNotice";
 import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
 import { watchVisibleRecovery } from "@/lib/shared/visible-recovery";
 import { adminMfaGate } from "@/lib/auth/admin-mfa-gate";
@@ -1081,6 +1082,7 @@ export function AdminLayout() {
           <BusyBar active={navigation.state === "loading"} className="absolute inset-x-0 bottom-[-1px]" />
         </header>
         <main id="admin-main" tabIndex={-1} className="relative mx-auto max-w-[1480px] px-3 pb-10 pt-4 outline-none sm:px-5 sm:pt-6 lg:px-8 lg:pt-7">
+          <ServiceAvailabilityNotice admin />
           {groupItems && (
             <nav aria-label={`${activeNavGroup?.label} pages`} className="adm-scroll-x -mx-3 mb-4 flex gap-1.5 px-3 sm:-mx-5 sm:px-5 lg:hidden">
               {groupItems.map(([Icon, label, path]) => {

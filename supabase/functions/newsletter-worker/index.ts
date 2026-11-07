@@ -1,17 +1,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.111.0";
+import { createClient } from "npm:@supabase/supabase-js@2.119.0";
 import { buildCampaignEmail } from "../_shared/newsletter-email.ts";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const chunks = <T>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size));
 
-Deno.serve(async (request) => {
+export async function handleNewsletterWorker(request: Request) {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serverKey = request.headers.get("apikey")?.trim();
   const resendKey = Deno.env.get("RESEND_API_KEY");
   if (!supabaseUrl || !serverKey || !resendKey) return json({ error: "Newsletter worker is not configured." }, 503);
-  const admin = createClient(supabaseUrl, serverKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const startedAt = Date.now();
+  const admin = createClient(supabaseUrl, serverKey, { db: { retry: false }, auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(8000) }) } });
   const { data: campaignId, error: claimError } = await admin.rpc("claim_newsletter_campaign");
   if (claimError) return json({ error: claimError.message }, 401);
   if (!campaignId) return json({ claimed: 0, sent: 0, failed: 0 });
@@ -33,7 +34,8 @@ Deno.serve(async (request) => {
       );
       if (error) return json({ error: error.message }, 500);
     }
-    await admin.from("newsletter_campaigns").update({ recipient_count: subscribers.length }).eq("id", campaign.id);
+    const prepared = await admin.from("newsletter_campaigns").update({ recipient_count: subscribers.length }).eq("id", campaign.id);
+    if (prepared.error) return json({ error: "Campaign preparation unavailable; the lease will recover." }, 503);
   }
 
   const { data: candidates, error: deliveryError } = await admin.from("newsletter_deliveries")
@@ -43,21 +45,28 @@ Deno.serve(async (request) => {
     .lt("attempt_count", 3)
     .eq("newsletter_subscribers.status", "active")
     .order("created_at")
-    .limit(50);
+    .limit(10);
   if (deliveryError) return json({ error: deliveryError.message }, 500);
   const claimed = candidates ?? [];
   if (claimed.length) {
-    await admin.from("newsletter_deliveries").update({ status: "sending" }).in("id", claimed.map((item) => item.id));
+    const locked = await admin.from("newsletter_deliveries").update({ status: "sending" }).in("id", claimed.map((item) => item.id));
+    if (locked.error) return json({ error: "Delivery claim unavailable; nothing was sent." }, 503);
   }
 
   let sent = 0;
   let failed = 0;
-  for (const batch of chunks(claimed, 8)) {
+  let acknowledgementFailed = false;
+  const attempted = new Set<string>();
+  // Stay well below the Free worker lifetime and avoid provider request bursts.
+  for (const batch of chunks(claimed, 1)) {
+    if (Date.now() - startedAt >= 70_000) break;
     await Promise.all(batch.map(async (delivery) => {
+      attempted.add(delivery.id);
       const subscriber = Array.isArray(delivery.newsletter_subscribers) ? delivery.newsletter_subscribers[0] : delivery.newsletter_subscribers;
       if (!subscriber?.email || !subscriber?.unsubscribe_token) {
         failed += 1;
-        await admin.from("newsletter_deliveries").update({ status: "failed", attempt_count: delivery.attempt_count + 1, error_message: "Subscriber preferences unavailable." }).eq("id", delivery.id);
+        const ack = await admin.from("newsletter_deliveries").update({ status: "failed", attempt_count: delivery.attempt_count + 1, error_message: "Subscriber preferences unavailable." }).eq("id", delivery.id);
+        if (ack.error) acknowledgementFailed = true;
         return;
       }
       const unsubscribeUrl = `${supabaseUrl}/functions/v1/newsletter-preferences?action=unsubscribe&token=${subscriber.unsubscribe_token}`;
@@ -75,16 +84,27 @@ Deno.serve(async (request) => {
       const payload = response ? await response.json().catch(() => ({})) : {};
       if (response?.ok) {
         sent += 1;
-        await Promise.all([
+        const results = await Promise.all([
           admin.from("newsletter_deliveries").update({ status: "sent", attempt_count: delivery.attempt_count + 1, provider_message_id: payload.id ?? null, error_message: null, sent_at: new Date().toISOString() }).eq("id", delivery.id),
           admin.from("newsletter_subscribers").update({ last_delivery_at: new Date().toISOString() }).eq("id", delivery.subscriber_id),
         ]);
+        if (results.some(result => result.error)) acknowledgementFailed = true;
       } else {
         failed += 1;
-        await admin.from("newsletter_deliveries").update({ status: "failed", attempt_count: delivery.attempt_count + 1, error_message: `Provider status ${response?.status ?? "network"}` }).eq("id", delivery.id);
+        const ack = await admin.from("newsletter_deliveries").update({ status: "failed", attempt_count: delivery.attempt_count + 1, error_message: `Provider status ${response?.status ?? "network"}` }).eq("id", delivery.id);
+        if (ack.error) acknowledgementFailed = true;
       }
     }));
+    if (acknowledgementFailed) break;
+    if (claimed.length > 1) await new Promise(resolve => setTimeout(resolve, 600));
   }
+
+  const deferred = claimed.filter(delivery => !attempted.has(delivery.id)).map(delivery => delivery.id);
+  if (deferred.length) {
+    const released = await admin.from("newsletter_deliveries").update({ status: "queued" }).in("id", deferred).eq("status", "sending");
+    if (released.error) acknowledgementFailed = true;
+  }
+  if (acknowledgementFailed) return json({ error: "Delivery acknowledgement unavailable; leased messages will recover with the same idempotency key." }, 503);
 
   const [sentResult, failedResult, queuedResult, retryResult] = await Promise.all([
     admin.from("newsletter_deliveries").select("id", { count: "exact", head: true }).eq("campaign_id", campaign.id).eq("status", "sent"),
@@ -92,12 +112,17 @@ Deno.serve(async (request) => {
     admin.from("newsletter_deliveries").select("id", { count: "exact", head: true }).eq("campaign_id", campaign.id).in("status", ["queued", "sending"]),
     admin.from("newsletter_deliveries").select("id").eq("campaign_id", campaign.id).eq("status", "failed").lt("attempt_count", 3).limit(1),
   ]);
+  if ([sentResult, failedResult, queuedResult, retryResult].some(result => result.error)) {
+    return json({ error: "Campaign summary unavailable; the lease will recover." }, 503);
+  }
   const complete = (queuedResult.count ?? 0) === 0 && (retryResult.data?.length ?? 0) === 0;
-  await admin.from("newsletter_campaigns").update({
+  const finished = await admin.from("newsletter_campaigns").update({
     sent_count: sentResult.count ?? 0, failed_count: failedResult.count ?? 0,
     status: complete ? ((sentResult.count ?? 0) > 0 || campaign.recipient_count === 0 ? "sent" : "failed") : "sending",
     sent_at: complete ? new Date().toISOString() : null,
     worker_locked_at: null,
   }).eq("id", campaign.id);
+  if (finished.error) return json({ error: "Campaign acknowledgement unavailable; the lease will recover." }, 503);
   return json({ claimed: 1, campaignId: campaign.id, sent, failed, complete });
-});
+}
+if (import.meta.main) Deno.serve(handleNewsletterWorker);

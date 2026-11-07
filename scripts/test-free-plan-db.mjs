@@ -1,0 +1,43 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const db=new PGlite();const q=async sql=>(await db.query(sql)).rows;
+try {
+ await db.exec(`create role anon;create role authenticated;create schema private;create schema cron;create schema net;create schema vault;create schema storage;
+ create table newsletter_campaigns(status text,scheduled_at timestamptz,worker_locked_at timestamptz);
+ create table orders(id int,payment_method text,payment_status text,status text,payment_expires_at timestamptz);
+ create table payment_transactions(order_id int,status text,provider_session_id text,provider_status text,last_synced_at timestamptz);
+ create table cron.job_run_details(runid bigint primary key,status text,end_time timestamptz);
+ create table storage.buckets(id text,file_size_limit bigint);
+ insert into storage.buckets values('mobile-updates',67108864),('avatars',5242880);
+ create table vault.decrypted_secrets(name text,decrypted_secret text);
+ create table net.calls(id int);
+ create function net.http_post(url text,headers jsonb,body jsonb,timeout_milliseconds int)returns bigint language plpgsql as $$begin insert into net.calls values(1);return 1;end$$;
+ select set_config('app.settings.supabase_url','https://fixture.test',false),set_config('app.settings.service_role_key','fixture',false);`);
+ await db.exec(readFileSync('supabase/migrations/20261107130000_free_plan_reliability.sql','utf8'));
+ assert.equal((await q('select private.invoke_newsletter_worker() n'))[0].n,null);
+ assert.equal((await q('select private.invoke_paymongo_expiry_worker() n'))[0].n,null);
+ assert.equal((await q('select count(*)::int n from net.calls'))[0].n,0);
+ await db.exec("insert into newsletter_campaigns values('scheduled',now()+interval '1 hour',null)");
+ assert.equal((await q('select private.newsletter_work_due() n'))[0].n,false);
+ await db.exec("update newsletter_campaigns set scheduled_at=now()-interval '1 minute'");
+ assert.equal((await q('select private.invoke_newsletter_worker() n'))[0].n,1);
+ await db.exec("update newsletter_campaigns set status='sending',worker_locked_at=now()");
+ assert.equal((await q('select private.newsletter_work_due() n'))[0].n,false);
+ await db.exec("update newsletter_campaigns set worker_locked_at=now()-interval '3 minutes'");
+ assert.equal((await q('select private.newsletter_work_due() n'))[0].n,true);
+ await db.exec("insert into orders values(1,'gcash','pending','pending',now()-interval '1 minute');insert into payment_transactions values(1,'pending','fixture-session',null,null)");
+ assert.equal((await q('select private.invoke_paymongo_expiry_worker() n'))[0].n,1);
+ await db.exec("update payment_transactions set provider_status='expiring',last_synced_at=now()");
+ assert.equal((await q('select private.paymongo_expiry_work_due() n'))[0].n,false);
+ await db.exec("update payment_transactions set last_synced_at=now()-interval '2 minutes'");
+ assert.equal((await q('select private.paymongo_expiry_work_due() n'))[0].n,true);
+ for(const sql of ["update orders set payment_status='paid'","update orders set payment_status='pending',status='cancelled'","update orders set status='pending',payment_method='cod'"]){await db.exec(sql);assert.equal((await q('select private.paymongo_expiry_work_due() n'))[0].n,false);}
+ await db.exec("insert into cron.job_run_details select n,'succeeded',now()-interval '31 days' from generate_series(1,10005)n;insert into cron.job_run_details values(20000,'failed',now()-interval '60 days'),(20001,'succeeded',now()),(20002,'running',null),(20003,'failed',now()-interval '91 days')");
+ assert.equal((await q('select private.prune_operational_history() n'))[0].n,10000);
+ assert.equal((await q('select private.prune_operational_history() n'))[0].n,6);
+ assert.deepEqual((await q('select runid from cron.job_run_details order by runid')).map(r=>r.runid),[20000,20001,20002]);
+ for(const fn of ['newsletter_work_due','paymongo_expiry_work_due','invoke_newsletter_worker','invoke_paymongo_expiry_worker','prune_operational_history'])assert.equal((await q(`select has_function_privilege('anon','private.${fn}()','execute') n`))[0].n,false);
+ assert.equal((await q("select file_size_limit from storage.buckets where id='mobile-updates'"))[0].file_size_limit,52428800);
+ console.log('PASS: idle workers skip calls, eligible work/leases preserved, bounded log retention, worker grants and Free upload limit.');
+} finally {await db.close();}

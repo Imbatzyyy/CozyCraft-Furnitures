@@ -1,4 +1,6 @@
 const baseUrl = (process.env.COZYCRAFT_BASE_URL ?? "https://www.cozycraftfurnitures.com").replace(/\/$/, "");
+// Preview deployments correctly retain the production canonical sitemap.
+const canonicalUrl = (process.env.COZYCRAFT_CANONICAL_URL ?? baseUrl).replace(/\/$/, "");
 const routes = [
   "/",
   "/living-room",
@@ -52,7 +54,7 @@ if (!robots.ok || !robotsText.includes("Disallow: /admin/")) failures.push("robo
 
 const sitemap = await fetch(`${baseUrl}/sitemap.xml`);
 const sitemapText = await sitemap.text();
-if (!sitemap.ok || !sitemapText.includes(`${baseUrl}/about`)) failures.push("sitemap.xml is unavailable or incomplete");
+if (!sitemap.ok || !sitemapText.includes(`${canonicalUrl}/about`)) failures.push("sitemap.xml is unavailable or incomplete");
 
 if (failures.length) {
   console.error(`Production smoke test failed:\n- ${failures.join("\n- ")}`);
