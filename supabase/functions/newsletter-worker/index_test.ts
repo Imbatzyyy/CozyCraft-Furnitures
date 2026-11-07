@@ -18,7 +18,7 @@ Deno.test("newsletter worker authorizes claims, bounds batches and preserves unf
     }
     if (url.hostname === "api.resend.com") {
       sent.push(new Headers(init?.headers).get("Idempotency-Key")!);
-      if (scenario === "budget") elapsed = 71_000;
+      if (scenario === "budget") elapsed = 56_000;
       return Response.json({ id: "provider-fixture" });
     }
     const table = url.pathname.split("/").at(-1)!;

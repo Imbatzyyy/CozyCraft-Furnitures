@@ -64,7 +64,8 @@ An idle month avoids about 86,400 calls from these two workers compared with
 unconditional once-per-minute invocation; active work still consumes calls.
 
 Newsletter sends are limited to ten candidates per invocation, paced instead of
-bursting, with a 70-second sending budget and bounded request timeouts. Deferred
+bursting, with a 55-second sending budget and bounded request timeouts. The
+remaining time is reserved for acknowledgements before the two-minute lease. Deferred
 messages return to the queue. Database acknowledgement failures are reported,
 not counted as a completed campaign. A stale lease remains recoverable.
 

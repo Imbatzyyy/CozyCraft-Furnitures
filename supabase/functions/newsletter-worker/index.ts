@@ -57,9 +57,10 @@ export async function handleNewsletterWorker(request: Request) {
   let failed = 0;
   let acknowledgementFailed = false;
   const attempted = new Set<string>();
-  // Stay well below the Free worker lifetime and avoid provider request bursts.
+  // Reserve room for a 20s provider request plus 8s acknowledgements, deferred
+  // release, counts and finalization before the existing two-minute lease.
   for (const batch of chunks(claimed, 1)) {
-    if (Date.now() - startedAt >= 70_000) break;
+    if (Date.now() - startedAt >= 55_000) break;
     await Promise.all(batch.map(async (delivery) => {
       attempted.add(delivery.id);
       const subscriber = Array.isArray(delivery.newsletter_subscribers) ? delivery.newsletter_subscribers[0] : delivery.newsletter_subscribers;
