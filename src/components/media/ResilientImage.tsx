@@ -66,16 +66,21 @@ export function ResilientImage(
   }
 
   return (
+    // Attribute order matters. React 18 sets attributes in this order, and
+    // Safari and Firefox start fetching the moment `src` is set: with `src`
+    // first they download the full-size file AND the chosen smaller one, and
+    // ignore `loading="lazy"`. So everything that decides WHAT and WHEN to
+    // load comes before `src`.
     <img
-      src={responsive?.src ?? src}
-      srcSet={responsive?.srcSet ?? (originalFallback ? undefined : srcSet)}
+      loading={loading}
+      decoding={decoding}
       sizes={sizes ?? (productSources ? "(max-width: 768px) 100vw, 60vw" : editorialSources ? "100vw" : undefined)}
+      srcSet={responsive?.srcSet ?? (originalFallback ? undefined : srcSet)}
+      {...rest}
       alt={alt}
       className={`cc-img ${className ?? ""}`}
       style={style}
-      loading={loading}
-      decoding={decoding}
-      {...rest}
+      src={responsive?.src ?? src}
       ref={markIfComplete}
       data-loaded={loaded ? "" : undefined}
       onLoad={(event) => {

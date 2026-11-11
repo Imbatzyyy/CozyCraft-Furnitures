@@ -1950,7 +1950,7 @@ function CollectionView() {
                 onClick={() => setVisibleCount((count) => count + SHOP_PAGE_SIZE)}
                 className="cc-press inline-flex h-12 items-center gap-2 rounded-full border border-foreground px-7 text-sm font-semibold transition-colors hover:bg-foreground hover:text-background"
               >
-                Show more pieces
+                Load more pieces
                 <ChevronDown size={16} aria-hidden="true" />
               </button>
             </div>
