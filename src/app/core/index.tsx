@@ -15,29 +15,17 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  createBrowserRouter,
   Link,
-  RouterProvider,
   useLocation,
   useNavigate,
-  useParams,
   useViewTransitionState,
 } from "react-router-dom";
 import {
-  Activity,
-  ArrowUp,
-  ArrowLeft,
   ArrowRight,
-  Archive,
   Bell,
-  Boxes,
-  ChartNoAxesCombined,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CircleAlert,
-  CircleDollarSign,
   CircleSlash2,
   Clock,
   Facebook,
@@ -48,40 +36,20 @@ import {
   Sparkles,
   Truck,
   Youtube,
-  ClipboardList,
   CreditCard,
-  Download,
   Eye,
-  EyeOff,
-  FileText,
   Grid2X2,
   Heart,
-  ImagePlus,
-  LayoutDashboard,
-  List,
   LockKeyhole,
   MessageCircle,
   LogOut,
   Menu,
-  Minus,
-  MoreHorizontal,
-  Package,
-  PackagePlus,
-  Pencil,
   Plus,
   Search,
   Scale,
-  Settings,
   ShieldCheck,
   ShoppingBag,
-  SlidersHorizontal,
-  Star,
-  Tag,
-  Trash2,
-  Upload,
   UserRound,
-  Users,
-  Warehouse,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -93,22 +61,18 @@ import { StarRating } from "@/components/storefront/StarRating";
 import { RevealObserver, usePresence } from "@/components/storefront/motion";
 import { navigationRooms, roomCollections } from "@/lib/catalog/room-collections";
 import { subscribeToNewsletter } from "@/services/content/newsletter.service";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import cozyCraftLogo from "@/assets/branding/cozycraft-logo-640.webp";
+import cozyCraftLogoLarge from "@/assets/branding/cozycraft-logo-1280.webp";
 import {
-  isStaffRole,
-  safeFileName,
   supabase,
   type DbCustomerProfile,
   type DbOrder,
   type DbCustomerNotification,
-  type DbProduct,
   type DbRole,
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import type { PublicStoreSettings } from "@/lib/settings/store-settings";
 import type { TicketFilter } from "@/lib/admin/ticket-filter";
-import { functionErrorMessage } from "@/lib/shared/function-error";
 import { rankCatalogSearch } from "@/lib/catalog/discovery";
 import {
   primaryProductImage,
@@ -568,6 +532,11 @@ export function Logo({
   const art = (
     <ResilientImage
       src={cozyCraftLogo}
+      srcSet={`${cozyCraftLogo} 640w, ${cozyCraftLogoLarge} 1280w`}
+      sizes={splash ? "(min-width: 640px) 400px, 360px" : "(min-width: 640px) 215px, 172px"}
+      width={640}
+      height={213}
+      loading="eager"
       alt="CozyCraft Furniture official logo"
       className={`h-full w-full origin-center object-contain ${splash ? "scale-[1.25]" : "scale-[1.34]"} ${light ? "brightness-0 invert" : ""}`}
     />
@@ -589,6 +558,7 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
   const nav = useNavigate();
   const location = useLocation();
   const [menu, setMenu] = useState(false);
+  const [megaWarm, setMegaWarm] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [notificationOpen, setNotificationOpen] = useState(false);
@@ -895,7 +865,12 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
         )}
         <div className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between gap-3 px-3 sm:px-5 lg:px-10">
           <Logo light={overHero} />
-          <nav aria-label="Main navigation" className="hidden h-full items-stretch gap-5 whitespace-nowrap text-[13px] font-medium tracking-[0.01em] md:flex lg:gap-7 xl:gap-9">
+          <nav
+            aria-label="Main navigation"
+            onPointerEnter={() => setMegaWarm(true)}
+            onFocus={() => setMegaWarm(true)}
+            className="hidden h-full items-stretch gap-5 whitespace-nowrap text-[13px] font-medium tracking-[0.01em] md:flex lg:gap-7 xl:gap-9"
+          >
             <div className="hidden items-center lg:flex">
               <Link to="/shop" aria-current={isCurrent("/shop") ? "page" : undefined} className="cc-underline">Shop all</Link>
             </div>
@@ -937,11 +912,18 @@ export function Header({ immersive = false }: { immersive?: boolean }) {
                         </div>
                       ))}
                       <Link to={room.path} className="group/feature relative block min-h-[220px] overflow-hidden rounded-2xl bg-secondary">
-                        <ResilientImage
-                          src={collection.image.replace("w=1800", "w=900")}
-                          alt=""
-                          className="absolute inset-0 h-full w-full object-cover transition duration-[1200ms] group-hover/feature:scale-105"
-                        />
+                        {/* Menu photographs are fetched when the pointer or
+                            keyboard first reaches the navigation, never on
+                            pages where the menu is not opened. */}
+                        {megaWarm && (
+                          <ResilientImage
+                            src={collection.image.replace("w=1800", "w=900")}
+                            alt=""
+                            sizes="(min-width: 768px) 32vw, 1px"
+                            loading="eager"
+                            className="absolute inset-0 h-full w-full object-cover transition duration-[1200ms] group-hover/feature:scale-105"
+                          />
+                        )}
                         <span className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
                         <span className="absolute inset-x-5 bottom-5 text-white">
                           <span className="block text-[11px] font-bold uppercase tracking-[.18em] text-white/75">{collection.eyebrow}</span>
@@ -2101,16 +2083,19 @@ export function ProductGrid({
   skeletons = 8,
   className = "",
   columns = "standard",
+  wide = false,
 }: {
   products: Product[];
   pending?: boolean;
   skeletons?: number;
   className?: string;
   columns?: "standard" | "large";
+  /** Full catalogue listings use a third column on tablets. */
+  wide?: boolean;
 }) {
   const layout = columns === "large"
     ? "grid-cols-1 gap-x-5 gap-y-12 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-8 lg:gap-y-16"
-    : "grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 lg:grid-cols-4 lg:gap-x-6 lg:gap-y-14";
+    : `grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 ${wide ? "md:grid-cols-3 " : ""}lg:grid-cols-4 lg:gap-x-6 lg:gap-y-14`;
   return (
     <div className={`cc-reveal-grid grid ${layout} ${className}`} aria-busy={pending || undefined}>
       {pending
@@ -2336,24 +2321,47 @@ export function Metric({
   );
 }
 
+/**
+ * index.html paints a static copy of the welcome screen before any code has
+ * downloaded. `paintedAt` is when the visitor first saw it (milliseconds
+ * since the page started), so the application can continue the same screen
+ * and count its display time from that moment, not from when the code
+ * finished loading.
+ */
+export const welcomeScreen = (() => {
+  const fromStaticPage = typeof document !== "undefined" && Boolean(document.querySelector("[data-static-splash]"));
+  let paintedAt = typeof performance !== "undefined" ? performance.now() : 0;
+  if (fromStaticPage) {
+    try {
+      const paint = performance.getEntriesByType("paint").find((entry) => entry.name === "first-contentful-paint");
+      paintedAt = paint ? paint.startTime : 0;
+    } catch { paintedAt = 0; }
+  }
+  return { fromStaticPage, paintedAt };
+})();
+
 export function Splash() {
+  // Continue the static welcome screen's animations from where they are,
+  // rather than replaying its entrance when the application takes over.
+  const elapsed = welcomeScreen.fromStaticPage ? Math.round(performance.now() - welcomeScreen.paintedAt) : 0;
+  const delay = (base: number) => `${base - elapsed}ms`;
   return (
     <div className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-[#f4f2ee]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(207,188,161,.30),transparent_38%)]" />
       <div className="relative flex flex-col items-center text-center">
-        <span className="cc-enter-fade mb-8 text-[10px] font-bold tracking-[.3em] text-muted-foreground">
+        <span className="cc-enter-fade mb-8 text-[10px] font-bold tracking-[.3em] text-muted-foreground" style={{ animationDelay: delay(0) }}>
           COZYCRAFT FURNITURES
         </span>
-        <div className="cc-enter-pop">
+        <div className="cc-enter-pop" style={{ animationDelay: delay(0) }}>
           <Logo splash />
         </div>
         <div className="mt-8 h-px w-40 overflow-hidden rounded-full bg-[#dfd8ce]">
-          <span className="cc-progress block h-px w-full bg-[#8d7863]" style={{ animationDuration: "1.4s" }} />
+          <span className="cc-progress block h-px w-full bg-[#8d7863]" style={{ animationDuration: "1.4s", animationDelay: delay(0) }} />
         </div>
-        <p className="cc-enter-fade mt-5 text-[10px] font-bold tracking-[.26em] text-muted-foreground" style={{ animationDelay: "200ms" }}>
+        <p className="cc-enter-fade mt-5 text-[10px] font-bold tracking-[.26em] text-muted-foreground" style={{ animationDelay: delay(200) }}>
           PREPARING YOUR HOME EDIT
         </p>
-        <p className="cc-enter-fade mt-2 font-serif text-sm italic text-muted-foreground/80" style={{ animationDelay: "350ms" }}>
+        <p className="cc-enter-fade mt-2 font-serif text-sm italic text-muted-foreground/80" style={{ animationDelay: delay(350) }}>
           Thoughtful pieces, quietly gathered.
         </p>
       </div>

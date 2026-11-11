@@ -10,7 +10,6 @@ import {
 import { Link, useLocation } from "react-router-dom";
 import {
   ArrowRight,
-  Check,
   Clock3,
   CreditCard,
   LoaderCircle,
@@ -113,7 +112,7 @@ const ReturnShell = ({
       >
         {children}
       </section>
-      <footer className="border-t border-[#ddd7cd] px-5 py-4 text-center text-xs leading-5 text-[#777169] sm:px-8">
+      <footer className="border-t border-[#ddd7cd] px-5 py-4 text-center text-xs leading-5 text-[#6a645c] sm:px-8">
         Your order and reservation are stored securely. This page never relies on your bag to restore a payment.
       </footer>
     </div>
@@ -126,7 +125,7 @@ const RestoringPayment = ({ opening = false }: { opening?: boolean }) => (
       <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#282620] text-white">
         <LoaderCircle className="animate-spin" size={24} />
       </span>
-      <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
+      <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#6a645c]">
         {opening ? "Opening secure checkout" : "Restoring your payment"}
       </p>
       <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
@@ -558,7 +557,7 @@ export function PaymentReturn() {
           <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#ece7df] text-[#38352f]">
             <LockKeyhole size={24} />
           </span>
-          <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
+          <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#6a645c]">
             Account check required
           </p>
           <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
@@ -617,7 +616,7 @@ export function PaymentReturn() {
           <div className="rounded-[1.75rem] border border-[#d8d0c5] bg-white p-6 shadow-[0_20px_60px_rgba(53,45,36,.08)] sm:p-9">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
+                <p className="text-[11px] font-bold uppercase tracking-[.22em] text-[#6a645c]">
                   Payment reserved
                 </p>
                 <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
@@ -644,13 +643,13 @@ export function PaymentReturn() {
 
             <dl className="mt-7 grid gap-3 rounded-2xl bg-[#f1ede6] p-4 text-sm sm:grid-cols-2 sm:p-5">
               <div>
-                <dt className="text-xs text-[#777169]">Reserved order</dt>
+                <dt className="text-xs text-[#6a645c]">Reserved order</dt>
                 <dd className="mt-1 font-semibold">
                   {recovery.orderNumber ? `#${recovery.orderNumber}` : "Secure online order"}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-[#777169]">Reservation ends</dt>
+                <dt className="text-xs text-[#6a645c]">Reservation ends</dt>
                 <dd className="mt-1 font-semibold">
                   {new Intl.DateTimeFormat("en-PH", {
                     dateStyle: "medium",
@@ -689,7 +688,7 @@ export function PaymentReturn() {
               </Link>
             </div>
           </div>
-          <p className="mt-5 flex items-start justify-center gap-2 text-center text-xs leading-5 text-[#777169]">
+          <p className="mt-5 flex items-start justify-center gap-2 text-center text-xs leading-5 text-[#6a645c]">
             <LockKeyhole className="mt-0.5 shrink-0" size={14} />
             The countdown on this screen is for convenience; your reservation deadline is kept securely with your order, so refreshing or changing devices does not reset it.
           </p>
@@ -705,7 +704,7 @@ export function PaymentReturn() {
         <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#eee8df] text-[#6f675e]">
           {isExpired ? <Clock3 size={24} /> : <XCircle size={24} />}
         </span>
-        <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#777169]">
+        <p className="mt-7 text-[11px] font-bold uppercase tracking-[.22em] text-[#6a645c]">
           {isExpired ? "Payment window closed" : "Payment check interrupted"}
         </p>
         <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">

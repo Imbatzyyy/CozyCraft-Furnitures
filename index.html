@@ -1,17 +1,55 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-surface="store">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f4f2ee" />
     <meta name="description" content="CozyCraft Furnitures — thoughtfully made pieces for a warmer home." />
+    <!-- Open connections to the data and photography hosts while the
+         application code is still downloading. -->
+    <link rel="preconnect" href="%VITE_SUPABASE_URL%" crossorigin />
+    <link rel="preconnect" href="https://images.unsplash.com" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon-512.png" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Lets shoppers add CozyCraft to their phone's home screen. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="CozyCraft" />
     <title>CozyCraft Furnitures</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- The welcome screen, painted by the page itself so it appears at
+           once instead of after the application has downloaded. It is a
+           static copy of <Splash /> in src/app/core/index.tsx (keep the two
+           in step); the application continues it seamlessly when it starts. -->
+      <div class="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-[#f4f2ee]" data-static-splash>
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(207,188,161,.30),transparent_38%)]"></div>
+        <div class="relative flex flex-col items-center text-center">
+          <span class="cc-enter-fade mb-8 text-[10px] font-bold tracking-[.3em] text-muted-foreground">COZYCRAFT FURNITURES</span>
+          <div class="cc-enter-pop">
+            <div class="block h-36 w-72 overflow-hidden sm:h-44 sm:w-80">
+              <img
+                src="/src/assets/branding/cozycraft-logo-640.webp"
+                srcset="/src/assets/branding/cozycraft-logo-640.webp 640w, /src/assets/branding/cozycraft-logo-1280.webp 1280w"
+                sizes="(min-width: 640px) 400px, 360px"
+                width="640"
+                height="213"
+                alt="CozyCraft Furniture official logo"
+                class="h-full w-full origin-center scale-[1.25] object-contain"
+              />
+            </div>
+          </div>
+          <div class="mt-8 h-px w-40 overflow-hidden rounded-full bg-[#dfd8ce]">
+            <span class="cc-progress block h-px w-full bg-[#8d7863]" style="animation-duration: 1.4s"></span>
+          </div>
+          <p class="cc-enter-fade mt-5 text-[10px] font-bold tracking-[.26em] text-muted-foreground" style="animation-delay: 200ms">PREPARING YOUR HOME EDIT</p>
+          <p class="cc-enter-fade mt-2 font-serif text-sm italic text-muted-foreground/80" style="animation-delay: 350ms">Thoughtful pieces, quietly gathered.</p>
+        </div>
+        <p class="absolute bottom-8 text-[9px] font-semibold tracking-[.16em] text-muted-foreground/60">ESTABLISHED 2026 · VISION VENTURES</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

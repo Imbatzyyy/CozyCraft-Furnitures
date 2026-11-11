@@ -1,84 +1,30 @@
 import { sessionStore } from "@/lib/shared/browser-storage";
 import { customerAuthStorage } from "@/lib/auth/auth-persistence";
 import {
-  createContext,
-  useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
   type FormEvent,
 } from "react";
 import {
-  createBrowserRouter,
   Link,
-  RouterProvider,
   useLocation,
   useNavigate,
-  useParams,
 } from "react-router-dom";
 import {
-  Activity,
-  ArrowLeft,
   ArrowRight,
-  Archive,
-  Bell,
-  Boxes,
-  ChartNoAxesCombined,
   Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleDollarSign,
-  ClipboardList,
-  CreditCard,
-  Download,
   Eye,
   EyeOff,
   FileText,
-  Grid2X2,
-  Heart,
-  ImagePlus,
-  LayoutDashboard,
-  List,
   LockKeyhole,
-  MessageCircle,
-  LogOut,
-  Menu,
-  Minus,
-  MoreHorizontal,
-  Package,
-  PackagePlus,
-  Pencil,
-  Plus,
-  Search,
-  Settings,
   ShieldCheck,
-  ShoppingBag,
-  SlidersHorizontal,
-  Star,
-  Tag,
-  Trash2,
-  Upload,
-  UserRound,
-  Users,
-  Warehouse,
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
-  isStaffRole,
-  safeFileName,
   supabase,
-  type DbCustomerProfile,
-  type DbOrder,
-  type DbProduct,
-  type DbRole,
-  type DbSupportTicket,
 } from "@/services/supabase/client";
 import {
   isExistingAccountSignUpResult,
@@ -105,33 +51,8 @@ import {
 } from "@/lib/auth/customer-auth-destination";
 
 import {
-  Product,
-  fallbackProducts,
-  CartLine,
-  Address,
-  Store,
-  StoreContext,
-  AdminRole,
-  AdminSession,
-  AdminSessionContext,
-  useAdminSession,
-  money,
-  materialFor,
-  subcategoryFor,
   useStore,
-  Logo,
-  Header,
-  Layout,
-  ProductCard,
-  Empty,
-  ConfirmSignOut,
-  Status,
-  ManagedProduct,
-  Toast,
-  Metric,
-  Splash,
-  ShopSignInPrompt
-} from "@/app/core";
+  Logo} from "@/app/core";
 
 function CustomerPolicyDialog({
   policy,
@@ -484,7 +405,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
               </form>
             ) : view === "verify" ? (
               <div className="mt-10 rounded-3xl bg-[#eee8df] p-7">
-                <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#4a6443]">
                   <Check size={20} />
                 </span>
                 <p className="mt-6 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
@@ -501,7 +422,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                   </p>
                 )}
                 {verificationNotice && (
-                  <p className="mt-4 rounded-xl bg-[#e3ecdf] px-3 py-2 text-xs font-semibold text-[#56714f]">
+                  <p className="mt-4 rounded-xl bg-[#e3ecdf] px-3 py-2 text-xs font-semibold text-[#4a6443]">
                     {verificationNotice}
                   </p>
                 )}
@@ -562,7 +483,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
               </div>
             ) : (
               <div className="mt-10 rounded-3xl bg-[#eee8df] p-7">
-                <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#4a6443]">
                   <Check size={20} />
                 </span>
                 <p className="mt-6 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
@@ -732,7 +653,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                     type="button"
                     onClick={() => setShowPassword((visible) => !visible)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -781,7 +702,7 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
                         type="button"
                         onClick={() => setShowConfirm((visible) => !visible)}
                         aria-label={showConfirm ? "Hide confirmation password" : "Show confirmation password"}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground"
                       >
                         {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
@@ -796,8 +717,8 @@ export function Account({ mode, initialView = "auth" }: { mode: "login" | "signu
               </p>
             )}
             {mode === "login" && (
-              <label className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" checked={rememberSession} onChange={event => setRememberSession(event.target.checked)} className="accent-foreground" />
+              <label className="mt-3 flex min-h-11 w-fit cursor-pointer items-center gap-2.5 text-xs text-muted-foreground">
+                <input type="checkbox" checked={rememberSession} onChange={event => setRememberSession(event.target.checked)} className="h-[18px] w-[18px] accent-foreground" />
                 Keep me signed in
               </label>
             )}
@@ -1042,7 +963,7 @@ export function ResetPassword() {
           )}
           {status === "saved" && (
             <div className="mt-10 rounded-3xl bg-[#eee8df] p-7">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-[#e3ecdf] text-[#4a6443]">
                 <Check size={20} />
               </span>
               <p className="mt-6 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
@@ -1094,7 +1015,7 @@ export function ResetPassword() {
                       aria-label={
                         showPassword ? "Hide password" : "Show password"
                       }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-muted-foreground"
                     >
                       {showPassword ? (
                         <EyeOff size={18} />
@@ -1137,7 +1058,7 @@ export function ResetPassword() {
                           ? "Hide confirmation password"
                           : "Show confirmation password"
                       }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-muted-foreground"
                     >
                       {showConfirm ? (
                         <EyeOff size={18} />

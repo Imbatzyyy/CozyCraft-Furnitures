@@ -164,20 +164,18 @@ export function CustomersPage() {
       <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-2">
         <section className="adm-inset p-4">
           <p className="adm-eyebrow">Contact</p>
-          <dl className="mt-3 grid gap-3 text-sm">
-            <div>
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <div className="col-span-2">
               <dt className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Mail size={12} /> Email</dt>
               <dd className="mt-0.5 flex items-center gap-1 font-medium">{customer.email ? <><span className="min-w-0 truncate">{customer.email}</span><CopyButton value={customer.email} label="email" /></> : "Not provided"}</dd>
             </div>
-            <div>
+            <div className="col-span-2">
               <dt className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Phone size={12} /> Phone</dt>
               <dd className="mt-0.5 flex items-center gap-1 font-medium">{customer.phone ? <><span className="adm-num">{customer.phone}</span><CopyButton value={customer.phone} label="phone" /></> : "Not provided"}</dd>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><dt className="text-[11px] text-muted-foreground">Gender</dt><dd className="mt-0.5 font-medium">{customer.gender || "—"}</dd></div>
-              <div><dt className="text-[11px] text-muted-foreground">Birthday</dt><dd className="mt-0.5 font-medium">{customer.date_of_birth ? formatDate(`${customer.date_of_birth}T12:00:00`) : "—"}</dd></div>
-            </div>
-            <div><dt className="text-[11px] text-muted-foreground">Payment preference</dt><dd className="mt-0.5 font-medium">{customer.preferred_payment_method === "cod" ? "Cash on delivery" : customer.preferred_payment_method === "gcash" ? "GCash" : customer.preferred_payment_method === "card" ? "Card" : "—"}</dd></div>
+            <div><dt className="text-[11px] text-muted-foreground">Gender</dt><dd className="mt-0.5 font-medium">{customer.gender || "—"}</dd></div>
+            <div><dt className="text-[11px] text-muted-foreground">Birthday</dt><dd className="mt-0.5 font-medium">{customer.date_of_birth ? formatDate(`${customer.date_of_birth}T12:00:00`) : "—"}</dd></div>
+            <div className="col-span-2"><dt className="text-[11px] text-muted-foreground">Payment preference</dt><dd className="mt-0.5 font-medium">{customer.preferred_payment_method === "cod" ? "Cash on delivery" : customer.preferred_payment_method === "gcash" ? "GCash" : customer.preferred_payment_method === "card" ? "Card" : "—"}</dd></div>
           </dl>
         </section>
         <section className="adm-inset p-4">

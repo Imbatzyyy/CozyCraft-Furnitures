@@ -1,11 +1,12 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
 import { applyAdminTheme } from "@/lib/admin/admin-theme";
 import { nativePaymentReturnTarget } from "@/lib/commerce/native-payment-return";
+import { preloadHomeHero } from "@/lib/content/hero";
 import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import { DialogAccessibility } from "./components/DialogAccessibility";
 import "@fontsource-variable/fraunces/opsz.css";
-import "@fontsource-variable/inter/wght.css";
+import "./styles/fonts.css";
 import "./styles/index.css";
 
 // Storefront and admin styles are scoped by surface. RouteShell keeps this in
@@ -13,6 +14,9 @@ import "./styles/index.css";
 document.documentElement.dataset.surface = window.location.pathname.startsWith("/admin") ? "admin" : "store";
 // Admin light/dark preference is applied before first paint to avoid a flash.
 applyAdminTheme();
+
+// The home page's first photograph starts downloading alongside the code.
+preloadHomeHero();
 
 const preferredTextSize = localStore.getItem("cozycraft-text-size-v1");
 document.documentElement.style.fontSize = preferredTextSize === "large" ? "20px" : preferredTextSize === "comfortable" ? "18px" : "16px";

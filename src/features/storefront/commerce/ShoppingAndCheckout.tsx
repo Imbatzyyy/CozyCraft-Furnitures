@@ -5,92 +5,43 @@ import { useCheckoutPaymentPolicy } from "@/lib/commerce/use-checkout-payment-po
 import { reportClientError } from "@/lib/shared/client-errors";
 import { FullTracking } from './FullTracking';
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
-  type FormEvent,
+  lazy,
+  Suspense,
 } from "react";
 import { CheckoutVouchers } from "../account/CheckoutVouchers";
 import type { CircleReward } from "@/services/content/home-circle.service";
 import { voucherDiscount, voucherEligible } from "@/lib/loyalty/vouchers";
 import {
-  createBrowserRouter,
   Link,
   Navigate,
-  RouterProvider,
   useLocation,
   useNavigate,
-  useParams,
   useRouteError,
 } from "react-router-dom";
 import {
-  Activity,
-  ArrowLeft,
   ArrowRight,
-  Archive,
   Banknote,
   Wallet,
-  Bell,
-  Boxes,
-  ChartNoAxesCombined,
   Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleDollarSign,
-  ClipboardList,
   CreditCard,
-  Download,
-  Eye,
-  EyeOff,
-  FileText,
-  Grid2X2,
   Heart,
-  ImagePlus,
-  LayoutDashboard,
-  List,
   LockKeyhole,
-  MessageCircle,
-  LogOut,
-  Menu,
   Minus,
-  MoreHorizontal,
-  Package,
-  PackagePlus,
-  Pencil,
   Plus,
-  Search,
-  Settings,
   ShieldCheck,
   ShoppingBag,
-  SlidersHorizontal,
-  Star,
-  Tag,
   Trash2,
-  Upload,
-  UserRound,
-  Users,
-  Warehouse,
-  X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
 import { collapseElement, useInView } from "@/components/storefront/motion";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
-  isStaffRole,
-  safeFileName,
   supabase,
-  type DbCustomerProfile,
   type DbOrder,
-  type DbProduct,
-  type DbRole,
-  type DbSupportTicket,
 } from "@/services/supabase/client";
 import {
   validateCheckoutAmount,
@@ -116,37 +67,23 @@ import { isCodOrderPlacementInFlight } from "@/lib/commerce/checkout";
 import { findPendingPaymentRecovery } from "@/services/commerce/payment-recovery.service";
 
 import {
-  Product,
-  fallbackProducts,
-  CartLine,
-  Address,
-  Store,
-  StoreContext,
-  AdminRole,
-  AdminSession,
-  AdminSessionContext,
-  useAdminSession,
   money,
-  materialFor,
-  subcategoryFor,
   useStore,
-  Logo,
-  Header,
   Layout,
-  ProductCard,
   ProductGrid,
   Empty,
-  ConfirmSignOut,
-  Status,
-  ManagedProduct,
-  Toast,
-  Metric,
-  Splash,
-  ShopSignInPrompt
-} from "@/app/core";
+  Toast} from "@/app/core";
 
-import { Account } from "@/features/storefront/authentication/CustomerAuth";
-import { AddressManager } from "@/features/storefront/account/CustomerAccount";
+// The sign-in screen and the address editor live in the (large) account
+// bundles. A shopper opening their bag only downloads them if they are needed.
+const LazyAccount = lazy(() => import("@/features/storefront/authentication/CustomerAuth").then((module) => ({ default: module.Account })));
+const LazyAddressManager = lazy(() => import("@/features/storefront/account/CustomerAccount").then((module) => ({ default: module.AddressManager })));
+function Account(props: { mode: "login" | "signup" }) {
+  return <Suspense fallback={<div className="min-h-[100dvh] bg-background" role="status" aria-label="Loading sign in" />}><LazyAccount {...props} /></Suspense>;
+}
+function AddressManager(props: { notify: (message: string) => void }) {
+  return <Suspense fallback={<p className="text-sm text-muted-foreground" role="status">Loading address form…</p>}><LazyAddressManager {...props} /></Suspense>;
+}
 
 function usePendingPaymentRedirect({
   enabled,
@@ -548,7 +485,7 @@ export function Cart() {
                       <button
                         onClick={() => void removeLine(item.id, item.name, quantity, isSelected)}
                         disabled={removing === item.id}
-                        className="inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
                       >
                         <Trash2 size={13} />
                         Remove
@@ -1032,7 +969,7 @@ export function Checkout() {
               address, and available stock. Your order confirmation will appear
               here automatically.
             </p>
-            <div className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-[#e7efe3] px-4 py-3 text-xs font-semibold text-[#56714f]">
+            <div className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-[#e7efe3] px-4 py-3 text-xs font-semibold text-[#4a6443]">
               <ShieldCheck size={16} />
               Your bag will update only after the order is safely recorded.
             </div>
@@ -1076,7 +1013,7 @@ export function Checkout() {
                     className={`mx-auto grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold ${
                       paymentHandoff === "redirecting" || index < 2
                         ? "bg-[#292622] text-white"
-                        : "bg-[#ece7df] text-[#777169]"
+                        : "bg-[#ece7df] text-[#6a645c]"
                     }`}
                   >
                     {paymentHandoff === "redirecting" || index < 2 ? (
@@ -1091,7 +1028,7 @@ export function Checkout() {
                 </div>
               ))}
             </div>
-            <div className="mt-7 flex items-center justify-center gap-2 rounded-xl bg-[#e7efe3] px-4 py-3 text-xs font-semibold text-[#56714f]">
+            <div className="mt-7 flex items-center justify-center gap-2 rounded-xl bg-[#e7efe3] px-4 py-3 text-xs font-semibold text-[#4a6443]">
               <ShieldCheck size={16} />
               Your payment details are entered only on PayMongo.
             </div>
@@ -1106,7 +1043,7 @@ export function Checkout() {
         <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-[760px] items-center px-5 py-14">
           <section className="w-full overflow-hidden rounded-[2rem] border border-border bg-card text-center shadow-[0_18px_55px_rgba(35,31,27,.08)]">
             <div className="bg-[#292622] px-7 py-9 text-[#f5f1e9]">
-              <span className="cc-ring relative mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e3ecdf] text-[#56714f]">
+              <span className="cc-ring relative mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#e3ecdf] text-[#4a6443]">
                 <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path className="cc-draw" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
               </span>
               <p className="mt-5 text-[11px] font-bold tracking-[.18em] text-white/60">
@@ -1265,7 +1202,7 @@ export function Checkout() {
             </p>
             <p className="mt-3 text-sm"><Link to="/refunds" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">Read returns & refund policy (opens a new tab)</Link></p>
           </div>
-          <span className="inline-flex items-center gap-2 rounded-full bg-[#e3ecdf] px-3.5 py-2 text-xs font-semibold text-[#56714f]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[#e3ecdf] px-3.5 py-2 text-xs font-semibold text-[#4a6443]">
             <LockKeyhole size={13} /> Secure checkout
           </span>
         </div>
@@ -1305,7 +1242,7 @@ export function Checkout() {
                       <div className="flex gap-2">
                         <b className="text-sm">{item.label}</b>
                         {item.primary && (
-                          <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[10px] font-bold text-[#56714f]">
+                          <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[10px] font-bold text-[#4a6443]">
                             DEFAULT
                           </span>
                         )}
@@ -1361,13 +1298,13 @@ export function Checkout() {
                   </div>
                   {deliveryArea && (
                     <div className="rounded-xl bg-[#e3ecdf] p-4 sm:col-span-2">
-                      <p className="text-[11px] font-bold tracking-[.1em] text-[#56714f]">
+                      <p className="text-[11px] font-bold tracking-[.1em] text-[#4a6443]">
                         DELIVERY PROMISE · {deliveryArea.name.toUpperCase()}
                       </p>
                       <p className="mt-2 text-sm font-semibold">
                         {deliveryArea.lead_time_min_days}–{deliveryArea.lead_time_max_days} days · {deliveryArea.assembly_available ? "Assembly available" : "Assembly not included"}
                       </p>
-                      <p className="mt-1 text-xs text-[#56714f]">
+                      <p className="mt-1 text-xs text-[#4a6443]">
                         Free delivery from {money(deliveryArea.free_delivery_minimum ?? 0)}; otherwise {money(deliveryArea.delivery_fee)}.
                       </p>
                     </div>
@@ -1467,7 +1404,7 @@ export function Checkout() {
                     Add {money(deliveryArea.free_delivery_minimum - subtotal)} more for free delivery to {deliveryArea.name}.
                   </p>
                 )}
-                {discount>0 && <p className="flex justify-between text-[#56714f]"><span>Home Circle voucher</span><span>−{money(discount)}</span></p>}
+                {discount>0 && <p className="flex justify-between text-[#4a6443]"><span>Home Circle voucher</span><span>−{money(discount)}</span></p>}
                 <p className="mt-2 flex justify-between text-base font-semibold">
                   <span>Total</span>
                   <span>{money(total)}</span>
@@ -1597,7 +1534,7 @@ export function Checkout() {
                       : `Pay securely · ${money(total)}`}
               </button>
               {notice && (
-                <div className="mt-4 rounded-xl bg-[#e3ecdf] p-3 text-xs font-semibold text-[#56714f]">
+                <div className="mt-4 rounded-xl bg-[#e3ecdf] p-3 text-xs font-semibold text-[#4a6443]">
                   {notice}
                 </div>
               )}

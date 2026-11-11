@@ -1,5 +1,6 @@
 import { supabase } from "@/services/supabase/client";
 import { localStore, storageKeys } from "@/lib/shared/browser-storage";
+import { saveHomepageBannerCache } from "@/lib/content/hero";
 
 export type ContentPage = {
   slug: string;
@@ -78,6 +79,7 @@ export async function getHomepageBanners(fresh = false) {
     .order("sort_order");
   if (error) throw error;
   bannerCache = (data ?? []) as HomepageBanner[];
+  saveHomepageBannerCache(bannerCache);
   return bannerCache;
 }
 

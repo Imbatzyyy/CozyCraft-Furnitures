@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { productImageSources } from "@/lib/catalog/responsive-image";
+import { editorialImageSources, productImageSources } from "@/lib/catalog/responsive-image";
 
 const ERROR_IMAGE_SOURCE =
   "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODgiIGhlaWdodD0iODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgc3Ryb2tlPSIjMDAwIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBvcGFjaXR5PSIuMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIzLjciPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9IjU2IiBoZWlnaHQ9IjU2IiByeD0iNiIvPjxwYXRoIGQ9Im0xNiA1OCAxNi0xOCAzMiAzMiIvPjxjaXJjbGUgY3g9IjUzIiBjeT0iMzUiIHI9IjciLz48L3N2Zz4KCg==";
@@ -37,8 +37,13 @@ export function ResilientImage(
     optimize = true,
     ...rest
   } = props;
-  const responsive = productImageSources(src, optimize && import.meta.env.PROD && !originalFallback && !srcSet &&
+  const productSources = productImageSources(src, optimize && import.meta.env.PROD && !originalFallback && !srcSet &&
     typeof window !== "undefined" && !["localhost", "127.0.0.1"].includes(window.location.hostname));
+  // Editorial photography: smaller renditions of the same picture for small
+  // screens. Without an explicit `sizes` the browser assumes full width, so
+  // this can only ever reduce what is downloaded, never soften an image.
+  const editorialSources = productSources || !optimize || originalFallback || srcSet ? null : editorialImageSources(src);
+  const responsive = productSources ?? editorialSources;
 
   if (didError) {
     return (
@@ -64,7 +69,7 @@ export function ResilientImage(
     <img
       src={responsive?.src ?? src}
       srcSet={responsive?.srcSet ?? (originalFallback ? undefined : srcSet)}
-      sizes={sizes ?? (responsive ? "(max-width: 768px) 100vw, 60vw" : undefined)}
+      sizes={sizes ?? (productSources ? "(max-width: 768px) 100vw, 60vw" : editorialSources ? "100vw" : undefined)}
       alt={alt}
       className={`cc-img ${className ?? ""}`}
       style={style}

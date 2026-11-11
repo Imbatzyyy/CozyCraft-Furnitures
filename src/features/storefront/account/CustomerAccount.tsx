@@ -1,4 +1,4 @@
-import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { localStore } from "@/lib/shared/browser-storage";
 import { DataPagination } from "@/components/DataPagination";
 import { RelatedOrderSelect } from "./RelatedOrderSelect";
 import { usePendingEmail } from "@/lib/auth/pending-email";
@@ -8,15 +8,12 @@ import { PaymentPreferences } from './PaymentPreferences';
 import { paginateDevices } from '@/lib/auth/device-pagination';
 import { joinRecipientName, splitRecipientName } from './recipient-name';
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -25,111 +22,55 @@ import { ProfileOverview } from "./ProfileOverview";
 import { AccountOverview } from "./AccountOverview";
 import { SlidingIndicator, useSlidingIndicator } from "@/components/storefront/SlidingIndicator";
 import {
-  createBrowserRouter,
   Link,
-  RouterProvider,
   useLocation,
   useNavigate,
-  useParams,
 } from "react-router-dom";
 import {
-  Activity,
-  ArrowLeft,
   ArrowRight,
   LayoutGrid,
   MapPin,
   Sparkles,
   Archive,
-  Bell,
-  Boxes,
-  ChartNoAxesCombined,
   Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleDollarSign,
   CircleSlash2,
-  ClipboardList,
   Clock,
   CreditCard,
   Download,
-  Eye,
-  EyeOff,
   FileText,
-  Grid2X2,
-  Heart,
   ImagePlus,
-  LayoutDashboard,
-  List,
   LockKeyhole,
   MessageCircle,
   MonitorSmartphone,
   LogOut,
-  Menu,
-  Minus,
-  MoreHorizontal,
   Package,
-  PackagePlus,
   Pencil,
   Plus,
-  Search,
-  Settings,
   ShieldCheck,
   ShoppingBag,
-  SlidersHorizontal,
   Star,
-  Tag,
   Trash2,
   Upload,
   UserRound,
-  Users,
-  Warehouse,
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
-  isStaffRole,
   safeFileName,
   supabase,
   type DbBillingProfile,
-  type DbCustomerProfile,
   type DbOrder,
-  type DbProduct,
-  type DbRole,
   type DbSupportTicket,
 } from "@/services/supabase/client";
 import { optimizeImageUpload } from "@/lib/shared/image-upload";
 
 import {
-  Product,
-  fallbackProducts,
-  CartLine,
   Address,
-  Store,
-  StoreContext,
-  AdminRole,
-  AdminSession,
-  AdminSessionContext,
-  useAdminSession,
   money,
-  materialFor,
-  subcategoryFor,
   useStore,
-  Logo,
-  Header,
   Layout,
-  ProductCard,
-  Empty,
   ConfirmSignOut,
-  Status,
-  ManagedProduct,
-  Toast,
-  Metric,
-  Splash,
-  ShopSignInPrompt
-} from "@/app/core";
+  Status} from "@/app/core";
 
 import { Account } from "@/features/storefront/authentication/CustomerAuth";
 import { isCancellationWindowOpen, isReturnWindowOpen } from "@/lib/commerce/return-workflow";
@@ -265,9 +206,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
     deleteAddress,
     setDefaultAddress,
     user,
-    userId,
     userEmail,
-    products,
   } = useStore();
   const blank: Address = {
     id: "",
@@ -475,7 +414,7 @@ export function AddressManager({ notify }: { notify: (message: string) => void }
               <div className="flex gap-2">
                 <b className="text-sm">{address.label}</b>
                 {address.primary && (
-                  <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[11px] font-bold text-[#56714f]">
+                  <span className="rounded-full bg-[#e3ecdf] px-2 py-1 text-[11px] font-bold text-[#4a6443]">
                     DEFAULT
                   </span>
                 )}
@@ -2021,7 +1960,7 @@ function CustomerProfile() {
                     setPhotoDialog(true);
                   }}
                   aria-label="Change profile picture"
-                  className="absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full bg-card text-foreground shadow-sm transition hover:scale-105"
+                  className="cc-hit absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full bg-card text-foreground shadow-sm transition hover:scale-105"
                 >
                   <Plus size={13} />
                 </button>
@@ -2210,7 +2149,7 @@ function CustomerProfile() {
                       <div className="flex items-center justify-between gap-3">
                         <label htmlFor="customer-phone">Phone number</label>
                         {draftPhoneIsVerified ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e3ecdf] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#56714f]">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e3ecdf] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#4a6443]">
                             <ShieldCheck size={12} /> Verified
                           </span>
                         ) : phone.trim() ? (
@@ -2943,7 +2882,7 @@ function CustomerProfile() {
                           <dl className="mt-3 grid gap-1.5 text-xs">
                             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Subtotal</dt><dd>{money(Number(selectedOrder.subtotal))}</dd></div>
                             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Delivery</dt><dd>{Number(selectedOrder.delivery_fee) > 0 ? money(Number(selectedOrder.delivery_fee)) : "Free"}</dd></div>
-                            {Number(selectedOrder.reward_discount ?? 0) > 0 && <div className="flex justify-between gap-3 text-[#56714f]"><dt>Home Circle reward</dt><dd>-{money(Number(selectedOrder.reward_discount))}</dd></div>}
+                            {Number(selectedOrder.reward_discount ?? 0) > 0 && <div className="flex justify-between gap-3 text-[#4a6443]"><dt>Home Circle reward</dt><dd>-{money(Number(selectedOrder.reward_discount))}</dd></div>}
                             <div className="flex justify-between gap-3 border-t border-border pt-2 text-sm font-semibold"><dt>Total</dt><dd>{money(Number(selectedOrder.total))}</dd></div>
                           </dl>
                         </div>
@@ -3413,7 +3352,7 @@ function CustomerProfile() {
           className="fixed inset-0 z-[130] grid place-items-center bg-black/50 p-5 backdrop-blur-sm"
         >
           <section className="w-full max-w-md rounded-3xl border border-border bg-card p-7 shadow-2xl">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e3ecdf] text-[#56714f]">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e3ecdf] text-[#4a6443]">
               <Pencil size={18} />
             </span>
             <p className="mt-5 text-[11px] font-bold tracking-[.16em] text-muted-foreground">
@@ -3466,7 +3405,7 @@ function CustomerProfile() {
               >
                 <X size={18} />
               </button>
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#e3ecdf] text-[#56714f]">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#e3ecdf] text-[#4a6443]">
                 <ShieldCheck size={21} />
               </span>
               <p className="mt-5 text-[11px] font-bold tracking-[.18em] text-white/60">

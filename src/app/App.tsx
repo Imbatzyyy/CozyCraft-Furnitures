@@ -12,89 +12,34 @@ import { PaymentEmailDialog } from '@/features/storefront/commerce/PaymentEmailD
 import { requestPaymentEmailVerification, type PaymentEmailChallenge, type PaymentEmailAuthorization } from '@/features/storefront/commerce/payment-email-verification';
 import '@/features/storefront/commerce/payment-email-dialog.css';
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
   type FormEvent,
 } from "react";
 import {
   createBrowserRouter,
-  Link,
   Outlet,
   RouterProvider,
   ScrollRestoration,
   useRouteError,
   useLocation,
-  useNavigate,
-  useParams,
 } from "react-router-dom";
 import {
-  Activity,
-  ArrowLeft,
-  ArrowRight,
   Archive,
-  Bell,
-  Boxes,
-  ChartNoAxesCombined,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleDollarSign,
-  ClipboardList,
-  CreditCard,
-  Download,
-  Eye,
-  EyeOff,
-  FileText,
-  Grid2X2,
   Heart,
-  ImagePlus,
-  LayoutDashboard,
-  List,
-  LockKeyhole,
-  MessageCircle,
-  LogOut,
-  Menu,
-  Minus,
-  MoreHorizontal,
-  Package,
-  PackagePlus,
-  Pencil,
-  Plus,
-  Search,
-  Settings,
-  ShieldCheck,
   ShoppingBag,
-  SlidersHorizontal,
-  Star,
-  Tag,
-  Trash2,
-  Upload,
   UserRound,
-  Users,
-  Warehouse,
-  X,
 } from "lucide-react";
-import { ResilientImage } from "@/components/media/ResilientImage";
 import { prefersReducedMotion } from "@/components/storefront/motion";
 import { adminTitleForPath } from "@/lib/admin/admin-titles";
 import { defaultTicketFilter, ticketFilterStatuses, type TicketFilter } from "@/lib/admin/ticket-filter";
 import { titleForPath } from "@/components/storefront/page-meta";
-import {
-  orderRealtimeTarget,
-  type OrderRealtimeChange,
-} from "@/lib/commerce/realtime-orders";
 import { optimizeImageUpload } from "@/lib/shared/image-upload";
-import { notifyAdminDataChanged, usesPagedAdminOrders } from "@/lib/admin/workspace-events";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { notifyAdminDataChanged } from "@/lib/admin/workspace-events";
 import {
   adminSupabase,
   isStaffRole,
@@ -134,6 +79,7 @@ import {
   type Product,
   ShopSignInPrompt,
   Splash,
+  welcomeScreen,
   type Store,
   StoreContext,
   useStore,
@@ -164,6 +110,10 @@ import {
 } from "@/lib/shared/avatar-url";
 
 const splashSessionKey = "cozycraft-welcome-seen";
+const WELCOME_SCREEN_MS = 1500;
+/** How much of the welcome screen's display time is still left, in ms. */
+const welcomeScreenRemaining = () =>
+  Math.max(0, WELCOME_SCREEN_MS - (performance.now() - welcomeScreen.paintedAt));
 const readSessionItem = (key: string) => {
   try {
     return sessionStore.getItem(key);
@@ -209,10 +159,23 @@ function App() {
     [],
   );
   const portalSupabase = adminPortal ? adminSupabase : supabase;
-  const [splash, setSplash] = useState(
-    () => readSessionItem(splashSessionKey) !== "1",
-  );
-  const [products, setProducts] = useState<Product[]>(() => !adminPortal && isOffline() ? readOfflineCatalog() : fallbackProducts);
+  // The welcome screen is on the visitor's screen from the page's very first
+  // paint (index.html), so its 1.5 seconds are counted from then. On a slow
+  // connection it may already have had its time when the application starts.
+  const [splash, setSplash] = useState(() => {
+    if (readSessionItem(splashSessionKey) === "1") return false;
+    if (welcomeScreenRemaining() > 0) return true;
+    writeSessionItem(splashSessionKey, "1");
+    return false;
+  });
+  // Shoppers see the catalogue saved on their last visit at once; the live
+  // catalogue replaces it as soon as it arrives. Prices and stock are always
+  // re-checked by the server at checkout, never trusted from this copy.
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (adminPortal) return fallbackProducts;
+    const saved = readOfflineCatalog();
+    return saved.length || isOffline() ? saved : fallbackProducts;
+  });
   const [catalogReady, setCatalogReady] = useState(false);
   const [catalogFailed, setCatalogFailed] = useState(false);
   const [storeSettings, setStoreSettings] = useState<PublicStoreSettings>(
@@ -1309,7 +1272,7 @@ function App() {
       ? window.setTimeout(() => {
           writeSessionItem(splashSessionKey, "1");
           setSplash(false);
-        }, 1500)
+        }, welcomeScreenRemaining())
       : undefined;
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);
@@ -2304,6 +2267,9 @@ function App() {
         }}
       >
         {!splash && <CookieConsent />}
+        {/* While the welcome screen shows, the page's code, catalogue and
+            first photograph are already downloading (see main.tsx), so the
+            page appears complete as soon as the welcome screen lifts. */}
         {splash ? <Splash /> : <RouterProvider router={router} />}
         {!splash && <UsernameSetupGate />}
         {shopPrompt && (
@@ -2555,6 +2521,7 @@ const adminWorkspaceRoutes = [
   { path: "/admin/activity-logs", lazy: () => adminOperationsRoute("ActivityLogsPage") },
   { path: "/admin/support", lazy: () => adminOperationsRoute("SupportPage") },
   { path: "/admin/settings", lazy: () => adminTeamRoute("StoreSettingsPage") },
+  { path: "/admin/*", lazy: () => adminShellRoute("AdminNotFound") },
 ].map((route) => ({ ...route, errorElement: <RouteErrorBoundary /> }));
 
 const routes = [

@@ -24,7 +24,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
+import cozyCraftLogo from "@/assets/branding/cozycraft-logo-1280.webp";
 import { ResilientImage } from "@/components/media/ResilientImage";
 import { CommerceExportDialog } from "@/components/admin/CommerceExportDialog";
 import { filtersFromOrderDesk } from "@/lib/admin/commerce-report";
@@ -663,7 +663,7 @@ export function OrdersWorkspacePage() {
           <>
             <button type="button" onClick={() => setExportOpen(true)} disabled={!workspaceReady} className="adm-btn adm-btn-primary"><Download size={14} /> Export report</button>
             <button type="button" onClick={() => { queue.reload(); void refreshOrders(); }} className="adm-btn" aria-label="Refresh orders"><RefreshCw size={14} className={queue.loading ? "animate-spin" : ""} /> <span className="hidden sm:inline">Refresh</span></button>
-            {selected && <button type="button" onClick={() => print([selected])} className="adm-btn"><Printer size={14} /> <span className="hidden sm:inline">Print packing list</span></button>}
+            {selected && <button type="button" onClick={() => print([selected])} className="adm-btn" aria-label="Print packing list"><Printer size={14} aria-hidden="true" /> <span className="hidden sm:inline">Print packing list</span></button>}
           </>
         }
       >

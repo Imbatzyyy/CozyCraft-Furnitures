@@ -1,4 +1,3 @@
-import React from 'react';
 import {renderToString} from 'react-dom/server';
 import {MemoryRouter} from 'react-router-dom';
 import {describe,it,expect} from 'vitest';

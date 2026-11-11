@@ -28,7 +28,7 @@ type ReviewFilter = "all" | "visible" | "hidden" | "photos";
 
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
-    <span className="flex gap-0.5 text-[#b0835a]" aria-label={`${rating} out of 5 stars`}>
+    <span className="flex gap-0.5 text-[#b0835a]" role="img" aria-label={`${rating} out of 5 stars`}>
       {Array.from({ length: 5 }, (_, index) => <Star key={index} size={size} fill={index < Math.round(rating) ? "currentColor" : "none"} strokeWidth={1.8} />)}
     </span>
   );

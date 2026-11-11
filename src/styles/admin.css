@@ -18,7 +18,7 @@
     --adm-success-soft: #e3ecdf;
     --adm-success-ink: #4f6a48;
     --adm-warning-soft: #f3e5d4;
-    --adm-warning-ink: #8f5d40;
+    --adm-warning-ink: #825238;
     --adm-danger-soft: #f5dfda;
     --adm-danger-ink: #9a4f46;
     --adm-info-soft: #e1e8ee;
@@ -298,3 +298,7 @@
     border-top-width: 1px;
   }
 }
+
+/* Selected rows sit on a lighter surface than the page in dark mode. Lift
+   their secondary text so times, emails and counts stay readable (AA). */
+:root[data-surface="admin"][data-admin-theme="dark"] :is([aria-current="true"], [data-selected="true"], .bg-brand\/25) { --muted-foreground: #c8c0b6; }

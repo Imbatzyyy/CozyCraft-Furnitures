@@ -393,7 +393,7 @@ export function MemberTierMonitoringPage() {
           <article className="adm-card p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[.15em] text-muted-foreground">POINT HISTORY</p><h3 className="mt-1 text-xl font-semibold">Recent activity</h3></div><Activity size={19} className="text-muted-foreground" /></div>
             {detailsLoading ? <div className="mt-5 h-40 animate-pulse rounded-2xl bg-secondary" /> : transactions.length ? (
-              <div className="mt-4 max-h-[360px] space-y-1 overflow-y-auto pr-1">
+              <div className="mt-4 max-h-[360px] space-y-1 overflow-y-auto pr-1" tabIndex={0} role="group" aria-label="Point history">
                 {transactions.map((transaction) => (
                   <div key={transaction.id} className="flex items-start gap-3 rounded-2xl p-3 transition hover:bg-secondary/60">
                     <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl ${transaction.points > 0 ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink"}`}>{transaction.points > 0 ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}</span>

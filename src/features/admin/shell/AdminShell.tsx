@@ -58,7 +58,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
+import cozyCraftLogo from "@/assets/branding/cozycraft-logo-640.webp";
 import { isStaffRole, adminSupabase as supabase } from "@/services/supabase/client";
 import { adminPathsForRole, canAccessAdminPath } from "@/lib/admin/access";
 import { signInForPortal } from "@/services/auth/auth.service";
@@ -84,6 +84,9 @@ function AdminWordmark({ light = false, className = "h-12 w-32" }: { light?: boo
     <span className={`block overflow-hidden ${className}`}>
       <ResilientImage
         src={cozyCraftLogo}
+        width={640}
+        height={213}
+        loading="eager"
         alt="CozyCraft Furniture"
         className={`h-full w-full origin-center scale-[1.34] object-contain ${light ? "brightness-0 invert" : "dark-invert"}`}
       />
@@ -944,7 +947,10 @@ export function AdminLayout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [allowedPaths, nav]);
 
-  const canAccess = canAccessAdminPath(role, loc.pathname, allAdminPaths);
+  // An address that is not an admin page at all is a missing page (the 404
+  // screen), not a permissions problem. Only real pages can be "restricted".
+  const isAdminPage = allAdminPaths.some((path) => loc.pathname === path || (path !== "/admin" && loc.pathname.startsWith(`${path}/`)));
+  const canAccess = !isAdminPage || canAccessAdminPath(role, loc.pathname, allAdminPaths);
   if (!authReady || (user && !databaseRole)) return <AdminBoot label="Checking secure access…" />;
   if (!isStaffRole(databaseRole)) {
     return (
@@ -1152,6 +1158,26 @@ export function AdminShell({ children }: { children: ReactNode; title?: string }
   return <>{children}</>;
 }
 
+/** A mistyped admin address stays inside the workspace, with admin
+ *  destinations, instead of showing the shop's "page not found". */
+export function AdminNotFound() {
+  return (
+    <AdminShell title="Page not found">
+      <section className="adm-card adm-swap mx-auto mt-4 max-w-xl px-6 py-12 text-center sm:px-10">
+        <p className="adm-eyebrow">Error 404</p>
+        <h1 className="mt-3 font-serif text-[2rem] leading-tight">This admin page doesn’t exist.</h1>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
+          The address may be mistyped, or the page may have moved. Nothing in the store was changed.
+        </p>
+        <div className="mt-7 flex flex-wrap justify-center gap-2">
+          <Link to="/admin" className="adm-btn adm-btn-primary">Go to dashboard</Link>
+          <Link to="/admin/orders" className="adm-btn">Open orders</Link>
+        </div>
+      </section>
+    </AdminShell>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Notifications                                                       */
 /* ------------------------------------------------------------------ */
@@ -1183,17 +1209,23 @@ export function NotificationCenter() {
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      // Hand keyboard focus back to the bell that opened the panel.
+      rootRef.current?.querySelector<HTMLElement>("button")?.focus();
     };
     const onPointer = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node) && !(event.target as HTMLElement)?.closest?.("[data-notification-panel]")) setOpen(false);
     };
+    // Keyboard and screen-reader users land inside the panel when it opens.
+    const focusTimer = window.setTimeout(() => document.querySelector<HTMLElement>("[data-notification-panel]")?.focus(), 60);
     window.addEventListener("keydown", closeOnEscape);
     document.addEventListener("pointerdown", onPointer);
     const mobile = window.matchMedia?.("(max-width: 639px)").matches;
     const previousOverflow = document.body.style.overflow;
     if (mobile) document.body.style.overflow = "hidden";
     return () => {
+      window.clearTimeout(focusTimer);
       window.removeEventListener("keydown", closeOnEscape);
       document.removeEventListener("pointerdown", onPointer);
       if (mobile) document.body.style.overflow = previousOverflow;
@@ -1280,9 +1312,10 @@ export function NotificationCenter() {
             <div
               data-notification-panel=""
               role="dialog"
+              tabIndex={-1}
               aria-label="Administrator notifications"
               data-state={state}
-              className="cc-popover fixed inset-x-3 bottom-3 top-[64px] z-[90] flex min-h-0 origin-top-right flex-col overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-[var(--adm-shadow-pop)] sm:inset-x-auto sm:bottom-auto sm:right-5 sm:top-[72px] sm:max-h-[min(34rem,calc(100dvh-6rem))] sm:w-[380px] lg:right-8"
+              className="cc-popover outline-none fixed inset-x-3 bottom-3 top-[64px] z-[90] flex min-h-0 origin-top-right flex-col overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-[var(--adm-shadow-pop)] sm:inset-x-auto sm:bottom-auto sm:right-5 sm:top-[72px] sm:max-h-[min(34rem,calc(100dvh-6rem))] sm:w-[380px] lg:right-8"
             >
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
                 <div>

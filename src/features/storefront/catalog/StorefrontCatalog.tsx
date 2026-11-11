@@ -1,87 +1,58 @@
-import { localStore } from "@/lib/shared/browser-storage";
+import { localStore, sessionStore } from "@/lib/shared/browser-storage";
 import { catalogPopularityAvailable, getCatalogPopularity, recordProductVisit, subscribeCatalogPopularity } from "@/services/catalog/popularity.service";
 import { DataPagination } from "@/components/DataPagination";
 import { createRefreshScheduler } from "@/lib/admin/refresh-scheduler";
 import { watchVisibleRecovery } from "@/lib/shared/visible-recovery";
 import { withReadDeadline } from "@/lib/shared/read-deadline";
 import {
-  createContext,
-  useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  createBrowserRouter,
   Link,
-  RouterProvider,
   useLocation,
   useNavigate,
+  useNavigationType,
   useParams,
 } from "react-router-dom";
 import {
-  Activity,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
-  Archive,
   Bell,
-  Boxes,
-  ChartNoAxesCombined,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleDollarSign,
-  ClipboardList,
   Clock3,
-  CreditCard,
-  Download,
-  Eye,
   EyeOff,
   FileText,
   Grid2X2,
   Heart,
   HelpCircle,
-  ImagePlus,
-  LayoutDashboard,
-  List,
   LockKeyhole,
   Mail,
   MapPin,
   MessageCircle,
-  LogOut,
-  Menu,
   Minus,
-  MoreHorizontal,
   Package,
-  PackagePlus,
-  Pencil,
   Plus,
   Search,
   Scale,
   Share2,
   Ruler,
   ZoomIn,
-  Settings,
   ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
   Square,
   RotateCcw,
   Star,
-  Tag,
   Truck,
-  Trash2,
-  Upload,
-  UserRound,
-  Users,
-  Warehouse,
   X,
 } from "lucide-react";
 import { ResilientImage } from "@/components/media/ResilientImage";
@@ -97,17 +68,8 @@ import {
   matchesCatalogSubcategory,
   rankCatalogSearch,
 } from "@/lib/catalog/discovery";
-import cozyCraftLogo from "@/assets/branding/cozycraft-logo.png";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
-  isStaffRole,
-  safeFileName,
   supabase,
-  type DbCustomerProfile,
-  type DbOrder,
-  type DbProduct,
-  type DbRole,
-  type DbSupportTicket,
 } from "@/services/supabase/client";
 import {
   parseDimensionSpecs,
@@ -128,6 +90,14 @@ import {
   type ContentPage,
   type HomepageBanner,
 } from "@/services/content/content.service";
+import { HERO_FALLBACK_IMAGE, heroImageSources, isPhonePortrait, readHomepageBannerCache } from "@/lib/content/hero";
+import teamAngela from "@/assets/team/angela-faith-suba.webp";
+import teamHydee from "@/assets/team/hydee-mae-sumalinog.webp";
+import teamJacob from "@/assets/team/jacob-christopher-canete.webp";
+import teamJoylyn from "@/assets/team/joylyn-campuso.webp";
+import teamPrince from "@/assets/team/prince-balane.webp";
+import { ShopTheRoom } from "./ShopTheRoom";
+import { MonthlyGuide } from "@/components/storefront/MonthlyGuide";
 import {
   COMPARE_CHANGE_EVENT,
   readComparedProductIds,
@@ -159,34 +129,13 @@ import { usePageTitle } from "@/components/storefront/page-meta";
 
 import {
   Product,
-  fallbackProducts,
-  CartLine,
-  Address,
-  Store,
-  StoreContext,
-  AdminRole,
-  AdminSession,
-  AdminSessionContext,
-  useAdminSession,
   money,
   materialFor,
   subcategoryFor,
   useStore,
-  Logo,
-  Header,
   Layout,
-  ProductCard,
   ProductGrid,
-  ProductCardSkeleton,
-  Empty,
-  ConfirmSignOut,
-  Status,
-  ManagedProduct,
-  Toast,
-  Metric,
-  Splash,
-  ShopSignInPrompt
-} from "@/app/core";
+  Empty} from "@/app/core";
 
 
 type HomeReview = {
@@ -293,8 +242,7 @@ export function Home() {
       eyebrow: "THE 2026 COLLECTION",
       title: "Furniture that makes home feel complete.",
       copy: "Considered pieces for the rooms that carry your everyday rituals.",
-      image:
-        "https://images.unsplash.com/photo-1724582586529-62622e50c0b3?auto=format&fit=crop&w=1800&q=88",
+      image: HERO_FALLBACK_IMAGE,
       action: "Shop the collection",
     },
     {
@@ -316,7 +264,9 @@ export function Home() {
       path: "/new-arrivals",
     },
   ];
-  const [managedSlides, setManagedSlides] = useState<HomepageBanner[]>([]);
+  // A returning visitor sees the banners from their last visit straight away;
+  // the live list replaces them as soon as it arrives.
+  const [managedSlides, setManagedSlides] = useState<HomepageBanner[]>(() => readHomepageBannerCache());
   useEffect(() => {
     const load = () => {
       void getHomepageBanners(true)
@@ -350,6 +300,24 @@ export function Home() {
   const touchStart = useRef<number | null>(null);
   const slideDuration = 7000;
   const activeIndex = active % Math.max(1, slides.length);
+  // Phones get a tall crop of each photograph instead of a desktop-wide file.
+  const [phonePortrait, setPhonePortrait] = useState(isPhonePortrait);
+  useEffect(() => {
+    const sync = () => setPhonePortrait(isPhonePortrait());
+    window.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    return () => { window.removeEventListener("resize", sync); window.removeEventListener("orientationchange", sync); };
+  }, []);
+  // Only the first photograph competes with the first paint. The remaining
+  // slides join once it has arrived (or after a short grace period).
+  const [heroWarm, setHeroWarm] = useState(false);
+  const seenSlides = useRef(new Set<number>([0]));
+  seenSlides.current.add(activeIndex);
+  useEffect(() => {
+    if (heroWarm) return;
+    const timer = window.setTimeout(() => setHeroWarm(true), 4500);
+    return () => window.clearTimeout(timer);
+  }, [heroWarm]);
   useEffect(() => {
     if (reducedMotion || paused || slides.length < 2) return;
     const timer = window.setTimeout(() => {
@@ -364,11 +332,6 @@ export function Home() {
     return () => document.removeEventListener("visibilitychange", visibility);
   }, []);
   const slide = slides[activeIndex];
-  useEffect(() => {
-    if (slides.length < 2) return;
-    const nextImage = new Image();
-    nextImage.src = slides[(activeIndex + 1) % slides.length].image;
-  }, [activeIndex, slides]);
   const goTo = (index: number) => {
     setActive((index + slides.length) % slides.length);
     setCycle((value) => value + 1);
@@ -410,15 +373,17 @@ export function Home() {
                 aria-hidden={index !== activeIndex}
                 className={`absolute inset-0 transition-opacity duration-[1400ms] ease-[cubic-bezier(.22,1,.36,1)] ${index === activeIndex ? "opacity-100" : "opacity-0"}`}
               >
-                <ResilientImage
-                  key={index === activeIndex ? `active-${cycle}` : "idle"}
-                  src={item.image}
-                  alt={index === activeIndex ? item.title : ""}
-                  loading={index === 0 ? "eager" : "lazy"}
-                  {...(index === 0 ? { fetchpriority: "high" } : {})}
-                  sizes="100vw"
-                  className={`absolute inset-0 h-full w-full object-cover ${index === activeIndex && !reducedMotion ? "cc-kenburns" : ""}`}
-                />
+                {(heroWarm || seenSlides.current.has(index)) && (
+                  <ResilientImage
+                    key={index === activeIndex ? `active-${cycle}` : "idle"}
+                    {...heroImageSources(item.image, phonePortrait)}
+                    alt={index === activeIndex ? item.title : ""}
+                    loading={index === 0 ? "eager" : "lazy"}
+                    {...(index === 0 ? { fetchpriority: "high" } : {})}
+                    onLoad={index === 0 && !heroWarm ? () => window.setTimeout(() => setHeroWarm(true), 900) : undefined}
+                    className={`absolute inset-0 h-full w-full object-cover ${index === activeIndex && !reducedMotion ? "cc-kenburns" : ""}`}
+                  />
+                )}
               </div>
             ))}
             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/35" />
@@ -466,7 +431,7 @@ export function Home() {
                         onClick={() => goTo(index)}
                         aria-label={`Show slide ${index + 1} of ${slides.length}`}
                         aria-current={index === activeIndex ? "true" : undefined}
-                        className="group relative h-6 flex-1"
+                        className="group relative h-11 flex-1"
                       >
                         <span className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 overflow-hidden rounded-full bg-white/30 transition group-hover:bg-white/50">
                           {index === activeIndex && (
@@ -594,7 +559,9 @@ export function Home() {
           </div>
         </section>
 
-        <section id="new" className="mx-auto max-w-[1440px] px-5 py-16 lg:px-10 lg:py-28">
+        <ShopTheRoom />
+
+        <section id="new" className="mx-auto max-w-[1440px] px-5 pb-16 lg:px-10 lg:pb-28">
           <div data-reveal="scale" className="grid overflow-hidden rounded-[2rem] bg-[#cbb8a1] shadow-[0_14px_36px_rgba(35,31,27,.10)] lg:grid-cols-2">
             <div className="flex min-h-[380px] flex-col justify-between gap-10 p-8 sm:p-14">
               <div>
@@ -1316,32 +1283,32 @@ export function About() {
       name: "Joylyn Campuso",
       role: "Product & Research",
       initials: "CJ",
-      image: "/team/joylyn-campuso.jpg",
+      image: teamJoylyn,
     },
     {
       name: "Jacob Christopher Cañete",
       role: "Platform Development",
       initials: "JC",
-      image: "/team/jacob-christopher-canete.jpg",
+      image: teamJacob,
     },
     {
       name: "Prince Balane",
       role: "Project Lead · Vision Ventures",
       initials: "PB",
       lead: true,
-      image: "/team/prince-balane.jpg",
+      image: teamPrince,
     },
     {
       name: "Angela Faith Suba",
       role: "Customer Experience",
       initials: "AS",
-      image: "/team/angela-faith-suba.jpeg",
+      image: teamAngela,
     },
     {
       name: "Hydee Mae Sumalinog",
       role: "Operations & Quality",
       initials: "HS",
-      image: "/team/hydee-mae-sumalinog.jpg",
+      image: teamHydee,
     },
   ];
   return (
@@ -1564,6 +1531,18 @@ const materialAliases: Record<string, string[]> = {
 };
 const stockOptions: Array<[string, string]> = [["all", "All"], ["in-stock", "In stock"], ["low-stock", "Only a few left"]];
 const gridDensityKey = "cozycraft-grid-density";
+// The shop shows a first set of pieces and adds more on request, so a phone
+// never builds (and downloads images for) the whole catalogue at once.
+const SHOP_PAGE_SIZE = 24;
+const shopVisibleKey = "cozycraft-shop-visible-v1";
+/** How many pieces were showing for this exact listing, for Back/Forward. */
+function readShopVisible(signature: string) {
+  try {
+    const saved = JSON.parse(sessionStore.getItem(shopVisibleKey) ?? "null");
+    const count = Number(saved?.count);
+    return saved?.signature === signature && Number.isInteger(count) && count > SHOP_PAGE_SIZE ? count : SHOP_PAGE_SIZE;
+  } catch { return SHOP_PAGE_SIZE; }
+}
 
 const readCollectionFilters = (search: string): CollectionFilters => {
   const params = new URLSearchParams(search);
@@ -1600,6 +1579,15 @@ const writeCollectionFilters = (filters: CollectionFilters) => {
 };
 
 export function CollectionPage() {
+  const { room } = useParams();
+  const location = useLocation();
+  const current = room ?? (location.pathname.slice(1) || "living-room");
+  // An unknown collection address is a missing page, not the living room.
+  if (!Object.prototype.hasOwnProperty.call(roomCollections, current)) return <NotFound />;
+  return <CollectionView />;
+}
+
+function CollectionView() {
   const { products, userId, catalogPending } = useStore();
   const { room } = useParams();
   const location = useLocation();
@@ -1632,6 +1620,20 @@ export function CollectionPage() {
   const group = groups.includes(filters.group) ? filters.group : groups[0];
   const { containerRef: groupTabsRef, indicatorStyle: groupIndicator } = useSlidingIndicator<HTMLDivElement>(`${current}:${group}`);
   const update = (patch: Partial<CollectionFilters>) => setFilters((currentFilters) => ({ ...currentFilters, ...patch }));
+  // "Show more" paging. A new search, filter, sort or room starts again from
+  // the first set; coming Back to the same listing restores what was showing,
+  // so the page is tall enough for the browser to return to the same spot.
+  const listSignature = `${current}|${writeCollectionFilters({ ...filters, group })}`;
+  const navigationType = useNavigationType();
+  const [visibleCount, setVisibleCount] = useState(() => navigationType === "POP" ? readShopVisible(listSignature) : SHOP_PAGE_SIZE);
+  const [shownSignature, setShownSignature] = useState(listSignature);
+  if (shownSignature !== listSignature) {
+    setShownSignature(listSignature);
+    setVisibleCount(SHOP_PAGE_SIZE);
+  }
+  useEffect(() => {
+    sessionStore.setItem(shopVisibleKey, JSON.stringify({ signature: listSignature, count: visibleCount }));
+  }, [listSignature, visibleCount]);
 
   useEffect(() => {
     // Back/forward, mega-menu links and room switches drive the filters.
@@ -1713,6 +1715,7 @@ export function CollectionPage() {
   }
   items = filterByPriceRange(items, filters.min, filters.max);
   if (!searchActive || filters.sort !== "featured") items = sortProducts(items, filters.sort);
+  const visibleItems = items.slice(0, visibleCount);
   const searchSuggestions = query.trim().length >= 2
     ? rankCatalogSearch(collectionItems, expandedQuery).slice(0, 6)
     : [];
@@ -1914,9 +1917,10 @@ export function CollectionPage() {
             <ProductGrid
               key={`${current}-${group}-${subcategory}-${filters.sort}`}
               className="mt-9"
-              products={items}
+              products={visibleItems}
               pending={catalogPending}
               columns={density}
+              wide
             />
           ) : (
             <div className="cc-enter-up mt-10 grid min-h-[340px] place-items-center rounded-[2rem] border border-dashed border-border bg-card px-6 py-12 text-center">
@@ -1931,6 +1935,24 @@ export function CollectionPage() {
                   <Link to="/find-my-furniture" className="cc-press inline-flex h-12 items-center rounded-full border border-border px-6 text-sm font-semibold hover:bg-secondary">Find my furniture</Link>
                 </div>
               </div>
+            </div>
+          )}
+          {!catalogPending && items.length > visibleItems.length && (
+            <div className="mt-12 flex flex-col items-center gap-4 text-center sm:mt-16">
+              <p className="text-xs font-medium text-muted-foreground" aria-live="polite">
+                Showing {visibleItems.length} of {items.length} pieces
+              </p>
+              <span className="block h-[3px] w-44 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+                <span className="block h-full rounded-full bg-foreground transition-[width] duration-500" style={{ width: `${Math.round((visibleItems.length / items.length) * 100)}%` }} />
+              </span>
+              <button
+                type="button"
+                onClick={() => setVisibleCount((count) => count + SHOP_PAGE_SIZE)}
+                className="cc-press inline-flex h-12 items-center gap-2 rounded-full border border-foreground px-7 text-sm font-semibold transition-colors hover:bg-foreground hover:text-background"
+              >
+                Show more pieces
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
             </div>
           )}
         </section>
@@ -2413,7 +2435,7 @@ function ProductPageContent({
   product: Product;
   liveAvailable: boolean;
 }) {
-  const { add, toggle, saved, products, userId, orders, storeSettings, catalogPending } = useStore();
+  const { add, toggle, saved, products, userId, storeSettings, catalogPending } = useStore();
   usePageTitle(product.name, storeSettings.store_name || undefined);
   const [justAdded, setJustAdded] = useState(false);
   const [morphName, setMorphName] = useState(true);
@@ -2470,7 +2492,6 @@ function ProductPageContent({
   const atStockLimit = quantity >= Math.min(10, stockLimit ?? 10);
   const outOfStock = stockLimit === 0;
   const lowStock = stockLimit !== null && stockLimit > 0 && stockLimit <= 8;
-  const stockAvailability = exactStockAvailability(product.stockQuantity, product.stock);
   const selectedDeliveryArea = deliveryAreas.find((area) => area.area_code === deliveryAreaCode) ?? null;
   const deliveryWindow = selectedDeliveryArea ? deliveryDateRange(selectedDeliveryArea) : null;
   const deliveryFee = selectedDeliveryArea ? deliveryFeeFor(selectedDeliveryArea, product.price * quantity) : null;
@@ -2936,6 +2957,7 @@ function ProductPageContent({
                 </span>
               )}
             </div>
+            <MonthlyGuide price={product.price} />
             <p className="cc-enter-up mt-6 max-w-xl text-[15px] leading-7 text-muted-foreground" style={{ ["--i" as string]: 3 }}>
               {product.description}
             </p>
@@ -3203,7 +3225,7 @@ function ProductPageContent({
                     </button>
                   </div>
                   {reviewNotice && (
-                    <p className="cc-enter-fade mt-3 text-xs font-semibold text-[#56714f]" role="status">
+                    <p className="cc-enter-fade mt-3 text-xs font-semibold text-[#4a6443]" role="status">
                       {reviewNotice}
                     </p>
                   )}
@@ -3225,7 +3247,7 @@ function ProductPageContent({
                           />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold">@{review.reviewer_display_name}</p>
-                            <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-[#56714f]"><Check size={11} strokeWidth={3} /> Verified customer</p>
+                            <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-[#4a6443]"><Check size={11} strokeWidth={3} /> Verified customer</p>
                           </div>
                         </div>
                         <StarRating value={review.rating} size={13} />

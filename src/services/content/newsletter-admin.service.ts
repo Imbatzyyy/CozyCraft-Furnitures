@@ -72,7 +72,25 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   throw new Error(payload?.error ?? error.message ?? "Newsletter service unavailable.");
 }
 
-export const loadNewsletterWorkspace = () => invoke<NewsletterOverview>({ action: "overview" });
+/**
+ * The workspace screen reads counts, campaigns and products straight from
+ * this response. Reject anything that is not that shape with a readable
+ * message, so an unexpected reply shows an error instead of breaking the page.
+ */
+export async function loadNewsletterWorkspace(): Promise<NewsletterOverview> {
+  const data = await invoke<Partial<NewsletterOverview> | null>({ action: "overview" });
+  if (!data || typeof data !== "object" || !data.counts || typeof data.counts !== "object" ||
+      !Array.isArray(data.campaigns) || !Array.isArray(data.products)) {
+    throw new Error("The newsletter service returned an unexpected response. Refresh and try again.");
+  }
+  const count = (key: keyof NewsletterOverview["counts"]) => Number(data.counts?.[key]) || 0;
+  return {
+    counts: { active: count("active"), pending: count("pending"), unsubscribed: count("unsubscribed"), bounced: count("bounced") },
+    campaigns: data.campaigns,
+    products: data.products,
+    adminEmail: typeof data.adminEmail === "string" ? data.adminEmail : "",
+  };
+}
 export const saveNewsletterCampaign = (campaign: NewsletterDraft) =>
   invoke<{ campaign: NewsletterCampaign }>({ action: "save", campaign });
 export const sendNewsletterTest = (campaignId: string, email: string) =>
