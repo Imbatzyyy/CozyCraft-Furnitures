@@ -5,7 +5,6 @@ import { preloadHomeHero } from "@/lib/content/hero";
 import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import { DialogAccessibility } from "./components/DialogAccessibility";
-import "@fontsource-variable/fraunces/opsz.css";
 import "./styles/fonts.css";
 import "./styles/index.css";
 
