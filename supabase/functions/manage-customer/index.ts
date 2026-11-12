@@ -1,12 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { serveProtected } from "../_shared/security-boundary.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.111.0";
+import { createClient } from "npm:@supabase/supabase-js@2.119.0";
+import { changeStatus } from "./status.ts";
 
 const canonicalOrigin = "https://www.cozycraftfurnitures.com";
 const allowedOrigins = new Set([canonicalOrigin, "https://cozycraftfurnitures.com", "http://localhost:5173"]);
 const cors = (request: Request) => ({
   "Access-Control-Allow-Origin": allowedOrigins.has(request.headers.get("Origin") ?? "") ? request.headers.get("Origin")! : canonicalOrigin,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cozycraft-platform",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   Vary: "Origin",
 });
@@ -46,11 +47,12 @@ serveProtected(async (request) => {
   }
   let payload: Payload;
   try { payload = await request.json() as Payload; } catch { return json(request, { error: "Invalid request body." }, 400); }
-  if (!payload.userId) return json(request, { error: "Customer ID is required." }, 400);
+  if (!payload || typeof payload.userId !== "string" || !payload.userId) return json(request, { error: "Customer ID is required." }, 400);
   const { data: target } = await admin.from("profiles").select("id,email,role,customer_active").eq("id", payload.userId).maybeSingle();
   if (!target || target.role !== "customer") return json(request, { error: "Customer account not found." }, 404);
 
   if (payload.action === "update") {
+    if (![payload.fullName, payload.username, payload.phone, payload.gender].every(v => typeof v === "string")) return json(request, { error: "Invalid customer details." }, 400);
     const fullName = payload.fullName.trim();
     const username = payload.username.trim();
     if (!fullName || username.length < 3) return json(request, { error: "Full name and a username of at least 3 characters are required." }, 400);
@@ -59,15 +61,23 @@ serveProtected(async (request) => {
       gender: payload.gender.trim(), date_of_birth: payload.dateOfBirth || null,
     }).eq("id", target.id);
     if (error) return json(request, { error: error.message }, 400);
-    await admin.from("activity_logs").insert({ actor_id: user.id, action: "customer_profile_updated", entity_type: "profile", entity_id: target.id, details: { email: target.email } });
+    const audit = await admin.from("activity_logs").insert({ actor_id: user.id, action: "customer_profile_updated", entity_type: "profile", entity_id: target.id, details: {} });
+    if (audit.error) return json(request, { error: "Profile updated, but the audit entry was not confirmed." }, 503);
     return json(request, { success: true, message: "Customer profile updated." });
   }
   if (payload.action === "set-status") {
-    const { error } = await admin.from("profiles").update({ customer_active: payload.active }).eq("id", target.id);
-    if (error) return json(request, { error: error.message }, 400);
-    await admin.auth.admin.updateUserById(target.id, { ban_duration: payload.active ? "none" : "876000h" });
-    await admin.from("activity_logs").insert({ actor_id: user.id, action: payload.active ? "customer_reactivated" : "customer_suspended", entity_type: "profile", entity_id: target.id, details: { email: target.email } });
-    return json(request, { success: true, message: payload.active ? "Customer account reactivated." : "Customer account suspended." });
+    if (typeof payload.active !== "boolean") return json(request, { error: "Choose a valid account status." }, 400);
+    const result = await changeStatus(payload.active, async () => {
+      const r = await admin.from("profiles").update({ customer_active: payload.active }).eq("id", target.id).eq("role", "customer").select("id").single();
+      return !r.error && r.data?.id === target.id;
+    }, async () => {
+      const r = await admin.auth.admin.updateUserById(target.id, { ban_duration: payload.active ? "none" : "876000h" });
+      return !r.error && r.data.user?.id === target.id;
+    }, async (action, stage) => {
+      const r = await admin.from("activity_logs").insert({ actor_id: user.id, action, entity_type: "profile", entity_id: target.id, details: { requested_active: payload.active, stage } });
+      return !r.error;
+    });
+    return json(request, result, result.success ? 200 : 503);
   }
   return json(request, { error: "Unsupported action." }, 400);
 });

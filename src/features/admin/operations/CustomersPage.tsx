@@ -45,6 +45,7 @@ export function CustomersPage() {
   const [draft, setDraft] = useState({ fullName: "", username: "", phone: "", gender: "", dateOfBirth: "" });
   const { notice, notify, clear } = useNotice();
   const [busy, setBusy] = useState(false);
+  const [retryStatus, setRetryStatus] = useState<{ userId: string; active: boolean } | null>(null);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[] | null>(null);
   const [recentTickets, setRecentTickets] = useState<RecentTicket[] | null>(null);
   useEffect(() => {
@@ -79,18 +80,26 @@ export function CustomersPage() {
 
   const manageCustomer = async (body: Record<string, unknown>) => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("manage-customer", { body });
-    setBusy(false);
-    if (error || data?.error) {
-      notify(data?.error ?? error?.message ?? "The customer account could not be updated.", "error");
-      return;
-    }
-    notify(data?.message ?? "Customer account updated.");
-    setEditing(false);
-    directory.reload();
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-customer", { body });
+      if (error || !data?.success) {
+        const info = error?.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
+        throw new Error(info?.error ?? data?.error ?? "The customer account update could not be confirmed.");
+      }
+      if (body.action === "set-status") setRetryStatus(null);
+      notify(data.message ?? "Customer account updated.");
+      setEditing(false);
+    } catch (e) {
+      if (body.action === "set-status" && typeof body.userId === "string" && typeof body.active === "boolean") setRetryStatus({userId:body.userId, active:body.active});
+      notify(e instanceof Error ? e.message : "The account update could not be confirmed.", "error");
+    } finally { setBusy(false); directory.reload(); }
   };
   const toggleStatus = async () => {
     if (!customer) return;
+    if (retryStatus?.userId === customer.id) {
+      void manageCustomer({action:"set-status", ...retryStatus});
+      return;
+    }
     const active = customer.customer_active !== false;
     const confirmed = await confirmAction({
       title: active ? `Suspend ${customer.full_name || "this customer"}?` : `Reactivate ${customer.full_name || "this customer"}?`,
@@ -138,7 +147,7 @@ export function CustomersPage() {
           {customer.phone && <a href={`tel:${customer.phone.replace(/\s+/g, "")}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/20 px-3.5 text-xs font-semibold hover:bg-white/10"><Phone size={13} /> Call</a>}
           <button type="button" disabled={busy} onClick={() => void toggleStatus()} className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3.5 text-xs font-semibold disabled:opacity-50 ${customer.customer_active !== false ? "border-[#d7a28d]/60 text-[#f2c7b5] hover:bg-[#d7a28d]/10" : "border-[#9fbd92]/60 text-[#cde6c3] hover:bg-[#9fbd92]/10"}`}>
             {customer.customer_active !== false ? <ShieldOff size={13} /> : <ShieldCheck size={13} />}
-            {customer.customer_active !== false ? "Suspend" : "Reactivate"}
+            {retryStatus?.userId === customer.id ? (retryStatus.active ? "Retry reactivation" : "Retry suspension") : customer.customer_active !== false ? "Suspend" : "Reactivate"}
           </button>
         </div>
       </div>

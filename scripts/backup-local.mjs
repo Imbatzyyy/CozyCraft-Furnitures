@@ -67,7 +67,12 @@ async function main() {
       for(const prefix of ['PRIMARY KEY','UNIQUE','FOREIGN KEY'])for(const c of catalog.constraints.filter(c=>c.definition.startsWith(prefix))){
         await db.exec(`alter table ${quote(c.schema)}.${quote(c.table)} add constraint ${quote(c.conname)} ${c.definition}`);constraints++;
       }
-      console.log(JSON.stringify({logicalRowRestoreVerified:true,tables:restored,rows,relationalConstraints:constraints,scope:'In-memory typed-table and relational restore; not a full hosted Supabase disaster-recovery rehearsal'}));
+      const objectKeys=new Set(manifest.objects.map(o=>JSON.stringify([o.bucket,o.name])));
+      const refs=await db.query(`select 'support-attachments' bucket,unnest(attachment_paths) name from public.support_tickets
+        union all select 'return-evidence',unnest(evidence_paths) from public.return_requests`);
+      const missing=refs.rows.filter(r=>!objectKeys.has(JSON.stringify([r.bucket,r.name]))).length;
+      if(missing)throw Error('Restore has '+missing+' unresolved support/return attachment references; review before database maintenance.');
+      console.log(JSON.stringify({logicalRowRestoreVerified:true,tables:restored,rows,relationalConstraints:constraints,evidenceReferencesVerified:refs.rows.length,scope:'In-memory typed-table and relational restore; not a full hosted Supabase disaster-recovery rehearsal'}));
     }finally{await db.close();}
     return;
   }

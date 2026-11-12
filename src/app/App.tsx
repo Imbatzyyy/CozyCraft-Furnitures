@@ -1,4 +1,5 @@
 import { localStore, sessionStore } from "@/lib/shared/browser-storage";
+import { submitEvidence } from "@/services/supabase/evidence";
 import { reportClientError } from "@/lib/shared/client-errors";
 import { fulfillmentPaymentBlocked } from "@/lib/commerce/order-workflow";
 import { readOfflineCatalog, saveOfflineCatalog, setCatalogStale } from "@/lib/catalog/offline-catalog";
@@ -1944,18 +1945,13 @@ function App() {
     if (message.length < 10 || message.length > 4000) {
       return "Please describe your concern in 10 to 4,000 characters.";
     }
-    const attachmentPaths:string[] = [];
-    for (const file of (details.files ?? []).slice(0,3)) {
-      if (file.size > 5*1024*1024 || !["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type)) return "Attachments must be JPG, PNG, WebP, or PDF files no larger than 5 MB.";
-      const path=`${userId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
-      const { error:uploadError }=await supabase.storage.from("support-attachments").upload(path,file);
-      if(uploadError)return `Could not upload ${file.name}: ${uploadError.message}`;
-      attachmentPaths.push(path);
+    if (details.files?.length) {
+      if (details.files.length > 3 || details.files.some(f => f.size > 5*1024*1024 || !["image/jpeg","image/png","image/webp","application/pdf"].includes(f.type))) return "Choose up to three JPG, PNG, WebP, or PDF files no larger than 5 MB each.";
+      const problem = await submitEvidence({ kind:"support", message, category:details.category, priority:details.priority, order:details.orderId || "" }, details.files);
+      if (!problem) await refreshTickets();
+      return problem;
     }
-    const { error } = await supabase.from("support_tickets").insert({ user_id:userId, message, category:details.category, priority:details.priority, order_id:details.orderId||null, subject:`${details.category.charAt(0).toUpperCase()+details.category.slice(1)} support request`, attachment_paths:attachmentPaths });
-    if (error && attachmentPaths.length) {
-      await supabase.storage.from("support-attachments").remove(attachmentPaths);
-    }
+    const { error } = await supabase.from("support_tickets").insert({ user_id:userId, message, category:details.category, priority:details.priority, order_id:details.orderId||null, subject:`${details.category.charAt(0).toUpperCase()+details.category.slice(1)} support request`, attachment_paths:[] });
     if (!error) await refreshTickets();
     return error?.message ?? null;
   };

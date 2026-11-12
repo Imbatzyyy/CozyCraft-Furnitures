@@ -1,4 +1,5 @@
 import { localStore } from "@/lib/shared/browser-storage";
+import { submitEvidence } from "@/services/supabase/evidence";
 import { DataPagination } from "@/components/DataPagination";
 import { RelatedOrderSelect } from "./RelatedOrderSelect";
 import { usePendingEmail } from "@/lib/auth/pending-email";
@@ -1177,16 +1178,13 @@ function CustomerProfile() {
       return;
     }
     setReturnSubmitting(true);
-    const evidencePaths: string[] = [];
-    for (const file of returnFiles.slice(0, 3)) {
-      const path = `${userId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
-      const { error } = await supabase.storage.from("return-evidence").upload(path, file);
-      if (error) { setReturnSubmitting(false); setNotice(`Could not upload ${file.name}: ${error.message}`); return; }
-      evidencePaths.push(path);
-    }
-    const { error } = await supabase.from("return_requests").insert({ user_id:userId, order_id:returnOrderId, reason:returnReason, details:returnDetails.trim(), evidence_paths:evidencePaths });
-    setReturnSubmitting(false);
-    if (error) { setNotice(error.message); return; }
+    try {
+      const error = returnFiles.length
+        ? await submitEvidence({ kind:"return", message:returnDetails.trim(), reason:returnReason, order:returnOrderId }, returnFiles)
+        : (await supabase.from("return_requests").insert({ user_id:userId, order_id:returnOrderId, reason:returnReason, details:returnDetails.trim(), evidence_paths:[] })).error?.message;
+      if (error) { setNotice(error); return; }
+    } catch { setNotice("Check your return requests before submitting again."); return; }
+    finally { setReturnSubmitting(false); }
     setReturnOrderId(null); setReturnDetails(""); setReturnFiles([]);
     setNotice("Your return request was submitted for review.");
   };

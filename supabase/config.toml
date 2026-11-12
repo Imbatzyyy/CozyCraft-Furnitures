@@ -36,6 +36,9 @@ verify_jwt = true
 [functions.manage-customer]
 verify_jwt = true
 
+[functions.submit-customer-evidence]
+verify_jwt = true
+
 [functions.send-transactional-email]
 verify_jwt = true
 
