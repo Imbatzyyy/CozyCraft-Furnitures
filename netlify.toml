@@ -3,7 +3,7 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "22"
+  NODE_VERSION = "22.23.5"
 
 # Only this public catalog bucket can be transformed. Never allow signed
 # avatars, review photos, support attachments or arbitrary remote URLs here.

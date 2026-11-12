@@ -104,7 +104,7 @@ project. A paid order must be checked before another payment attempt.
 - CI runs the release suite on pushes, PRs and weekly. Monthly Dependabot PRs
   propose npm minor/patch updates; major upgrades require separate validation.
   No dependency PR is automatically merged or deployed.
-- Node 22 is pinned for local/CI/build use. The frontend lockfile and Edge Deno
+- Node 22.23.5 is pinned for local/CI/build use. The frontend lockfile and Edge Deno
   lockfile pin dependencies. Run `npm run verify:release` and `npm run test:browser`
   before deployment. Keep secrets scanning and security headers enabled.
 - Free has no uptime guarantee from these changes. Real payments, email/SMS
@@ -114,3 +114,30 @@ Official references: [Free project pausing](https://supabase.com/docs/guides/pla
 [backup responsibilities](https://supabase.com/docs/guides/platform/backups),
 [Edge limits](https://supabase.com/docs/guides/functions/limits),
 [password security](https://supabase.com/docs/guides/auth/password-security).
+
+## Release and database-maintenance gates
+
+- Release through a PR with the required GitHub Actions `verify` check. On a
+  single-maintainer project do not require an unavailable second reviewer;
+  add that requirement when an independent reviewer is available. Do not bypass
+  the status check. Build production with the actual public project settings
+  from a clean checkout of the tested main revision, run
+  `node scripts/stamp-production.mjs`, and include the full Git SHA in the
+  Netlify deploy message. Compare live `/release.json` and its asset hashes
+  before calling the release verified. Do not serve a fixture configuration.
+- Create and restore-check a fresh local encrypted archive before a provider
+  upgrade. Restore-check also checks that support/return attachment references
+  resolve to objects whose bytes passed integrity verification. Review
+  `scripts/report-unreferenced-evidence.sql` (counts only); never bulk-delete
+  documents based on that report. File signatures validate format, not malware.
+- Schedule a customer-facing maintenance window for direct-database TLS
+  enforcement (reboots PostgreSQL) and the eligible managed PostgreSQL patch.
+  Check direct clients against the provider CA first; retain a recovery
+  connection. Do not apply an IP allowlist without known administrative routes.
+  Afterwards verify Auth, checkout in provider test mode, order reads, admin
+  reports, workers, and another maintenance connection. Do not charge customers
+  or test by suspending real accounts.
+- Owners should enroll remaining staff in MFA or review dormant access, and
+  verify recovery for GitHub, Supabase, Netlify and payment accounts. MFA
+  factors and recovery codes belong to the account holder. Keep secrets out
+  of tickets and chat.
